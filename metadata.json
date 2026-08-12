@@ -1,0 +1,1 @@
+{"name":"StorePrint - Печать заказов","description":"Автоматическая загрузка заказов из Google Sheets, фильтрация по текущей неделе, предварительный просмотр и печать PDF бланков для сборки и маркировки.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
