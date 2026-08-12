@@ -1,5 +1,5 @@
-import { SheetTab, Order, ColumnMapping, OrderItem } from '../types';
-import { parseSheetDate, isDateInWeek, getCurrentWeekRange } from './dateUtils';
+import { SheetTab, Order, OrderItem } from '../types';
+import { parseSheetDate } from './dateUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1NJq4sJV0HPvkKUXy6kot3FUA7dnKAHD-iWTVXIY4qms';
 export const DEFAULT_GID = '1965220204';
@@ -92,9 +92,9 @@ export async function fetchSheetValues(
 }
 
 /**
- * Fallback CSV Fetcher for public Google Sheets (without requiring OAuth if publicly shared)
+ * Fallback CSV Fetcher for public Google Sheets (without requiring OAuth)
  */
-export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = '0'): Promise<string[][]> {
+export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = DEFAULT_GID): Promise<string[][]> {
   const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   const response = await fetch(csvUrl);
   if (!response.ok) {
@@ -151,271 +151,161 @@ function parseCsvString(text: string): string[][] {
 }
 
 /**
- * Intelligent auto-mapping detector for table header columns
- */
-export function detectColumnMapping(headers: string[]): ColumnMapping {
-  const normalize = (s: string) => s.toLowerCase().trim();
-
-  const mapping: ColumnMapping = {
-    orderId: '',
-    date: '',
-    client: '',
-    items: '',
-    quantity: '',
-    address: '',
-    phone: '',
-    status: '',
-    notes: '',
-  };
-
-  headers.forEach((h) => {
-    const norm = normalize(h);
-    if (!norm) return;
-
-    if (!mapping.orderId && (norm.includes('№') || norm.includes('номер') || norm.includes('заказ') || norm.includes('заявка') || norm.includes('id'))) {
-      mapping.orderId = h;
-    } else if (!mapping.date && (norm.includes('дата') || norm.includes('время') || norm.includes('date') || norm.includes('число'))) {
-      mapping.date = h;
-    } else if (!mapping.client && (norm.includes('клиент') || norm.includes('фио') || norm.includes('покупатель') || norm.includes('получатель') || norm.includes('имя'))) {
-      mapping.client = h;
-    } else if (!mapping.items && (norm.includes('состав') || norm.includes('товар') || norm.includes('наименование') || norm.includes('позиции') || norm.includes('номенклатура') || norm.includes('продукт'))) {
-      mapping.items = h;
-    } else if (!mapping.quantity && (norm.includes('кол-во') || norm.includes('количество') || norm.includes('шт') || norm.includes('объем') || norm.includes('qty'))) {
-      mapping.quantity = h;
-    } else if (!mapping.address && (norm.includes('адрес') || norm.includes('доставка') || norm.includes('город') || norm.includes('пункт'))) {
-      mapping.address = h;
-    } else if (!mapping.phone && (norm.includes('телефон') || norm.includes('тел') || norm.includes('контакт') || norm.includes('phone'))) {
-      mapping.phone = h;
-    } else if (!mapping.status && (norm.includes('статус') || norm.includes('состояние') || norm.includes('этап'))) {
-      mapping.status = h;
-    } else if (!mapping.notes && (norm.includes('примечание') || norm.includes('комментарий') || norm.includes('заметка') || norm.includes('инфо'))) {
-      mapping.notes = h;
-    }
-  });
-
-  // Fallbacks if not auto-detected
-  if (!mapping.orderId && headers[0]) mapping.orderId = headers[0];
-  if (!mapping.date && headers[1]) mapping.date = headers[1];
-  if (!mapping.client && headers[2]) mapping.client = headers[2];
-  if (!mapping.items && headers[3]) mapping.items = headers[3];
-
-  return mapping;
-}
-
-/**
- * Parses raw text of order items into individual structured line items for checklist marking
- */
-export function parseOrderItemsText(itemsText: string, defaultQty: string = '1'): OrderItem[] {
-  if (!itemsText) return [];
-
-  // Split by newlines, semicolons, commas, or bullet points
-  const lines = itemsText.split(/\r?\n|;|\b(?=\d+[\.\)])/).map((l) => l.trim()).filter(Boolean);
-  const result: OrderItem[] = [];
-
-  lines.forEach((line, idx) => {
-    // Regex for "1. Товар X - 2 шт" or "Товар X (3 шт)" or "5x Товар Y"
-    const qtyMatch = line.match(/(?:(?:x|х|\*)\s*(\d+))|(?:(\d+)\s*(?:шт|х|x|\*))|(?:\((\d+)\s*шт\))/i) || line.match(/^(\d+)[\.\)\s-]+(.+)$/);
-    let qty = defaultQty;
-    let cleanName = line.replace(/^\d+[\.\)\s-]+/, '').trim();
-
-    if (qtyMatch) {
-      const extractedQty = qtyMatch[1] || qtyMatch[2] || qtyMatch[3];
-      if (extractedQty && !isNaN(Number(extractedQty))) {
-        qty = extractedQty;
-      }
-    }
-
-    result.push({
-      id: `item-${idx + 1}`,
-      name: cleanName || line,
-      qty: qty || '1',
-      checked: false,
-    });
-  });
-
-  return result.length > 0
-    ? result
-    : [
-        {
-          id: 'item-1',
-          name: itemsText,
-          qty: defaultQty || '1',
-          checked: false,
-        },
-      ];
-}
-
-/**
- * Converts raw Google Sheets matrix rows into clean Order objects and applies CURRENT WEEK date filter!
+ * Converts raw Google Sheets matrix rows into clean Order objects according to the exact structure:
+ * Row index 3 (Row 4 in Excel) = Header with items in columns E..FM (indices 4..N)
+ * Column A (index 0) = Timestamp (חותמת זמן)
+ * Column B (index 1) = Date (תאריך)
+ * Column C (index 2) = Department (מחלקה או סקטור)
+ * Column D (index 3) = Patients (מספר טופלים במחלקה)
+ * Columns E..FM (indices 4..) = Item names & ordered quantities
  */
 export function processRawRowsToOrders(
-  rows: string[][],
-  mapping: ColumnMapping
-): { orders: Order[]; headers: string[]; totalRows: number; filteredOutCount: number } {
+  rows: string[][]
+): { orders: Order[]; productHeaders: string[]; totalRows: number; departments: string[] } {
   if (!rows || rows.length === 0) {
-    return { orders: [], headers: [], totalRows: 0, filteredOutCount: 0 };
+    return { orders: [], productHeaders: [], totalRows: 0, departments: [] };
   }
 
-  const headers = rows[0].map((h) => h.trim());
-  const headerIndexMap: Record<string, number> = {};
-  headers.forEach((h, idx) => {
-    headerIndexMap[h] = idx;
-  });
-
-  const getValue = (row: string[], colName: string): string => {
-    const idx = headerIndexMap[colName];
-    if (idx !== undefined && row[idx] !== undefined) {
-      return String(row[idx]).trim();
+  // 1. Locate the header row by searching for 'חותמת זמן' or 'מחלקה' or default to index 3
+  let headerRowIndex = 3;
+  for (let r = 0; r < Math.min(10, rows.length); r++) {
+    const rowStr = rows[r].join(' ').toLowerCase();
+    if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור')) {
+      headerRowIndex = r;
+      break;
     }
-    return '';
-  };
+  }
 
-  const currentWeek = getCurrentWeekRange();
-  const rawOrders: Order[] = [];
-  let filteredOutCount = 0;
+  const rawHeaders = rows[headerRowIndex] || [];
+  const productHeaders: string[] = [];
+  for (let c = 4; c < rawHeaders.length; c++) {
+    productHeaders.push(rawHeaders[c] ? rawHeaders[c].trim() : `פריט ${c - 3}`);
+  }
 
-  for (let r = 1; r < rows.length; r++) {
+  const orders: Order[] = [];
+  const deptSet = new Set<string>();
+
+  // 2. Iterate through all rows starting from headerRowIndex + 1
+  for (let r = headerRowIndex + 1; r < rows.length; r++) {
     const row = rows[r];
-    if (!row || row.every((cell) => !cell || String(cell).trim() === '')) {
-      continue; // skip completely empty rows
+    if (!row || row.length === 0) continue;
+
+    const timestamp = row[0] ? row[0].trim() : '';
+    const rawDate = row[1] ? row[1].trim() : '';
+    const department = row[2] ? row[2].trim() : '';
+    const patientsCount = row[3] ? row[3].trim() : '';
+
+    // If completely empty row without timestamp or department, skip
+    if (!timestamp && !department && !rawDate) {
+      continue;
     }
 
-    const rawDateStr = getValue(row, mapping.date);
-    const parsedDate = parseSheetDate(rawDateStr);
-    const validWeek = isDateInWeek(parsedDate, currentWeek);
+    if (department) {
+      deptSet.add(department);
+    }
 
-    const orderIdVal = getValue(row, mapping.orderId) || `Заказ #${r}`;
-    const clientVal = getValue(row, mapping.client) || 'Частное лицо';
-    const itemsVal = getValue(row, mapping.items) || 'Товар по спецификации';
-    const qtyVal = getValue(row, mapping.quantity) || '1';
-    const addressVal = getValue(row, mapping.address);
-    const phoneVal = getValue(row, mapping.phone);
-    const statusVal = getValue(row, mapping.status) || 'Новый';
-    const notesVal = getValue(row, mapping.notes);
+    // 3. Extract items from Column E (index 4) onwards where quantity is entered
+    const orderItems: OrderItem[] = [];
+    for (let c = 4; c < row.length; c++) {
+      const cellQty = row[c] ? row[c].trim() : '';
+      if (!cellQty || cellQty === '0' || cellQty === '-') {
+        continue;
+      }
+
+      const itemName = rawHeaders[c] ? rawHeaders[c].trim() : `פריט ${c - 3}`;
+      if (!itemName) continue;
+
+      orderItems.push({
+        id: `item-${r}-${c}`,
+        name: itemName,
+        qty: cellQty,
+        colIndex: c,
+        checked: false,
+      });
+    }
+
+    const parsedDate = parseSheetDate(timestamp || rawDate);
 
     const rawRowObj: Record<string, string> = {};
-    headers.forEach((h, idx) => {
-      rawRowObj[h] = row[idx] ? String(row[idx]).trim() : '';
+    rawHeaders.forEach((h, idx) => {
+      if (h) rawRowObj[h] = row[idx] ? String(row[idx]).trim() : '';
     });
 
     const orderObj: Order = {
-      id: orderIdVal,
+      id: `הזמנה #${r + 1}`,
       rowNumber: r + 1,
-      rawDate: rawDateStr,
+      timestamp: timestamp || rawDate || `שורה ${r + 1}`,
+      rawDate,
       parsedDate,
-      isValidWeek: validWeek,
-      clientName: clientVal,
-      phone: phoneVal,
-      address: addressVal,
-      itemsText: itemsVal,
-      parsedItems: parseOrderItemsText(itemsVal, qtyVal),
-      quantity: qtyVal,
-      notes: notesVal,
-      status: statusVal,
+      department: department || 'ללא מחלקה',
+      patientsCount,
+      items: orderItems,
+      totalItemsCount: orderItems.length,
       printed: false,
       rawRow: rawRowObj,
     };
 
-    // STRICT MANDATE: Keep ONLY rows with dates from the CURRENT WEEK
-    if (validWeek) {
-      rawOrders.push(orderObj);
-    } else {
-      filteredOutCount++;
-    }
+    orders.push(orderObj);
   }
 
+  // Sort orders descending by row number (newest orders at the top)
+  orders.sort((a, b) => b.rowNumber - a.rowNumber);
+
   return {
-    orders: rawOrders,
-    headers,
-    totalRows: rows.length - 1,
-    filteredOutCount,
+    orders,
+    productHeaders,
+    totalRows: orders.length,
+    departments: Array.from(deptSet).sort(),
   };
 }
 
 /**
- * Returns mock orders for current week if sheet is empty or for immediate instant preview
+ * Returns mock orders for preview
  */
 export function getMockCurrentWeekOrders(): Order[] {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
-  
-  const monday = new Date(now);
-  monday.setDate(diffToMonday);
-
-  const tuesday = new Date(monday);
-  tuesday.setDate(monday.getDate() + 1);
-
-  const wednesday = new Date(monday);
-  wednesday.setDate(monday.getDate() + 2);
-
-  const format = (d: Date) =>
-    `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
-
-  const mock1Date = format(monday);
-  const mock2Date = format(tuesday);
-  const mock3Date = format(wednesday);
-
   return [
     {
-      id: 'ЗК-8041',
-      rowNumber: 2,
-      rawDate: mock1Date,
-      parsedDate: monday,
-      isValidWeek: true,
-      clientName: 'ИП Иванов П.С. (Магазин СпецОдежда)',
-      phone: '+7 (916) 555-01-92',
-      address: 'г. Москва, ул. Складская, д. 14, стр. 2',
-      itemsText: '1. Куртка рабочая "Мастер" M — 3 шт;\n2. Брюки защитные L — 3 шт;\n3. Перчатки нитриловые 10p — 10 пар',
-      parsedItems: [
-        { id: 'item-1', name: 'Куртка рабочая "Мастер" M', qty: '3 шт', checked: false },
-        { id: 'item-2', name: 'Брюки защитные L', qty: '3 шт', checked: false },
-        { id: 'item-3', name: 'Перчатки нитриловые 10p', qty: '10 пар', checked: false },
+      id: 'הזמנה #302',
+      rowNumber: 302,
+      timestamp: '12/08/2026 08:18:13',
+      rawDate: '12/08/2026',
+      parsedDate: new Date(),
+      department: "ג' 2 סיעוד מורכב",
+      patientsCount: '15',
+      items: [
+        { id: 'item-1', name: 'profix 10', qty: '3' },
+        { id: 'item-2', name: 'אפליקטור 100 יחידות', qty: '1' },
+        { id: 'item-3', name: 'דוקרנים לסוכר', qty: '3' },
+        { id: 'item-4', name: '1 דליים של מגבונים לחים', qty: '1' },
+        { id: 'item-5', name: 'כפפות ניטרל M', qty: '2' },
+        { id: 'item-6', name: 'כפפות ניטרל L', qty: '2' },
+        { id: 'item-7', name: 'מזרק 2.5 סמ"ק 100 יחידות', qty: '1' },
+        { id: 'item-8', name: 'מסכות כירורגיות 50 יחידות', qty: '3' },
+        { id: 'item-9', name: 'סט הזנה בגרוויטציה 30 יחידות', qty: '1' },
+        { id: 'item-10', name: 'פד גאזה 10X10 שמונה שכבות 100 יחידות', qty: '12' },
+        { id: 'item-11', name: 'תחבושת אגד אלסטי 10X2.5 ס"מ', qty: '200' },
       ],
-      quantity: '16',
-      notes: 'Срочная отгрузка до 14:00. Вложить кассовый чек.',
-      status: 'К сборке',
+      totalItemsCount: 11,
       printed: false,
       rawRow: {},
     },
     {
-      id: 'ЗК-8042',
-      rowNumber: 3,
-      rawDate: mock2Date,
-      parsedDate: tuesday,
-      isValidWeek: true,
-      clientName: 'ООО "ТехноСнаб"',
-      phone: '+7 (495) 789-33-44',
-      address: 'г. Химки, Ленинградское ш., д. 29Б, офис 12',
-      itemsText: '1. Кабель силовый ВВГнг-LS 3х2.5 (100м) — 2 бухты;\n2. Автоматический выключатель 16А — 12 шт;\n3. Щит электрический 24 модуля — 1 шт',
-      parsedItems: [
-        { id: 'item-1', name: 'Кабель силовый ВВГнг-LS 3х2.5 (100м)', qty: '2 бухты', checked: false },
-        { id: 'item-2', name: 'Автоматический выключатель 16А', qty: '12 шт', checked: false },
-        { id: 'item-3', name: 'Щит электрический 24 модуля', qty: '1 шт', checked: false },
+      id: 'הזמנה #301',
+      rowNumber: 301,
+      timestamp: '09/08/2026 07:38:30',
+      rawDate: '09/08/2026',
+      parsedDate: new Date(Date.now() - 86400000 * 3),
+      department: "סיעודית א'",
+      patientsCount: '20',
+      items: [
+        { id: 'item-1', name: 'אגד אלסטי רוחב 10 ס"מ דגם C-80', qty: '1' },
+        { id: 'item-2', name: 'מטושים TRASYSTEM (100 יח\')', qty: '1' },
+        { id: 'item-3', name: 'profix 15', qty: '3' },
+        { id: 'item-4', name: 'דוקרנים לסוכר', qty: '1' },
+        { id: 'item-5', name: 'כוסיות לחלוקת תרופות', qty: '20' },
+        { id: 'item-6', name: 'כפפות ניטרל M', qty: '36' },
       ],
-      quantity: '15',
-      notes: 'Оплата по безналичному расчету. Доверенность №441.',
-      status: 'Новый',
-      printed: false,
-      rawRow: {},
-    },
-    {
-      id: 'ЗК-8043',
-      rowNumber: 4,
-      rawDate: mock3Date,
-      parsedDate: wednesday,
-      isValidWeek: true,
-      clientName: 'Сидоров Алексей Сергеевич',
-      phone: '+7 (903) 123-45-67',
-      address: 'ПВЗ Яндекс Маркет, г. Одинцово, ул. Маршала Жукова 38',
-      itemsText: '1. Набор инстрментов 108 предметов — 1 шт;\n2. Органайзер для деталей — 2 шт',
-      parsedItems: [
-        { id: 'item-1', name: 'Набор инструментов 108 предметов', qty: '1 шт', checked: false },
-        { id: 'item-2', name: 'Органайзер для деталей', qty: '2 шт', checked: false },
-      ],
-      quantity: '3',
-      notes: 'Маркировка коробки QR-кодом заказа.',
-      status: 'К сборке',
+      totalItemsCount: 6,
       printed: false,
       rawRow: {},
     },

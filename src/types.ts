@@ -1,44 +1,21 @@
-export interface SheetColumn {
-  index: number;
-  letter: string;
-  name: string;
-}
-
-export interface ColumnMapping {
-  orderId: string;       // e.g. "№ Заказа" or "ID"
-  date: string;          // e.g. "Дата"
-  client: string;        // e.g. "Клиент" / "ФИО"
-  items: string;         // e.g. "Состав заказа" / "Наименования"
-  quantity: string;      // e.g. "Кол-во"
-  address: string;       // e.g. "Адрес" / "Доставка"
-  phone: string;         // e.g. "Телефон"
-  status: string;        // e.g. "Статус"
-  notes: string;         // e.g. "Примечание" / "Комментарий"
-}
-
 export interface OrderItem {
   id: string;
   name: string;
-  qty: string | number;
-  price?: string;
-  sku?: string;
+  qty: string;
+  colIndex?: number;
   checked?: boolean;
 }
 
 export interface Order {
   id: string;
   rowNumber: number;
-  rawDate: string;
+  timestamp: string;       // Column A (חותמת זמן, e.g. 20/07/2026 09:37:32)
+  rawDate: string;         // Column B (תאריך, e.g. 20/07/2026)
   parsedDate: Date | null;
-  isValidWeek: boolean;
-  clientName: string;
-  phone: string;
-  address: string;
-  itemsText: string;
-  parsedItems: OrderItem[];
-  quantity: string;
-  notes: string;
-  status: string;
+  department: string;      // Column C (מחלקה או סקטור, e.g. ג' 2 סיעוד מורכב)
+  patientsCount: string;   // Column D (מספר טופלים במחלקה)
+  items: OrderItem[];      // Extracted items from columns E..FM
+  totalItemsCount: number; // Count of items ordered
   printed: boolean;
   rawRow: Record<string, string>;
 }
@@ -51,19 +28,6 @@ export interface SheetTab {
 
 export type PaperSize = 'A4' | 'A5' | 'LABEL_100x150' | 'ROLL_80MM';
 export type PrintOrientation = 'portrait' | 'landscape';
-
-export interface PrinterProfile {
-  id: string;
-  name: string;
-  description: string;
-  paperSize: PaperSize;
-  orientation: PrintOrientation;
-  fontSizePt: number;
-  ordersPerPage: 1 | 2 | 4;
-  showCheckbox: boolean;
-  showBarcode: boolean;
-  showNotes: boolean;
-}
 
 export interface PrintSettings {
   selectedPrinterId: string;
