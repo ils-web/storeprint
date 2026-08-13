@@ -2,6 +2,7 @@ export interface OrderItem {
   id: string;
   name: string;
   qty: string;
+  numericQty?: number;
   colIndex?: number;
   checked?: boolean;
 }
@@ -18,6 +19,16 @@ export interface Order {
   totalItemsCount: number; // Count of items ordered
   printed: boolean;
   rawRow: Record<string, string>;
+}
+
+export interface StockItem {
+  id: string;
+  name: string;
+  colIndex: number;
+  currentStock: number;
+  minThreshold: number;   // default 10
+  unit?: string;
+  lastDeducted?: string;
 }
 
 export interface SheetTab {

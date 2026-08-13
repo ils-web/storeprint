@@ -1,9 +1,11 @@
 import React from 'react';
-import { RefreshCw, ShieldCheck, FileSpreadsheet, ExternalLink, Printer } from 'lucide-react';
+import { RefreshCw, ShieldCheck, FileSpreadsheet, ExternalLink, Printer, Package, AlertTriangle, Layers } from 'lucide-react';
 
 interface HeaderProps {
   sheetUrl: string;
   activeSheetTitle: string;
+  activeTab: 'orders' | 'warehouse';
+  setActiveTab: (tab: 'orders' | 'warehouse') => void;
   autoRefreshSec: number;
   setAutoRefreshSec: (sec: number) => void;
   countdown: number;
@@ -11,12 +13,15 @@ interface HeaderProps {
   isRefreshing: boolean;
   ordersCount: number;
   departmentsCount: number;
+  lowStockCount: number;
   lastUpdated: Date | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   sheetUrl,
   activeSheetTitle,
+  activeTab,
+  setActiveTab,
   autoRefreshSec,
   setAutoRefreshSec,
   countdown,
@@ -24,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   ordersCount,
   departmentsCount,
+  lowStockCount,
   lastUpdated,
 }) => {
   return (
@@ -31,44 +37,76 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           
-          {/* Logo & Title */}
-          <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-tr from-sky-500 to-indigo-600 p-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-white">
-              <Printer className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
-                  StorePrint
-                </h1>
-                <span className="bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs px-2 py-0.5 rounded-full font-medium">
-                  Печать заявок отделений
-                </span>
+          {/* Logo & Main Navigation Tabs */}
+          <div className="flex flex-wrap items-center gap-4">
+            
+            {/* Logo */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-tr from-sky-500 to-indigo-600 p-2.5 rounded-xl shadow-lg shadow-sky-500/20 text-white">
+                <Printer className="w-6 h-6" />
               </div>
-              <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Прямое чтение Google Таблицы (столбцы E..FM)</span>
-              </p>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h1 className="text-xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
+                    StorePrint
+                  </h1>
+                  <span className="bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs px-2 py-0.5 rounded-full font-medium">
+                    Печать & Склад
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Google Sheets ➔ Списание и контроль остатков</span>
+                </p>
+              </div>
             </div>
+
+            {/* Navigation Tabs (Orders / Warehouse) */}
+            <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 border border-slate-700/80">
+              
+              {/* Tab 1: Orders */}
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'orders'
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Заказы отделений</span>
+                <span className="bg-slate-900/60 text-sky-200 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {ordersCount}
+                </span>
+              </button>
+
+              {/* Tab 2: Warehouse */}
+              <button
+                onClick={() => setActiveTab('warehouse')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'warehouse'
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <Package className="w-4 h-4" />
+                <span>Склад и Остатки</span>
+                {lowStockCount > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-black animate-pulse flex items-center gap-0.5">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    <span>{lowStockCount}</span>
+                  </span>
+                )}
+              </button>
+
+            </div>
+
           </div>
 
-          {/* Stats & Quick Actions */}
+          {/* Right Toolbar: Auto-refresh, Refresh, Link */}
           <div className="flex flex-wrap items-center gap-2.5">
             
-            {/* Stats Badges */}
-            <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl px-3 py-1.5 flex items-center gap-3 text-xs">
-              <div>
-                <span className="text-slate-400">Всего заказов:</span>{' '}
-                <strong className="text-emerald-400 font-bold">{ordersCount}</strong>
-              </div>
-              <div className="w-px h-3 bg-slate-700" />
-              <div>
-                <span className="text-slate-400">Отделений:</span>{' '}
-                <strong className="text-sky-300 font-bold">{departmentsCount}</strong>
-              </div>
-            </div>
-
-            {/* Auto-Refresh control */}
+            {/* Auto-Refresh Control */}
             <div className="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-slate-300 gap-2">
               <span className="text-slate-400">Автообновление:</span>
               <select
@@ -89,7 +127,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Manual Refresh Button */}
+            {/* Refresh Button */}
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
@@ -99,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{isRefreshing ? 'Загрузка...' : 'Обновить'}</span>
             </button>
 
-            {/* Google Sheet Direct Link */}
+            {/* Google Sheets Link */}
             <a
               href={sheetUrl}
               target="_blank"
@@ -111,6 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Таблица</span>
               <ExternalLink className="w-3 h-3 text-slate-400" />
             </a>
+
           </div>
 
         </div>

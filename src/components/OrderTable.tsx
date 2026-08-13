@@ -13,12 +13,14 @@ import {
   Sparkles,
   Download,
   Filter,
+  AlertTriangle,
 } from 'lucide-react';
-import { Order } from '../types';
+import { Order, StockItem } from '../types';
 
 interface OrderTableProps {
   orders: Order[];
   departments: string[];
+  stock: Record<string, StockItem>;
   selectedOrderIds: string[];
   onToggleSelectOrder: (id: string) => void;
   onSelectAllOrders: (selected: boolean) => void;
@@ -32,6 +34,7 @@ interface OrderTableProps {
 export const OrderTable: React.FC<OrderTableProps> = ({
   orders,
   departments,
+  stock,
   selectedOrderIds,
   onToggleSelectOrder,
   onSelectAllOrders,
@@ -150,7 +153,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           {selectedOrderIds.length > 0 && (
             <button
               onClick={onMassPrint}
-              className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse"
+              className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>Печать выбранных ({selectedOrderIds.length})</span>
@@ -167,7 +170,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               <th className="py-3 px-4 w-12 text-center">
                 <button
                   onClick={() => onSelectAllOrders(!isAllSelected)}
-                  className="text-slate-400 hover:text-sky-600 transition-colors"
+                  className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
                   title={isAllSelected ? 'Снять выделение' : 'Выбрать все'}
                 >
                   {isAllSelected ? (
@@ -212,7 +215,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => onToggleSelectOrder(order.id)}
-                        className="text-slate-400 hover:text-sky-600 transition-colors"
+                        className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
                       >
                         {isSelected ? (
                           <CheckSquare className="w-4 h-4 text-sky-600" />
@@ -245,23 +248,43 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       </div>
                     </td>
 
-                    {/* Ordered Items Preview */}
+                    {/* Ordered Items Preview with stock alerts */}
                     <td className="py-3 px-4">
                       {order.items.length === 0 ? (
                         <span className="text-slate-400 italic">Нет выбранных позиций</span>
                       ) : (
                         <div className="flex flex-wrap gap-1.5" dir="rtl">
-                          {order.items.slice(0, 5).map((item) => (
-                            <span
-                              key={item.id}
-                              className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md text-[11px] border border-slate-200 transition-colors font-medium"
-                            >
-                              <span>{item.name}</span>
-                              <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded font-bold text-[10px]">
-                                {item.qty}
+                          {order.items.slice(0, 5).map((item) => {
+                            const stockItem = stock[item.name];
+                            const isLow = stockItem && stockItem.currentStock < (stockItem.minThreshold || 10);
+                            const isOut = stockItem && stockItem.currentStock === 0;
+
+                            return (
+                              <span
+                                key={item.id}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors font-medium ${
+                                  isOut
+                                    ? 'bg-slate-100 text-slate-500 border-slate-300 line-through'
+                                    : isLow
+                                    ? 'bg-red-50 text-red-800 border-red-200'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                                }`}
+                                title={
+                                  stockItem
+                                    ? `Остаток на складе: ${stockItem.currentStock} шт`
+                                    : ''
+                                }
+                              >
+                                {isLow && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-ping" />
+                                )}
+                                <span>{item.name}</span>
+                                <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded font-bold text-[10px]">
+                                  {item.qty}
+                                </span>
                               </span>
-                            </span>
-                          ))}
+                            );
+                          })}
                           {order.items.length > 5 && (
                             <span className="inline-flex items-center bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded-md text-[11px]">
                               +{order.items.length - 5} еще
@@ -282,7 +305,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => onTogglePrintedStatus(order.id)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
                           order.printed
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                             : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
@@ -307,14 +330,14 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => onSinglePrint(order)}
-                          className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90"
-                          title="Распечатать / Экспорт PDF"
+                          className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
+                          title="Распечатать (списать со склада)"
                         >
                           <Printer className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => onPreviewOrder(order)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl transition-colors"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl transition-colors cursor-pointer"
                           title="Предварительный просмотр"
                         >
                           <Eye className="w-4 h-4" />
@@ -335,7 +358,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           Отображено заказов: <strong>{filteredOrders.length}</strong> из <strong>{orders.length}</strong>
         </div>
         <div className="text-slate-400">
-          * Формирование PDF/печати включает только те позиции, где указано количество &gt; 0
+          * При нажатии «Печать» количество позиций автоматически вычитается из остатков склада
         </div>
       </div>
     </div>

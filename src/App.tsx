@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { OrderTable } from './components/OrderTable';
+import { WarehouseView } from './components/WarehouseView';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
-import { Order, PrintSettings } from './types';
+import { Order, PrintSettings, StockItem } from './types';
 import {
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_GID,
@@ -11,14 +12,24 @@ import {
   processRawRowsToOrders,
   getMockCurrentWeekOrders,
 } from './utils/googleSheets';
+import {
+  loadStoredStock,
+  saveStoredStock,
+  syncStockWithProductHeaders,
+  deductOrdersFromStock,
+  getLowStockItems,
+} from './utils/stockManager';
 import { printOrdersHtml } from './utils/pdfGenerator';
-import { AlertCircle, CheckCircle, RefreshCw, Printer } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package } from 'lucide-react';
 
 export default function App() {
   // Spreadsheet state
   const [spreadsheetId, setSpreadsheetId] = useState<string>(DEFAULT_SPREADSHEET_ID);
   const [gid, setGid] = useState<string>(DEFAULT_GID);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
+
+  // Navigation Tab ('orders' | 'warehouse')
+  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse'>('orders');
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -28,7 +39,11 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Warehouse Stock State
+  const [stock, setStock] = useState<Record<string, StockItem>>(() => loadStoredStock());
 
   // Auto-refresh timer
   const [autoRefreshSec, setAutoRefreshSec] = useState<number>(30);
@@ -50,6 +65,9 @@ export default function App() {
     fontSizePt: 12,
   });
 
+  // Count low stock items (< 10)
+  const lowStockItems = useMemo(() => getLowStockItems(stock, 10), [stock]);
+
   // Load orders from Google Sheet
   const loadOrders = useCallback(async (isSilent: boolean = false) => {
     if (!isSilent) setIsLoading(true);
@@ -64,12 +82,19 @@ export default function App() {
         setDepartments(result.departments);
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
+
+        // Sync stock map with any newly added product headers
+        setStock((prevStock) => {
+          const synced = syncStockWithProductHeaders(result.productHeaders, prevStock);
+          saveStoredStock(synced);
+          return synced;
+        });
+
         if (!isSilent) {
           setSuccessMessage(`Загружено ${result.orders.length} заказов по ${result.departments.length} отделениям`);
           setTimeout(() => setSuccessMessage(null), 4000);
         }
       } else {
-        // Fallback to mock if sheet returns 0 rows
         setOrders(getMockCurrentWeekOrders());
       }
     } catch (err: any) {
@@ -77,7 +102,6 @@ export default function App() {
       setErrorMessage(
         err.message || 'Не удалось загрузить данные из Google Sheets. Проверьте доступ к таблице.'
       );
-      // If empty, set mock for preview
       if (orders.length === 0) {
         setOrders(getMockCurrentWeekOrders());
       }
@@ -109,7 +133,125 @@ export default function App() {
     return () => clearInterval(timer);
   }, [autoRefreshSec, loadOrders]);
 
-  // Handlers
+  // Stock Management Handlers
+  const handleUpdateStockItem = (name: string, newQty: number, minThreshold?: number) => {
+    setStock((prev) => {
+      const existing = prev[name] || {
+        id: `stock-${Date.now()}`,
+        name,
+        colIndex: 0,
+        currentStock: 0,
+        minThreshold: 10,
+      };
+
+      const updated = {
+        ...prev,
+        [name]: {
+          ...existing,
+          currentStock: newQty,
+          minThreshold: minThreshold !== undefined ? minThreshold : (existing.minThreshold || 10),
+        },
+      };
+
+      saveStoredStock(updated);
+      return updated;
+    });
+  };
+
+  const handleBatchUpdateStock = (newStock: Record<string, StockItem>) => {
+    setStock(newStock);
+    saveStoredStock(newStock);
+  };
+
+  const handleSetAllStock = (qty: number) => {
+    setStock((prev) => {
+      const updated: Record<string, StockItem> = {};
+      Object.keys(prev).forEach((k) => {
+        updated[k] = { ...prev[k], currentStock: qty };
+      });
+      // Also ensure all productHeaders are covered
+      productHeaders.forEach((h, idx) => {
+        const name = h.trim();
+        if (name && !updated[name]) {
+          updated[name] = {
+            id: `stock-${idx + 4}`,
+            name,
+            colIndex: idx + 4,
+            currentStock: qty,
+            minThreshold: 10,
+          };
+        }
+      });
+      saveStoredStock(updated);
+      return updated;
+    });
+    setSuccessMessage(`Остаток ${qty} шт установлен для всех товаров склада`);
+    setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
+  // Printing with Auto-Deduction from Warehouse Stock
+  const handleSinglePrint = (order: Order) => {
+    // 1. Print document
+    printOrdersHtml([order], printSettings);
+
+    // 2. Deduct items from warehouse stock
+    const deduction = deductOrdersFromStock([order], stock);
+    setStock(deduction.updatedStock);
+
+    // 3. Mark order as printed
+    setOrders((prev) =>
+      prev.map((o) => (o.id === order.id ? { ...o, printed: true } : o))
+    );
+
+    // 4. Show deduction feedback & alerts
+    setSuccessMessage(`Заказ ${order.id} напечатан. Списано ${deduction.totalDeductedCount} ед. со склада.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
+
+    if (deduction.newLowStockItems.length > 0) {
+      setWarningMessage(
+        `⚠️ Внимание: ${deduction.newLowStockItems.length} поз. упали ниже порога 10 шт на складе!`
+      );
+      setTimeout(() => setWarningMessage(null), 6000);
+    }
+  };
+
+  const handleMassPrint = () => {
+    const ordersToPrint = orders.filter((o) => selectedOrderIds.includes(o.id));
+    if (ordersToPrint.length === 0) return;
+
+    // 1. Print all selected
+    printOrdersHtml(ordersToPrint, printSettings);
+
+    // 2. Deduct all from warehouse stock
+    const deduction = deductOrdersFromStock(ordersToPrint, stock);
+    setStock(deduction.updatedStock);
+
+    // 3. Mark selected as printed
+    setOrders((prev) =>
+      prev.map((o) =>
+        selectedOrderIds.includes(o.id) ? { ...o, printed: true } : o
+      )
+    );
+
+    // 4. Feedback
+    setSuccessMessage(
+      `Напечатано заказов: ${ordersToPrint.length}. Списано ${deduction.totalDeductedCount} ед. со склада.`
+    );
+    setTimeout(() => setSuccessMessage(null), 4000);
+
+    if (deduction.newLowStockItems.length > 0) {
+      setWarningMessage(
+        `⚠️ Внимание: ${deduction.newLowStockItems.length} поз. упали ниже порога 10 шт на складе!`
+      );
+      setTimeout(() => setWarningMessage(null), 7000);
+    }
+  };
+
+  const handlePreviewOrder = (order: Order) => {
+    setPreviewOrders([order]);
+    setIsPreviewOpen(true);
+  };
+
   const handleToggleSelectOrder = (id: string) => {
     setSelectedOrderIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -124,33 +266,6 @@ export default function App() {
     }
   };
 
-  const handleSinglePrint = (order: Order) => {
-    printOrdersHtml([order], printSettings);
-    // Mark as printed
-    setOrders((prev) =>
-      prev.map((o) => (o.id === order.id ? { ...o, printed: true } : o))
-    );
-  };
-
-  const handlePreviewOrder = (order: Order) => {
-    setPreviewOrders([order]);
-    setIsPreviewOpen(true);
-  };
-
-  const handleMassPrint = () => {
-    const ordersToPrint = orders.filter((o) => selectedOrderIds.includes(o.id));
-    if (ordersToPrint.length === 0) return;
-
-    printOrdersHtml(ordersToPrint, printSettings);
-
-    // Mark selected as printed
-    setOrders((prev) =>
-      prev.map((o) =>
-        selectedOrderIds.includes(o.id) ? { ...o, printed: true } : o
-      )
-    );
-  };
-
   const handleTogglePrintedStatus = (orderId: string) => {
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, printed: !o.printed } : o))
@@ -160,10 +275,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900">
       
-      {/* Header */}
+      {/* Header with Navigation */}
       <Header
         sheetUrl={spreadsheetUrl}
         activeSheetTitle="Заявки"
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
         autoRefreshSec={autoRefreshSec}
         setAutoRefreshSec={setAutoRefreshSec}
         countdown={countdown}
@@ -171,6 +288,7 @@ export default function App() {
         isRefreshing={isLoading}
         ordersCount={orders.length}
         departmentsCount={departments.length}
+        lowStockCount={lowStockItems.length}
         lastUpdated={lastUpdated}
       />
 
@@ -184,7 +302,7 @@ export default function App() {
             </div>
             <button
               onClick={() => loadOrders(false)}
-              className="font-bold underline hover:text-red-900 ml-3 shrink-0"
+              className="font-bold underline hover:text-red-900 ml-3 shrink-0 cursor-pointer"
             >
               Повторить
             </button>
@@ -197,22 +315,47 @@ export default function App() {
             <span>{successMessage}</span>
           </div>
         )}
+
+        {warningMessage && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2.5 rounded-xl text-xs flex items-center justify-between shadow-xs animate-bounce">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="font-bold">{warningMessage}</span>
+            </div>
+            <button
+              onClick={() => setActiveTab('warehouse')}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+            >
+              Открыть Склад
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content View (Orders OR Warehouse) */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full">
-        <OrderTable
-          orders={orders}
-          departments={departments}
-          selectedOrderIds={selectedOrderIds}
-          onToggleSelectOrder={handleToggleSelectOrder}
-          onSelectAllOrders={handleSelectAllOrders}
-          onSinglePrint={handleSinglePrint}
-          onPreviewOrder={handlePreviewOrder}
-          onMassPrint={handleMassPrint}
-          onTogglePrintedStatus={handleTogglePrintedStatus}
-          isSheetLoaded={!isLoading}
-        />
+        {activeTab === 'orders' ? (
+          <OrderTable
+            orders={orders}
+            departments={departments}
+            stock={stock}
+            selectedOrderIds={selectedOrderIds}
+            onToggleSelectOrder={handleToggleSelectOrder}
+            onSelectAllOrders={handleSelectAllOrders}
+            onSinglePrint={handleSinglePrint}
+            onPreviewOrder={handlePreviewOrder}
+            onMassPrint={handleMassPrint}
+            onTogglePrintedStatus={handleTogglePrintedStatus}
+            isSheetLoaded={!isLoading}
+          />
+        ) : (
+          <WarehouseView
+            stock={stock}
+            onUpdateStockItem={handleUpdateStockItem}
+            onBatchUpdateStock={handleBatchUpdateStock}
+            onSetAllStock={handleSetAllStock}
+          />
+        )}
       </main>
 
       {/* Print Preview Modal */}
