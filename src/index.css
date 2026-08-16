@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+body {
+  font-family: 'Heebo', 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  direction: rtl;
+  text-align: right;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
+}

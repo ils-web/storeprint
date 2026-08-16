@@ -10,10 +10,10 @@ import {
   Building2,
   Package,
   Layers,
-  Sparkles,
-  Download,
-  Filter,
+  ChevronDown,
+  ChevronUp,
   AlertTriangle,
+  FileCheck,
 } from 'lucide-react';
 import { Order, StockItem } from '../types';
 
@@ -47,8 +47,22 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unprinted' | 'printed'>('all');
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
 
-  // Filter orders by search, department, and status
+  // Toggle accordion expand/collapse for an order
+  const toggleExpand = (id: string) => {
+    setExpandedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Filter orders
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       // Dept filter
@@ -80,33 +94,46 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     filteredOrders.length > 0 &&
     filteredOrders.every((o) => selectedOrderIds.includes(o.id));
 
+  // Count printed and pending
+  const counts = useMemo(() => {
+    let printed = 0;
+    let unprinted = 0;
+    orders.forEach((o) => {
+      if (o.printed) printed++;
+      else unprinted++;
+    });
+    return { all: orders.length, printed, unprinted };
+  }, [orders]);
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden" dir="rtl">
       
       {/* Filters & Actions Bar */}
       <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         
         {/* Search Input */}
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Поиск по отделению, дате, предмету или номеру..."
+            placeholder="חיפוש לפי שם מחלקה, פריט, תאריך או מספר הזמנה..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all placeholder:text-slate-400"
+            className="w-full bg-white border border-slate-300 rounded-2xl pr-9 pl-4 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all placeholder:text-slate-400"
           />
         </div>
 
-        {/* Department Filter Dropdown */}
-        <div className="flex items-center gap-2">
+        {/* Department Filter Dropdown & Status Tabs */}
+        <div className="flex flex-wrap items-center gap-2">
+          
+          {/* Department Select */}
           <div className="relative">
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+              className="bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
             >
-              <option value="ALL">Все отделения ({departments.length})</option>
+              <option value="ALL">כל המחלקות ({departments.length})</option>
               {departments.map((dept) => (
                 <option key={dept} value={dept}>
                   {dept}
@@ -116,36 +143,36 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           </div>
 
           {/* Status Tabs */}
-          <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 text-xs">
+          <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-xs">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'all'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Все ({orders.length})
+              הכל ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('unprinted')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'unprinted'
-                  ? 'bg-white text-sky-700 shadow-xs'
+                  ? 'bg-white text-amber-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              К печати ({orders.filter((o) => !o.printed).length})
+              ממתינים ({counts.unprinted})
             </button>
             <button
               onClick={() => setStatusFilter('printed')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'printed'
                   ? 'bg-white text-emerald-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Напечатано ({orders.filter((o) => o.printed).length})
+              הודפסו ({counts.printed})
             </button>
           </div>
 
@@ -153,10 +180,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           {selectedOrderIds.length > 0 && (
             <button
               onClick={onMassPrint}
-              className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
+              className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>Печать выбранных ({selectedOrderIds.length})</span>
+              <span>הדפס נבחרים ({selectedOrderIds.length})</span>
             </button>
           )}
         </div>
@@ -164,14 +191,14 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
       {/* Orders Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-right border-collapse">
           <thead>
             <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
-              <th className="py-3 px-4 w-12 text-center">
+              <th className="py-3.5 px-4 w-12 text-center">
                 <button
                   onClick={() => onSelectAllOrders(!isAllSelected)}
                   className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
-                  title={isAllSelected ? 'Снять выделение' : 'Выбрать все'}
+                  title={isAllSelected ? 'בטל בחירה' : 'בחר הכל'}
                 >
                   {isAllSelected ? (
                     <CheckSquare className="w-4 h-4 text-sky-600" />
@@ -180,12 +207,12 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   )}
                 </button>
               </th>
-              <th className="py-3 px-4 w-28">Дата и Время</th>
-              <th className="py-3 px-4 w-52">Отделение (מחלקה)</th>
-              <th className="py-3 px-4">Заказанные позиции (E..FM с количеством)</th>
-              <th className="py-3 px-4 w-32 text-center">Позиций</th>
-              <th className="py-3 px-4 w-28 text-center">Статус</th>
-              <th className="py-3 px-4 w-36 text-center">Действия</th>
+              <th className="py-3.5 px-4 w-32">תאריך ושעה</th>
+              <th className="py-3.5 px-4 w-52">מחלקה / סקטור</th>
+              <th className="py-3.5 px-4">פירוט פריטים להספקה (עמודות E..FM)</th>
+              <th className="py-3.5 px-4 w-28 text-center">כמות פריטים</th>
+              <th className="py-3.5 px-4 w-32 text-center">סטטוס הדפסה</th>
+              <th className="py-3.5 px-4 w-32 text-center">פעולות</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
@@ -194,9 +221,9 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 <td colSpan={7} className="py-16 text-center text-slate-500">
                   <div className="max-w-md mx-auto space-y-2">
                     <Package className="w-10 h-10 text-slate-300 mx-auto" />
-                    <div className="font-bold text-slate-700">Заказы не найдены</div>
+                    <div className="font-bold text-slate-700 text-sm">לא נמצאו הזמנות</div>
                     <p className="text-xs text-slate-400">
-                      Попробуйте сбросить фильтры или строку поиска.
+                      נסו לשנות את מסנני החיפוש או לבחור מחלקה אחרת.
                     </p>
                   </div>
                 </td>
@@ -204,147 +231,253 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             ) : (
               filteredOrders.map((order) => {
                 const isSelected = selectedOrderIds.includes(order.id);
+                const isExpanded = expandedOrderIds.has(order.id);
+
                 return (
-                  <tr
-                    key={order.id}
-                    className={`transition-colors hover:bg-sky-50/40 ${
-                      isSelected ? 'bg-sky-50/70' : order.printed ? 'bg-slate-50/40' : ''
-                    }`}
-                  >
-                    {/* Checkbox */}
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => onToggleSelectOrder(order.id)}
-                        className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-sky-600" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-                    </td>
-
-                    {/* Timestamp */}
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{order.timestamp}</span>
-                      </div>
-                    </td>
-
-                    {/* Department */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-sky-100 text-sky-700 rounded-lg shrink-0">
-                          <Building2 className="w-4 h-4" />
-                        </div>
-                        <span
-                          className="font-bold text-slate-900 text-sm"
-                          dir="rtl"
+                  <React.Fragment key={order.id}>
+                    <tr
+                      className={`transition-colors hover:bg-sky-50/40 ${
+                        isSelected
+                          ? 'bg-sky-50/70'
+                          : order.printed
+                          ? 'bg-emerald-50/20'
+                          : ''
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() => onToggleSelectOrder(order.id)}
+                          className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
                         >
-                          {order.department}
-                        </span>
-                      </div>
-                    </td>
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-sky-600" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      </td>
 
-                    {/* Ordered Items Preview with stock alerts */}
-                    <td className="py-3 px-4">
-                      {order.items.length === 0 ? (
-                        <span className="text-slate-400 italic">Нет выбранных позиций</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5" dir="rtl">
-                          {order.items.slice(0, 5).map((item) => {
-                            const stockItem = stock[item.name];
-                            const isLow = stockItem && stockItem.currentStock < (stockItem.minThreshold || 10);
-                            const isOut = stockItem && stockItem.currentStock === 0;
+                      {/* Date & Time */}
+                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{order.timestamp}</span>
+                        </div>
+                      </td>
 
-                            return (
-                              <span
-                                key={item.id}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors font-medium ${
-                                  isOut
-                                    ? 'bg-slate-100 text-slate-500 border-slate-300 line-through'
-                                    : isLow
-                                    ? 'bg-red-50 text-red-800 border-red-200'
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
-                                }`}
-                                title={
-                                  stockItem
-                                    ? `Остаток на складе: ${stockItem.currentStock} шт`
-                                    : ''
-                                }
-                              >
-                                {isLow && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-ping" />
-                                )}
-                                <span>{item.name}</span>
-                                <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded font-bold text-[10px]">
-                                  {item.qty}
-                                </span>
-                              </span>
-                            );
-                          })}
-                          {order.items.length > 5 && (
-                            <span className="inline-flex items-center bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded-md text-[11px]">
-                              +{order.items.length - 5} еще
+                      {/* Department with Printed Indicator */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`p-1.5 rounded-xl shrink-0 ${
+                                order.printed
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-sky-100 text-sky-700'
+                              }`}
+                            >
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <span className="font-extrabold text-slate-900 text-sm">
+                              {order.department}
+                            </span>
+                          </div>
+                          {order.printed && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.2 rounded-md">
+                              <FileCheck className="w-3 h-3" />
+                              <span>הודפס למחלקה זו</span>
                             </span>
                           )}
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Total Items Count */}
-                    <td className="py-3 px-4 text-center">
-                      <span className="inline-block bg-slate-100 text-slate-800 font-black px-2.5 py-1 rounded-full text-xs border border-slate-200">
-                        {order.items.length} поз.
-                      </span>
-                    </td>
-
-                    {/* Status / Printed Checkbox */}
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => onTogglePrintedStatus(order.id)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
-                          order.printed
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                            : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                        }`}
-                      >
-                        {order.printed ? (
-                          <>
-                            <CheckCircle className="w-3 h-3 text-emerald-600" />
-                            <span>Печать: Да</span>
-                          </>
+                      {/* Items Preview with Expand/Collapse toggle */}
+                      <td className="py-3.5 px-4">
+                        {order.items.length === 0 ? (
+                          <span className="text-slate-400 italic">לא נבחרו פריטים בהזמנה</span>
                         ) : (
-                          <>
-                            <Clock className="w-3 h-3 text-amber-600" />
-                            <span>В очереди</span>
-                          </>
-                        )}
-                      </button>
-                    </td>
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {/* Display first 5 items */}
+                              {order.items.slice(0, 5).map((item) => {
+                                const stockItem = stock[item.name];
+                                const isLow = stockItem && stockItem.currentStock < (stockItem.minThreshold || 10);
+                                const isOut = stockItem && stockItem.currentStock === 0;
 
-                    {/* Action Buttons */}
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                                return (
+                                  <span
+                                    key={item.id}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] border transition-colors font-medium ${
+                                      isOut
+                                        ? 'bg-slate-100 text-slate-500 border-slate-300 line-through'
+                                        : isLow
+                                        ? 'bg-red-50 text-red-800 border-red-200'
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                                    }`}
+                                    title={stockItem ? `יתרת מלאי: ${stockItem.currentStock} יח'` : ''}
+                                  >
+                                    {isLow && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-ping" />
+                                    )}
+                                    <span>{item.name}</span>
+                                    <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded-md font-bold text-[10px]">
+                                      {item.qty}
+                                    </span>
+                                  </span>
+                                );
+                              })}
+
+                              {/* Expand/Collapse Button */}
+                              {order.items.length > 5 && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpand(order.id)}
+                                  className="inline-flex items-center gap-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold px-2.5 py-1 rounded-xl text-[11px] transition-colors cursor-pointer"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <span>הסתר פריטים</span>
+                                      <ChevronUp className="w-3.5 h-3.5" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>+{order.items.length - 5} נוספים (הצג הכל)</span>
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Items Count */}
+                      <td className="py-3.5 px-4 text-center">
+                        <span className="inline-block bg-slate-100 text-slate-800 font-black px-3 py-1 rounded-full text-xs border border-slate-200">
+                          {order.items.length} פריטים
+                        </span>
+                      </td>
+
+                      {/* Print Status Badge with Manual Toggle */}
+                      <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => onSinglePrint(order)}
-                          className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
-                          title="Распечатать (списать со склада)"
+                          onClick={() => onTogglePrintedStatus(order.id)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
+                            order.printed
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                              : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                          }`}
+                          title="לחץ לשינוי סטטוס הדפסה"
                         >
-                          <Printer className="w-4 h-4" />
+                          {order.printed ? (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>הודפס ✓</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              <span>ממתין ⏱</span>
+                            </>
+                          )}
                         </button>
-                        <button
-                          onClick={() => onPreviewOrder(order)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl transition-colors cursor-pointer"
-                          title="Предварительный просмотр"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+
+                      {/* Action Buttons */}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => onSinglePrint(order)}
+                            className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
+                            title="הדפס הזמנה (קיזוז מהמלאי)"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => onPreviewOrder(order)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl transition-colors cursor-pointer"
+                            title="תצוגה מקדימה"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Expandable Accordion with Complete Item List */}
+                    {isExpanded && (
+                      <tr className="bg-slate-50/90 border-b border-slate-200">
+                        <td colSpan={7} className="p-4 sm:p-5">
+                          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                              <div className="font-black text-slate-900 text-xs flex items-center gap-2">
+                                <Package className="w-4 h-4 text-sky-600" />
+                                <span>
+                                  פירוט מלא של כל הפריטים להזמנה של מחלקת {order.department} ({order.items.length} פריטים)
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => toggleExpand(order.id)}
+                                className="text-slate-400 hover:text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>סגור</span>
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                              {order.items.map((item, idx) => {
+                                const stockItem = stock[item.name];
+                                const isLow = stockItem && stockItem.currentStock < (stockItem.minThreshold || 10);
+                                const isOut = stockItem && stockItem.currentStock === 0;
+
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                                      isOut
+                                        ? 'bg-slate-50 border-slate-200'
+                                        : isLow
+                                        ? 'bg-red-50 border-red-200'
+                                        : 'bg-slate-50/60 border-slate-200'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 overflow-hidden">
+                                      <span className="font-mono text-[10px] text-slate-400 font-bold w-5 shrink-0">
+                                        #{idx + 1}
+                                      </span>
+                                      <span className="font-bold text-slate-900 truncate" title={item.name}>
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="bg-sky-600 text-white px-2 py-0.5 rounded-lg font-black text-xs">
+                                        {item.qty}
+                                      </span>
+                                      {stockItem && (
+                                        <span
+                                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                            isLow
+                                              ? 'text-red-700 bg-red-100'
+                                              : 'text-slate-500 bg-slate-200'
+                                          }`}
+                                          title="יתרה במחסן"
+                                        >
+                                          מלאי: {stockItem.currentStock}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}
@@ -353,12 +486,12 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       </div>
 
       {/* Footer Info */}
-      <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
+      <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
         <div>
-          Отображено заказов: <strong>{filteredOrders.length}</strong> из <strong>{orders.length}</strong>
+          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong>
         </div>
         <div className="text-slate-400">
-          * При нажатии «Печать» количество позиций автоматически вычитается из остатков склада
+          * בלחיצה על «הדפסה» הכמויות מתקזזות באופן אוטומטי מיתרות המלאי של המחסן
         </div>
       </div>
     </div>

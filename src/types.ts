@@ -18,6 +18,7 @@ export interface Order {
   items: OrderItem[];      // Extracted items from columns E..FM
   totalItemsCount: number; // Count of items ordered
   printed: boolean;
+  printedAt?: string;
   rawRow: Record<string, string>;
 }
 
@@ -29,6 +30,15 @@ export interface StockItem {
   minThreshold: number;   // default 10
   unit?: string;
   lastDeducted?: string;
+}
+
+export interface CloudSyncConfig {
+  enabled: boolean;
+  syncType: 'webhook' | 'jsonbin' | 'kv';
+  endpointUrl: string;
+  apiKey?: string;
+  autoSyncOnPrint: boolean;
+  lastSyncedAt?: string;
 }
 
 export interface SheetTab {
