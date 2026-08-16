@@ -39,20 +39,65 @@ export function saveCloudConfig(config: CloudSyncConfig): void {
 }
 
 /**
- * Fetches stock data from the configured cloud endpoint (Google Apps Script Web App or custom API)
+ * Tests connection to the Google Apps Script Web App endpoint
  */
-export async function fetchStockFromCloud(
-  config: CloudSyncConfig
-): Promise<Record<string, StockItem> | null> {
-  if (!config.enabled || !config.endpointUrl) return null;
+export async function testCloudConnection(
+  endpointUrl: string
+): Promise<{ success: boolean; message?: string; stock?: Record<string, StockItem> }> {
+  const cleanUrl = endpointUrl ? endpointUrl.trim() : '';
+  if (!cleanUrl) {
+    return { success: false, message: 'נא להזין כתובת URL תקינה' };
+  }
 
   try {
-    const url = new URL(config.endpointUrl);
+    const url = new URL(cleanUrl);
     url.searchParams.set('action', 'getStock');
     url.searchParams.set('t', Date.now().toString());
 
     const response = await fetch(url.toString(), {
       method: 'GET',
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      return { success: false, message: `שגיאת שרת (${response.status})` };
+    }
+
+    const data = await response.json();
+    if (data && (data.status === 'success' || data.stock !== undefined)) {
+      return {
+        success: true,
+        stock: data.stock || {},
+      };
+    }
+
+    return { success: false, message: data.message || 'תגובה לא מזוהה מהשרת' };
+  } catch (err: any) {
+    console.warn('Test connection error:', err);
+    return {
+      success: false,
+      message: 'שגיאת גישה: ודאו שב-Apps Script בחרתם ב-Who has access: Anyone (כולם)',
+    };
+  }
+}
+
+/**
+ * Fetches stock data from the configured cloud endpoint
+ */
+export async function fetchStockFromCloud(
+  config: CloudSyncConfig
+): Promise<Record<string, StockItem> | null> {
+  const cleanUrl = config.endpointUrl ? config.endpointUrl.trim() : '';
+  if (!cleanUrl) return null;
+
+  try {
+    const url = new URL(cleanUrl);
+    url.searchParams.set('action', 'getStock');
+    url.searchParams.set('t', Date.now().toString());
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      redirect: 'follow',
       headers: config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : undefined,
     });
 
@@ -61,8 +106,8 @@ export async function fetchStockFromCloud(
     }
 
     const data = await response.json();
-    if (data && typeof data === 'object') {
-      return data.stock || data;
+    if (data && (data.status === 'success' || data.stock !== undefined)) {
+      return data.stock || {};
     }
     return null;
   } catch (err) {
@@ -72,19 +117,21 @@ export async function fetchStockFromCloud(
 }
 
 /**
- * Pushes updated stock data to the cloud endpoint
+ * Pushes updated stock data to the Google Apps Script cloud endpoint
  */
 export async function pushStockToCloud(
   stock: Record<string, StockItem>,
   config: CloudSyncConfig
 ): Promise<boolean> {
-  if (!config.enabled || !config.endpointUrl) return false;
+  const cleanUrl = config.endpointUrl ? config.endpointUrl.trim() : '';
+  if (!cleanUrl) return false;
 
   try {
-    const response = await fetch(config.endpointUrl, {
+    const response = await fetch(cleanUrl, {
       method: 'POST',
+      redirect: 'follow',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', // CORS-friendly for Google Apps Script
+        'Content-Type': 'text/plain;charset=utf-8', // Prevents CORS preflight in Google Apps Script
         ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
       },
       body: JSON.stringify({
@@ -124,7 +171,7 @@ function doGet(e) {
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
-      var name = row[0];
+      var name = String(row[0] || '').trim();
       var currentStock = Number(row[1]) || 0;
       var minThreshold = Number(row[2]) || 10;
       if (name) {
@@ -134,27 +181,35 @@ function doGet(e) {
           colIndex: i + 3,
           currentStock: currentStock,
           minThreshold: minThreshold,
-          lastUpdated: row[3] || ''
+          lastUpdated: String(row[3] || '')
         };
       }
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success', stock: stock }))
-      .setMimeType(ContentService.MimeType.JSON);
+    var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', count: Object.keys(stock).length, stock: stock }));
+    output.setMimeType(ContentService.MimeType.JSON);
+    return output;
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    var errOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }));
+    errOutput.setMimeType(ContentService.MimeType.JSON);
+    return errOutput;
   }
 }
 
 function doPost(e) {
   try {
-    var body = JSON.parse(e.postData.contents);
+    var body = {};
+    if (e && e.postData && e.postData.contents) {
+      body = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter && e.parameter.data) {
+      body = JSON.parse(e.parameter.data);
+    }
+    
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
     var stock = body.stock;
 
-    if (stock) {
+    if (stock && typeof stock === 'object') {
       sheet.clearContents();
       sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
       
@@ -169,11 +224,13 @@ function doPost(e) {
       }
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
-      .setMimeType(ContentService.MimeType.JSON);
+    var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true }));
+    output.setMimeType(ContentService.MimeType.JSON);
+    return output;
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    var errOutput = ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }));
+    errOutput.setMimeType(ContentService.MimeType.JSON);
+    return errOutput;
   }
 }
 

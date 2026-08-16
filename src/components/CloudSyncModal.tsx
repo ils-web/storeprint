@@ -1,26 +1,29 @@
 import React, { useState } from 'react';
-import { X, Cloud, RefreshCw, Copy, Check, ExternalLink, HelpCircle, ShieldCheck, FileSpreadsheet, PlusCircle } from 'lucide-react';
+import { X, Cloud, RefreshCw, Copy, Check, ExternalLink, HelpCircle, ShieldCheck, FileSpreadsheet, PlusCircle, AlertCircle } from 'lucide-react';
 import { CloudSyncConfig } from '../types';
-import { generateGoogleAppsScriptCode } from '../utils/cloudSync';
+import { generateGoogleAppsScriptCode, testCloudConnection } from '../utils/cloudSync';
 
 interface CloudSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   config: CloudSyncConfig;
+  totalItemsCount?: number;
   onSaveConfig: (newConfig: CloudSyncConfig) => void;
-  onTestSync: () => Promise<boolean>;
+  onSyncNow?: () => Promise<boolean>;
 }
 
 export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   isOpen,
   onClose,
   config,
+  totalItemsCount = 187,
   onSaveConfig,
-  onTestSync,
+  onSyncNow,
 }) => {
   const [localConfig, setLocalConfig] = useState<CloudSyncConfig>(config);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [testErrorMessage, setTestErrorMessage] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
 
@@ -34,23 +37,43 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     setTimeout(() => setCopiedCode(false), 3000);
   };
 
-  const handleSave = () => {
-    onSaveConfig(localConfig);
-    onClose();
-  };
-
   const handleTest = async () => {
+    if (!localConfig.endpointUrl.trim()) {
+      setTestResult('error');
+      setTestErrorMessage('נא להדביק תחילה את כתובת ה-Web App בשדה למעלה');
+      return;
+    }
+
     setIsTesting(true);
     setTestResult(null);
+    setTestErrorMessage('');
+
     try {
-      onSaveConfig(localConfig);
-      const ok = await onTestSync();
-      setTestResult(ok ? 'success' : 'error');
-    } catch {
+      const res = await testCloudConnection(localConfig.endpointUrl.trim());
+      if (res.success) {
+        setTestResult('success');
+        // Auto-enable toggle
+        setLocalConfig((prev) => ({ ...prev, enabled: true }));
+      } else {
+        setTestResult('error');
+        setTestErrorMessage(res.message || 'שגיאת חיבור');
+      }
+    } catch (err: any) {
       setTestResult('error');
+      setTestErrorMessage(err.message || 'שגיאת רשת');
     } finally {
       setIsTesting(false);
     }
+  };
+
+  const handleSave = () => {
+    const updated = {
+      ...localConfig,
+      endpointUrl: localConfig.endpointUrl.trim(),
+      enabled: localConfig.endpointUrl.trim().length > 0,
+    };
+    onSaveConfig(updated);
+    onClose();
   };
 
   return (
@@ -91,29 +114,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 הגנה מלאה: טבלת ההזמנות נשארת לקריאה בלבד
               </div>
               <div className="text-emerald-800 text-xs leading-relaxed">
-                טבלת ההזמנות של המחלקות (1NJq4sJV0...) <strong>אינה משתנה כלל</strong>.  
-                עבור המלאי פותחים <strong>טבלת Google Sheets חדשה ונקייה</strong> משלכם, והאפליקציה תסנכרן את יתרות המלאי לשם בלבד.
+                טבלת ההזמנות המקורית של המחלקות (1NJq4sJV0...) <strong>אינה משתנה כלל</strong>.  
+                עבור המלאי פותחים <strong>טבלת Google Sheets חדשה לגמרי</strong>, והאפליקציה תסנכרן את יתרות המלאי לשם בלבד.
               </div>
             </div>
-          </div>
-
-          {/* Toggle Enable */}
-          <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-sm text-sky-950">סנכרון אוטומטי מול טבלת המחסן החדשה</div>
-              <div className="text-slate-600 text-xs">
-                טעינת יתרות בעת פתיחה, וקיזוז אוטומטי מהטבלה החדשה בעת כל הדפסה
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={localConfig.enabled}
-                onChange={(e) => setLocalConfig({ ...localConfig, enabled: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
-            </label>
           </div>
 
           {/* Endpoint URL Input */}
@@ -125,37 +129,52 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               type="url"
               placeholder="https://script.google.com/macros/s/.../exec"
               value={localConfig.endpointUrl}
-              onChange={(e) => setLocalConfig({ ...localConfig, endpointUrl: e.target.value })}
+              onChange={(e) => {
+                setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
+                setTestResult(null);
+              }}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
               dir="ltr"
             />
             <p className="text-[11px] text-slate-400">
-              הדביקו כאן את הקישור שנוצר מה-Apps Script בטבלת המחסן החדשה שלכם
+              הדביקו כאן את הקישור שקיבלתם מ-Apps Script (מתוך הטבלה החדשה)
             </p>
           </div>
 
           {/* Test Connection Button & Status */}
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleTest}
-              disabled={isTesting || !localConfig.endpointUrl}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 font-bold rounded-xl flex items-center gap-1.5 border border-slate-300 transition-all cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-              <span>{isTesting ? 'בודק חיבור...' : 'בדיקת חיבור לטבלת המחסן'}</span>
-            </button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={isTesting || !localConfig.endpointUrl}
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                <span>{isTesting ? 'בודק חיבור...' : 'בדיקת חיבור לטבלת המחסן'}</span>
+              </button>
 
-            {testResult === 'success' && (
-              <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1">
-                <Check className="w-4 h-4" />
-                <span>החיבור לטבלת המחסן תקין ומסונכרן!</span>
-              </span>
-            )}
+              {testResult === 'success' && (
+                <span className="text-emerald-800 bg-emerald-50 border border-emerald-300 px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 animate-fadeIn">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>החיבור לטבלת המחסן תקין ומסונכרן בהצלחה! 🎉</span>
+                </span>
+              )}
+            </div>
 
             {testResult === 'error' && (
-              <span className="text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl font-bold">
-                ⚠️ שגיאה בחיבור לקישור
-              </span>
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 space-y-1 animate-shake">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>שגיאה בחיבור לקישור ה-Apps Script:</span>
+                </div>
+                <div className="text-[11px] leading-relaxed pr-5">
+                  {testErrorMessage}
+                </div>
+                <div className="text-[11px] text-red-700 font-semibold pr-5 pt-1">
+                  💡 <strong>איך לתקן:</strong> ודאו שב-Apps Script ב-Deploy ➔ New Deployment בחרתם בשדה <em>Who has access</em> באפשרות <strong>Anyone (כולם)</strong>, ואז לחצו Deploy והעתיקו את הקישור החדש.
+                </div>
+              </div>
             )}
           </div>
 
@@ -184,6 +203,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   {scriptCode}
                 </pre>
                 <button
+                  type="button"
                   onClick={handleCopy}
                   className="absolute top-2 left-2 bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
                 >
@@ -197,7 +217,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   ב-Apps Script לחצו בפינה הימנית העליונה על <strong>Deploy (פריסה) ➔ New deployment (פריסה חדשה)</strong>.
                 </li>
                 <li>
-                  בחרו סוג <strong>Web App</strong>, תנו שם, ובשדה <em>Who has access</em> בחרו <strong>Anyone (כולם)</strong>.
+                  בחרו סוג <strong>Web App</strong>, ובשדה <em>Who has access</em> בחרו <strong>Anyone (כולם)</strong> (קריטי לחיבור תקין).
                 </li>
                 <li>
                   לחצו <strong>Deploy</strong>, העתיקו את כתובת ה-Web App URL שקיבלתם והדביקו אותה בשדה למעלה!
@@ -218,9 +238,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-md shadow-sky-600/20 transition-all transform active:scale-95 cursor-pointer"
+            disabled={!localConfig.endpointUrl}
+            className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md shadow-sky-600/20 transition-all transform active:scale-95 cursor-pointer"
           >
-            שמור והפעל סנכרון
+            שמור והפעל סנכרון ענן
           </button>
         </div>
 

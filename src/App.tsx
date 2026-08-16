@@ -94,14 +94,19 @@ export default function App() {
 
   // Sync with Cloud
   const handleSyncWithCloud = useCallback(async () => {
-    if (!cloudConfig.enabled || !cloudConfig.endpointUrl) return false;
+    if (!cloudConfig.endpointUrl) return false;
     setIsSyncingCloud(true);
     try {
       const cloudData = await fetchStockFromCloud(cloudConfig);
-      if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
-        setStock(cloudData);
-        saveStoredStock(cloudData);
-        setSuccessMessage('המלאי סונכרן בהצלחה מול הענן! ☁️');
+      if (cloudData && typeof cloudData === 'object') {
+        if (Object.keys(cloudData).length > 0) {
+          setStock(cloudData);
+          saveStoredStock(cloudData);
+        } else {
+          // If cloud data is empty (fresh sheet), initialize it with local stock
+          pushStockToCloud(stock, cloudConfig).catch(() => {});
+        }
+        setSuccessMessage('המלאי סונכרן בהצלחה מול הטבלה בענן! ☁️');
         setTimeout(() => setSuccessMessage(null), 4000);
         return true;
       }
@@ -112,7 +117,7 @@ export default function App() {
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [cloudConfig]);
+  }, [cloudConfig, stock]);
 
   // Load orders from Google Sheet
   const loadOrders = useCallback(async (isSilent: boolean = false) => {
@@ -232,7 +237,7 @@ export default function App() {
       };
 
       saveStoredStock(updated);
-      if (cloudConfig.enabled) {
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         pushStockToCloud(updated, cloudConfig).catch(() => {});
       }
       return updated;
@@ -242,7 +247,7 @@ export default function App() {
   const handleBatchUpdateStock = (newStock: Record<string, StockItem>) => {
     setStock(newStock);
     saveStoredStock(newStock);
-    if (cloudConfig.enabled) {
+    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
       pushStockToCloud(newStock, cloudConfig).catch(() => {});
     }
   };
@@ -266,7 +271,7 @@ export default function App() {
         }
       });
       saveStoredStock(updated);
-      if (cloudConfig.enabled) {
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         pushStockToCloud(updated, cloudConfig).catch(() => {});
       }
       return updated;
@@ -285,7 +290,7 @@ export default function App() {
     setStock(deduction.updatedStock);
 
     // Push to cloud if configured
-    if (cloudConfig.enabled && cloudConfig.autoSyncOnPrint) {
+    if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
       pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
     }
 
@@ -313,7 +318,7 @@ export default function App() {
     const deduction = deductOrdersFromStock(ordersToPrint, stock);
     setStock(deduction.updatedStock);
 
-    if (cloudConfig.enabled && cloudConfig.autoSyncOnPrint) {
+    if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
       pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
     }
 
@@ -360,8 +365,14 @@ export default function App() {
   const handleSaveCloudConfig = (newCfg: CloudSyncConfig) => {
     setCloudConfig(newCfg);
     saveCloudConfig(newCfg);
-    if (newCfg.enabled && newCfg.endpointUrl) {
-      handleSyncWithCloud();
+    if (newCfg.endpointUrl) {
+      // Auto-push current stock to cloud to populate the new sheet
+      pushStockToCloud(stock, newCfg)
+        .then(() => {
+          setSuccessMessage('טבלת המחסן החדשה חוברה ואוכלסה בהצלחה! ☁️');
+          setTimeout(() => setSuccessMessage(null), 4000);
+        })
+        .catch(() => {});
     }
   };
 
@@ -469,8 +480,9 @@ export default function App() {
         isOpen={isCloudModalOpen}
         onClose={() => setIsCloudModalOpen(false)}
         config={cloudConfig}
+        totalItemsCount={productHeaders.length || 187}
         onSaveConfig={handleSaveCloudConfig}
-        onTestSync={handleSyncWithCloud}
+        onSyncNow={handleSyncWithCloud}
       />
 
     </div>
