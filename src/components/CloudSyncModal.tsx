@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Cloud, RefreshCw, Copy, Check, ExternalLink, HelpCircle, ShieldCheck, FileSpreadsheet, PlusCircle, AlertCircle } from 'lucide-react';
+import { X, Cloud, RefreshCw, Copy, Check, ExternalLink, HelpCircle, ShieldCheck, FileSpreadsheet, PlusCircle, AlertCircle, UploadCloud } from 'lucide-react';
 import { CloudSyncConfig } from '../types';
-import { generateGoogleAppsScriptCode, testCloudConnection } from '../utils/cloudSync';
+import { generateGoogleAppsScriptCode, testCloudConnection, normalizeCloudUrl } from '../utils/cloudSync';
 
 interface CloudSyncModalProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [testErrorMessage, setTestErrorMessage] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState(false);
-  const [showInstructions, setShowInstructions] = useState(true);
+  const [isPushingInitial, setIsPushingInitial] = useState(false);
 
   if (!isOpen) return null;
 
@@ -38,7 +38,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   };
 
   const handleTest = async () => {
-    if (!localConfig.endpointUrl.trim()) {
+    const rawUrl = localConfig.endpointUrl.trim();
+    if (!rawUrl) {
       setTestResult('error');
       setTestErrorMessage('נא להדביק תחילה את כתובת ה-Web App בשדה למעלה');
       return;
@@ -49,11 +50,14 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     setTestErrorMessage('');
 
     try {
-      const res = await testCloudConnection(localConfig.endpointUrl.trim());
+      const res = await testCloudConnection(rawUrl);
       if (res.success) {
         setTestResult('success');
-        // Auto-enable toggle
-        setLocalConfig((prev) => ({ ...prev, enabled: true }));
+        setLocalConfig((prev) => ({
+          ...prev,
+          endpointUrl: normalizeCloudUrl(rawUrl),
+          enabled: true,
+        }));
       } else {
         setTestResult('error');
         setTestErrorMessage(res.message || 'שגיאת חיבור');
@@ -67,13 +71,26 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   };
 
   const handleSave = () => {
-    const updated = {
+    const cleanUrl = normalizeCloudUrl(localConfig.endpointUrl);
+    const updated: CloudSyncConfig = {
       ...localConfig,
-      endpointUrl: localConfig.endpointUrl.trim(),
-      enabled: localConfig.endpointUrl.trim().length > 0,
+      endpointUrl: cleanUrl,
+      enabled: cleanUrl.length > 0,
     };
     onSaveConfig(updated);
     onClose();
+  };
+
+  const handlePushNow = async () => {
+    if (!onSyncNow) return;
+    setIsPushingInitial(true);
+    try {
+      const cleanUrl = normalizeCloudUrl(localConfig.endpointUrl);
+      onSaveConfig({ ...localConfig, endpointUrl: cleanUrl, enabled: true });
+      await onSyncNow();
+    } finally {
+      setIsPushingInitial(false);
+    }
   };
 
   return (
@@ -114,7 +131,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 הגנה מלאה: טבלת ההזמנות נשארת לקריאה בלבד
               </div>
               <div className="text-emerald-800 text-xs leading-relaxed">
-                טבלת ההזמנות המקורית של המחלקות (1NJq4sJV0...) <strong>אינה משתנה כלל</strong>.  
+                טבלת ההזמנות המקורית של המחלקות <strong>אינה משתנה כלל</strong>.  
                 עבור המלאי פותחים <strong>טבלת Google Sheets חדשה לגמרי</strong>, והאפליקציה תסנכרן את יתרות המלאי לשם בלבד.
               </div>
             </div>
@@ -125,20 +142,24 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             <label className="font-bold text-slate-800 block text-xs">
               כתובת ה-Web App של טבלת המחסן החדשה (URL):
             </label>
-            <input
-              type="url"
-              placeholder="https://script.google.com/macros/s/.../exec"
-              value={localConfig.endpointUrl}
-              onChange={(e) => {
-                setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
-                setTestResult(null);
-              }}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
-              dir="ltr"
-            />
-            <p className="text-[11px] text-slate-400">
-              הדביקו כאן את הקישור שקיבלתם מ-Apps Script (מתוך הטבלה החדשה)
-            </p>
+            <div className="relative">
+              <input
+                type="url"
+                placeholder="https://script.google.com/macros/s/.../exec"
+                value={localConfig.endpointUrl}
+                onChange={(e) => {
+                  setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
+                  setTestResult(null);
+                }}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
+                dir="ltr"
+              />
+            </div>
+            {localConfig.endpointUrl.trim().length > 0 && !localConfig.endpointUrl.includes('/exec') && (
+              <p className="text-[11px] text-amber-700 font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
+                ⚠️ שימו לב: הקישור נראה קטוע (חסר /exec בסוף). לחצו על כפתור <strong>"העתקה" (Copy)</strong> ב-Google Apps Script כדי להעתיק את כל הכתובת בשלמותה.
+              </p>
+            )}
           </div>
 
           {/* Test Connection Button & Status */}
@@ -163,16 +184,19 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             </div>
 
             {testResult === 'error' && (
-              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 space-y-1 animate-shake">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 space-y-1.5 animate-shake">
                 <div className="font-bold flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                  <span>שגיאה בחיבור לקישור ה-Apps Script:</span>
+                  <span>הסבר לשגיאה:</span>
                 </div>
-                <div className="text-[11px] leading-relaxed pr-5">
+                <div className="text-xs leading-relaxed pr-5 font-medium">
                   {testErrorMessage}
                 </div>
-                <div className="text-[11px] text-red-700 font-semibold pr-5 pt-1">
-                  💡 <strong>איך לתקן:</strong> ודאו שב-Apps Script ב-Deploy ➔ New Deployment בחרתם בשדה <em>Who has access</em> באפשרות <strong>Anyone (כולם)</strong>, ואז לחצו Deploy והעתיקו את הקישור החדש.
+                <div className="text-[11px] text-slate-700 bg-white/80 p-2.5 rounded-lg border border-red-100 pr-3 space-y-1">
+                  <div><strong>כיצד לפתור ב-2 קליקים:</strong></div>
+                  <div>1. ב-Apps Script בטבלה החדשה לחצו <strong>Deploy (פריסה) ➔ Manage deployments (ניהול פריסות)</strong>.</div>
+                  <div>2. לחצו על כפתור <strong>העתקה (Copy)</strong> תחת כתובת ה-URL.</div>
+                  <div>3. הדביקו מחדש כאן ולחצו «שמור והפעל סנכרון ענן».</div>
                 </div>
               </div>
             )}
@@ -182,24 +206,21 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           <div className="border border-slate-200 rounded-2xl overflow-hidden">
             <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 flex items-center gap-2">
               <PlusCircle className="w-4 h-4 text-sky-600" />
-              <span>מדריך מהיר: יצירת טבלת המחסן החדשה ב-2 דקות</span>
+              <span>הוראות מדויקות: פריסת הסקריפט ב-Google Sheets</span>
             </div>
 
             <div className="p-4 bg-white space-y-3">
               <ol className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed">
                 <li>
-                  פתחו <strong>Google Sheets חדש ונקי</strong> (קראו לו למשל: <em>StorePrint - ניהול מלאי</em>).
+                  ב-Google Sheets החדש: <strong>הרחבות (Extensions) ➔ Apps Script</strong>.
                 </li>
                 <li>
-                  בתפריט העליון של הטבלה החדשה לחצו: <strong>הרחבות (Extensions) ➔ Apps Script</strong>.
-                </li>
-                <li>
-                  מחקו את הקוד שמופיע שם, והדביקו את הקוד הבא:
+                  הדביקו את הקוד המלא הבא:
                 </li>
               </ol>
 
               <div className="relative">
-                <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-40" dir="ltr">
+                <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-36" dir="ltr">
                   {scriptCode}
                 </pre>
                 <button
@@ -212,15 +233,18 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 </button>
               </div>
 
-              <ol start={4} className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed pt-1">
+              <ol start={3} className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed pt-1">
                 <li>
-                  ב-Apps Script לחצו בפינה הימנית העליונה על <strong>Deploy (פריסה) ➔ New deployment (פריסה חדשה)</strong>.
+                  לחצו <strong>Deploy (פריסה) ➔ New deployment (פריסה חדשה)</strong>.
                 </li>
                 <li>
-                  בחרו סוג <strong>Web App</strong>, ובשדה <em>Who has access</em> בחרו <strong>Anyone (כולם)</strong> (קריטי לחיבור תקין).
+                  בשדה <strong>Execute as (לבצע בתור)</strong>: בחרו <strong>Me / עצמי</strong>.
                 </li>
                 <li>
-                  לחצו <strong>Deploy</strong>, העתיקו את כתובת ה-Web App URL שקיבלתם והדביקו אותה בשדה למעלה!
+                  בשדה <strong>Who has access (למי יש גישה)</strong>: בחרו <strong>Anyone / כולם</strong>.
+                </li>
+                <li>
+                  לחצו <strong>Deploy</strong> ➔ לחצו על כפתור <strong>העתקה (Copy)</strong> תחת ה-Web App URL.
                 </li>
               </ol>
             </div>

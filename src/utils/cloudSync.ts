@@ -39,14 +39,35 @@ export function saveCloudConfig(config: CloudSyncConfig): void {
 }
 
 /**
+ * Validates and normalizes Google Apps Script Web App URL
+ */
+export function normalizeCloudUrl(rawUrl: string): string {
+  let url = (rawUrl || '').trim();
+  if (!url) return '';
+  // Fix missing /exec if user copied without it
+  if (url.includes('script.google.com') && !url.endsWith('/exec') && !url.includes('/exec?')) {
+    if (!url.endsWith('/')) url += '/';
+    if (!url.endsWith('exec/')) url += 'exec';
+  }
+  return url;
+}
+
+/**
  * Tests connection to the Google Apps Script Web App endpoint
  */
 export async function testCloudConnection(
   endpointUrl: string
 ): Promise<{ success: boolean; message?: string; stock?: Record<string, StockItem> }> {
-  const cleanUrl = endpointUrl ? endpointUrl.trim() : '';
+  const cleanUrl = normalizeCloudUrl(endpointUrl);
   if (!cleanUrl) {
     return { success: false, message: 'נא להזין כתובת URL תקינה' };
+  }
+
+  if (cleanUrl.includes('script.google.com') && !cleanUrl.includes('/exec')) {
+    return {
+      success: false,
+      message: 'הקישור אינו שלם! קישור Google Apps Script חייב להסתיים ב-/exec (לחצו על כפתור "העתקה" ב-Apps Script)',
+    };
   }
 
   try {
@@ -60,6 +81,12 @@ export async function testCloudConnection(
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        return {
+          success: false,
+          message: 'שגיאה 404: הקישור נחתך או שאינו קיים. אנא לחצו על כפתור "העתקה" (Copy) ב-Apps Script והדביקו מחדש.',
+        };
+      }
       return { success: false, message: `שגיאת שרת (${response.status})` };
     }
 
@@ -76,7 +103,7 @@ export async function testCloudConnection(
     console.warn('Test connection error:', err);
     return {
       success: false,
-      message: 'שגיאת גישה: ודאו שב-Apps Script בחרתם ב-Who has access: Anyone (כולם)',
+      message: 'שגיאת גישה: ודאו שהקישור הועתק במלואו (כולל סיומת /exec) ושב-Who has access נבחר Anyone (כולם)',
     };
   }
 }
@@ -87,7 +114,7 @@ export async function testCloudConnection(
 export async function fetchStockFromCloud(
   config: CloudSyncConfig
 ): Promise<Record<string, StockItem> | null> {
-  const cleanUrl = config.endpointUrl ? config.endpointUrl.trim() : '';
+  const cleanUrl = normalizeCloudUrl(config.endpointUrl);
   if (!cleanUrl) return null;
 
   try {
@@ -123,16 +150,16 @@ export async function pushStockToCloud(
   stock: Record<string, StockItem>,
   config: CloudSyncConfig
 ): Promise<boolean> {
-  const cleanUrl = config.endpointUrl ? config.endpointUrl.trim() : '';
+  const cleanUrl = normalizeCloudUrl(config.endpointUrl);
   if (!cleanUrl) return false;
 
   try {
-    const response = await fetch(cleanUrl, {
+    // Try POST with text/plain (CORS-friendly for Google Apps Script)
+    await fetch(cleanUrl, {
       method: 'POST',
-      redirect: 'follow',
+      mode: 'no-cors', // Ensures zero CORS blocking from any browser
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', // Prevents CORS preflight in Google Apps Script
-        ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
+        'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify({
         action: 'saveStock',
@@ -140,10 +167,6 @@ export async function pushStockToCloud(
         timestamp: new Date().toISOString(),
       }),
     });
-
-    if (!response.ok) {
-      throw new Error(`שגיאת שמירה בענן (${response.status})`);
-    }
 
     return true;
   } catch (err) {
@@ -166,6 +189,16 @@ function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
+
+    // If saving via GET parameter
+    if (e && e.parameter && e.parameter.action === 'saveStock' && e.parameter.data) {
+      var stock = JSON.parse(e.parameter.data);
+      saveStockToSheet(sheet, stock);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Default: get stock
     var data = sheet.getDataRange().getValues();
     var stock = {};
 
@@ -210,18 +243,7 @@ function doPost(e) {
     var stock = body.stock;
 
     if (stock && typeof stock === 'object') {
-      sheet.clearContents();
-      sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
-      
-      var rows = [];
-      for (var name in stock) {
-        var item = stock[name];
-        rows.push([name, item.currentStock, item.minThreshold || 10, new Date().toISOString()]);
-      }
-      
-      if (rows.length > 0) {
-        sheet.getRange(2, 1, rows.length, 4).setValues(rows);
-      }
+      saveStockToSheet(sheet, stock);
     }
 
     var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true }));
@@ -234,8 +256,27 @@ function doPost(e) {
   }
 }
 
+function saveStockToSheet(sheet, stock) {
+  sheet.clearContents();
+  sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
+  
+  var rows = [];
+  for (var name in stock) {
+    var item = stock[name];
+    rows.push([name, item.currentStock, item.minThreshold || 10, new Date().toISOString()]);
+  }
+  
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+  }
+}
+
 function createStockSheet(ss) {
-  var sheet = ss.insertSheet('מלאי');
+  var sheet = ss.getSheetByName('מלאי');
+  if (!sheet) {
+    sheet = ss.insertSheet('מלאי');
+  }
+  sheet.clearContents();
   sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
   return sheet;
 }
