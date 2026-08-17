@@ -12,6 +12,20 @@ export const DEFAULT_CLOUD_CONFIG: CloudSyncConfig = {
 };
 
 /**
+ * Formats current date and time as DD/MM/YYYY HH:mm:ss (Israel local time)
+ */
+export function formatIsraelDateTime(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const day = pad(d.getDate());
+  const month = pad(d.getMonth() + 1);
+  const year = d.getFullYear();
+  const hours = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  const sec = pad(d.getSeconds());
+  return `${day}/${month}/${year} ${hours}:${min}:${sec}`;
+}
+
+/**
  * Loads cloud sync configuration from localStorage
  */
 export function loadCloudConfig(): CloudSyncConfig {
@@ -44,7 +58,6 @@ export function saveCloudConfig(config: CloudSyncConfig): void {
 export function normalizeCloudUrl(rawUrl: string): string {
   let url = (rawUrl || '').trim();
   if (!url) return '';
-  // Clean quotes or spaces if pasted from curl
   url = url.replace(/^["']|["']$/g, '');
   return url;
 }
@@ -161,7 +174,7 @@ export async function pushStockToCloud(
       body: JSON.stringify({
         action: 'saveStock',
         stock,
-        timestamp: new Date().toISOString(),
+        timestamp: formatIsraelDateTime(),
       }),
     });
 
@@ -177,7 +190,7 @@ export async function pushStockToCloud(
  */
 export function generateGoogleAppsScriptCode(): string {
   return `/**
- * StorePrint Cloud Warehouse Sync Backend (v2 - Universal)
+ * StorePrint Cloud Warehouse Sync Backend (v2.1 - Israel Date Format)
  * עובד אוטומטית גם מתוך טבלת Google Sheets וגם כפרויקט עצמאי ב-Apps Script!
  */
 
@@ -279,14 +292,20 @@ function saveStockToSheet(sheet, stock) {
   sheet.clearContents();
   sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
   
+  var nowFormatted = Utilities.formatDate(new Date(), "Asia/Jerusalem", "dd/MM/yyyy HH:mm:ss");
   var rows = [];
+  
   for (var name in stock) {
     var item = stock[name];
-    rows.push([name, item.currentStock, item.minThreshold || 10, new Date().toISOString()]);
+    var qty = (item.currentStock !== undefined && item.currentStock !== null) ? Number(item.currentStock) : 0;
+    var threshold = (item.minThreshold !== undefined && item.minThreshold !== null) ? Number(item.minThreshold) : 10;
+    rows.push([name, qty, threshold, nowFormatted]);
   }
   
   if (rows.length > 0) {
     sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+    // Align columns nicely in Hebrew RTL
+    sheet.getRange(1, 1, rows.length + 1, 4).setHorizontalAlignment("right");
   }
 }
 
