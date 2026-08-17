@@ -24,8 +24,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [testErrorMessage, setTestErrorMessage] = useState<string>('');
+  const [connectedSheetUrl, setConnectedSheetUrl] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState(false);
-  const [isPushingInitial, setIsPushingInitial] = useState(false);
 
   if (!isOpen) return null;
 
@@ -53,6 +53,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
       const res = await testCloudConnection(rawUrl);
       if (res.success) {
         setTestResult('success');
+        if (res.sheetUrl) setConnectedSheetUrl(res.sheetUrl);
         setLocalConfig((prev) => ({
           ...prev,
           endpointUrl: normalizeCloudUrl(rawUrl),
@@ -79,18 +80,6 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     };
     onSaveConfig(updated);
     onClose();
-  };
-
-  const handlePushNow = async () => {
-    if (!onSyncNow) return;
-    setIsPushingInitial(true);
-    try {
-      const cleanUrl = normalizeCloudUrl(localConfig.endpointUrl);
-      onSaveConfig({ ...localConfig, endpointUrl: cleanUrl, enabled: true });
-      await onSyncNow();
-    } finally {
-      setIsPushingInitial(false);
-    }
   };
 
   return (
@@ -131,8 +120,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 הגנה מלאה: טבלת ההזמנות נשארת לקריאה בלבד
               </div>
               <div className="text-emerald-800 text-xs leading-relaxed">
-                טבלת ההזמנות המקורית של המחלקות <strong>אינה משתנה כלל</strong>.  
-                עבור המלאי פותחים <strong>טבלת Google Sheets חדשה לגמרי</strong>, והאפליקציה תסנכרן את יתרות המלאי לשם בלבד.
+                טבלת ההזמנות של המחלקות <strong>אינה משתנה כלל</strong>.  
+                הסקריפט יוצר אוטומטית טבלה חדשה בשם <strong>"StorePrint - ניהול מלאי ומחסן"</strong> ב-Google Drive שלכם!
               </div>
             </div>
           </div>
@@ -140,26 +129,19 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           {/* Endpoint URL Input */}
           <div className="space-y-1.5">
             <label className="font-bold text-slate-800 block text-xs">
-              כתובת ה-Web App של טבלת המחסן החדשה (URL):
+              כתובת ה-Web App של טבלת המחסן (URL שמסתיים ב-/exec):
             </label>
-            <div className="relative">
-              <input
-                type="url"
-                placeholder="https://script.google.com/macros/s/.../exec"
-                value={localConfig.endpointUrl}
-                onChange={(e) => {
-                  setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
-                  setTestResult(null);
-                }}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
-                dir="ltr"
-              />
-            </div>
-            {localConfig.endpointUrl.trim().length > 0 && !localConfig.endpointUrl.includes('/exec') && (
-              <p className="text-[11px] text-amber-700 font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
-                ⚠️ שימו לב: הקישור נראה קטוע (חסר /exec בסוף). לחצו על כפתור <strong>"העתקה" (Copy)</strong> ב-Google Apps Script כדי להעתיק את כל הכתובת בשלמותה.
-              </p>
-            )}
+            <input
+              type="url"
+              placeholder="https://script.google.com/macros/s/.../exec"
+              value={localConfig.endpointUrl}
+              onChange={(e) => {
+                setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
+                setTestResult(null);
+              }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
+              dir="ltr"
+            />
           </div>
 
           {/* Test Connection Button & Status */}
@@ -176,10 +158,23 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               </button>
 
               {testResult === 'success' && (
-                <span className="text-emerald-800 bg-emerald-50 border border-emerald-300 px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 animate-fadeIn">
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  <span>החיבור לטבלת המחסן תקין ומסונכרן בהצלחה! 🎉</span>
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-emerald-800 bg-emerald-50 border border-emerald-300 px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 animate-fadeIn">
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>החיבור לטבלת המחסן תקין ומסונכרן בהצלחה! 🎉</span>
+                  </span>
+                  {connectedSheetUrl && (
+                    <a
+                      href={connectedSheetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-sky-700 font-bold underline flex items-center gap-1 hover:text-sky-900"
+                    >
+                      <span>פתח את טבלת המחסן החדשה</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
 
@@ -187,16 +182,14 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 space-y-1.5 animate-shake">
                 <div className="font-bold flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                  <span>הסבר לשגיאה:</span>
+                  <span>שגיאה בחיבור:</span>
                 </div>
                 <div className="text-xs leading-relaxed pr-5 font-medium">
                   {testErrorMessage}
                 </div>
                 <div className="text-[11px] text-slate-700 bg-white/80 p-2.5 rounded-lg border border-red-100 pr-3 space-y-1">
-                  <div><strong>כיצד לפתור ב-2 קליקים:</strong></div>
-                  <div>1. ב-Apps Script בטבלה החדשה לחצו <strong>Deploy (פריסה) ➔ Manage deployments (ניהול פריסות)</strong>.</div>
-                  <div>2. לחצו על כפתור <strong>העתקה (Copy)</strong> תחת כתובת ה-URL.</div>
-                  <div>3. הדביקו מחדש כאן ולחצו «שמור והפעל סנכרון ענן».</div>
+                  <div><strong>צעד קריטי ב-Apps Script:</strong></div>
+                  <div>בחלון ניהול הפריסות (ניהול הפריסות / Manage deployments) לחצו על הכפתור הכחול <strong>לפריסה (Deploy)</strong> בפינה השמאלית התחתונה כדי שהשרת יפרסם את השינויים!</div>
                 </div>
               </div>
             )}
@@ -206,18 +199,13 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           <div className="border border-slate-200 rounded-2xl overflow-hidden">
             <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 flex items-center gap-2">
               <PlusCircle className="w-4 h-4 text-sky-600" />
-              <span>הוראות מדויקות: פריסת הסקריפט ב-Google Sheets</span>
+              <span>הקוד המעודכן (סקריפט אוניברסלי שיוצר טבלה אוטומטית)</span>
             </div>
 
             <div className="p-4 bg-white space-y-3">
-              <ol className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed">
-                <li>
-                  ב-Google Sheets החדש: <strong>הרחבות (Extensions) ➔ Apps Script</strong>.
-                </li>
-                <li>
-                  הדביקו את הקוד המלא הבא:
-                </li>
-              </ol>
+              <p className="text-slate-600 font-medium leading-relaxed">
+                העתק את הקוד המעודכן הבא והדבק אותו בעורך ה-Apps Script:
+              </p>
 
               <div className="relative">
                 <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl text-[10px] font-mono overflow-x-auto max-h-36" dir="ltr">
@@ -229,23 +217,16 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                   className="absolute top-2 left-2 bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
                 >
                   {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedCode ? 'הועתק!' : 'העתק קוד'}</span>
+                  <span>{copiedCode ? 'הועתק!' : 'העתק קוד מעודכן'}</span>
                 </button>
               </div>
 
-              <ol start={3} className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed pt-1">
-                <li>
-                  לחצו <strong>Deploy (פריסה) ➔ New deployment (פריסה חדשה)</strong>.
-                </li>
-                <li>
-                  בשדה <strong>Execute as (לבצע בתור)</strong>: בחרו <strong>Me / עצמי</strong>.
-                </li>
-                <li>
-                  בשדה <strong>Who has access (למי יש גישה)</strong>: בחרו <strong>Anyone / כולם</strong>.
-                </li>
-                <li>
-                  לחצו <strong>Deploy</strong> ➔ לחצו על כפתור <strong>העתקה (Copy)</strong> תחת ה-Web App URL.
-                </li>
+              <ol className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed pt-1">
+                <li>הדביקו ושמרו את הקוד (Ctrl + S).</li>
+                <li>לחצו <strong>Deploy (פריסה) ➔ Manage deployments (ניהול פריסות)</strong>.</li>
+                <li>ודאו ש-<em>Execute as</em> הוא <strong>עצמי</strong>, ו-<em>Who has access</em> הוא <strong>כולם</strong>.</li>
+                <li><strong>חשוב מאוד:</strong> לחצו על הכפתור הכחול <strong>לפריסה (Deploy)</strong> בפינה התחתונה!</li>
+                <li>העתיקו את הקישור שהתקבל והדביקו כאן.</li>
               </ol>
             </div>
           </div>

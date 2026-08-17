@@ -44,11 +44,8 @@ export function saveCloudConfig(config: CloudSyncConfig): void {
 export function normalizeCloudUrl(rawUrl: string): string {
   let url = (rawUrl || '').trim();
   if (!url) return '';
-  // Fix missing /exec if user copied without it
-  if (url.includes('script.google.com') && !url.endsWith('/exec') && !url.includes('/exec?')) {
-    if (!url.endsWith('/')) url += '/';
-    if (!url.endsWith('exec/')) url += 'exec';
-  }
+  // Clean quotes or spaces if pasted from curl
+  url = url.replace(/^["']|["']$/g, '');
   return url;
 }
 
@@ -57,16 +54,16 @@ export function normalizeCloudUrl(rawUrl: string): string {
  */
 export async function testCloudConnection(
   endpointUrl: string
-): Promise<{ success: boolean; message?: string; stock?: Record<string, StockItem> }> {
+): Promise<{ success: boolean; message?: string; stock?: Record<string, StockItem>; sheetUrl?: string }> {
   const cleanUrl = normalizeCloudUrl(endpointUrl);
   if (!cleanUrl) {
     return { success: false, message: 'נא להזין כתובת URL תקינה' };
   }
 
-  if (cleanUrl.includes('script.google.com') && !cleanUrl.includes('/exec')) {
+  if (!cleanUrl.includes('script.google.com') || !cleanUrl.includes('/exec')) {
     return {
       success: false,
-      message: 'הקישור אינו שלם! קישור Google Apps Script חייב להסתיים ב-/exec (לחצו על כפתור "העתקה" ב-Apps Script)',
+      message: 'קישור Google Apps Script חייב להסתיים ב-/exec. ודאו שהעתקתם את ה-Web App URL המלא.',
     };
   }
 
@@ -84,7 +81,7 @@ export async function testCloudConnection(
       if (response.status === 404) {
         return {
           success: false,
-          message: 'שגיאה 404: הקישור נחתך או שאינו קיים. אנא לחצו על כפתור "העתקה" (Copy) ב-Apps Script והדביקו מחדש.',
+          message: 'שגיאה 404: הפריסה טרם פורסמה! ודאו שלחצתם על הכפתור הכחול "לפריסה" (Deploy) ב-Apps Script.',
         };
       }
       return { success: false, message: `שגיאת שרת (${response.status})` };
@@ -95,6 +92,7 @@ export async function testCloudConnection(
       return {
         success: true,
         stock: data.stock || {},
+        sheetUrl: data.sheetUrl,
       };
     }
 
@@ -103,7 +101,7 @@ export async function testCloudConnection(
     console.warn('Test connection error:', err);
     return {
       success: false,
-      message: 'שגיאת גישה: ודאו שהקישור הועתק במלואו (כולל סיומת /exec) ושב-Who has access נבחר Anyone (כולם)',
+      message: 'לא ניתן לגשת לקישור. ודאו שב-Apps Script לחצתם "לפריסה" (Deploy) ובחרתם ב-Who has access: Anyone (כולם).',
     };
   }
 }
@@ -154,10 +152,9 @@ export async function pushStockToCloud(
   if (!cleanUrl) return false;
 
   try {
-    // Try POST with text/plain (CORS-friendly for Google Apps Script)
     await fetch(cleanUrl, {
       method: 'POST',
-      mode: 'no-cors', // Ensures zero CORS blocking from any browser
+      mode: 'no-cors', // Ensures zero CORS blocking in all browsers
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
@@ -176,29 +173,28 @@ export async function pushStockToCloud(
 }
 
 /**
- * Generates the Google Apps Script code for 1-click Google Sheet backend deployment
+ * Generates the Universal Google Apps Script code (works both standalone and inside sheets)
  */
 export function generateGoogleAppsScriptCode(): string {
   return `/**
- * StorePrint Cloud Warehouse Sync Backend
- * הדבק קוד זה בתוך Google Sheets -> Extensions (הרחבות) -> Apps Script
- * ולאחר מכן לחץ על Deploy (פריסה) -> New Deployment -> Web App -> Anyone (כולם)
+ * StorePrint Cloud Warehouse Sync Backend (v2 - Universal)
+ * עובד אוטומטית גם מתוך טבלת Google Sheets וגם כפרויקט עצמאי ב-Apps Script!
  */
 
 function doGet(e) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getOrCreateSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
 
     // If saving via GET parameter
     if (e && e.parameter && e.parameter.action === 'saveStock' && e.parameter.data) {
       var stock = JSON.parse(e.parameter.data);
       saveStockToSheet(sheet, stock);
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true }))
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true, sheetUrl: ss.getUrl() }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // Default: get stock
+    // Default: return stock
     var data = sheet.getDataRange().getValues();
     var stock = {};
 
@@ -219,7 +215,12 @@ function doGet(e) {
       }
     }
 
-    var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', count: Object.keys(stock).length, stock: stock }));
+    var output = ContentService.createTextOutput(JSON.stringify({
+      status: 'success',
+      count: Object.keys(stock).length,
+      sheetUrl: ss.getUrl(),
+      stock: stock
+    }));
     output.setMimeType(ContentService.MimeType.JSON);
     return output;
   } catch (err) {
@@ -238,7 +239,7 @@ function doPost(e) {
       body = JSON.parse(e.parameter.data);
     }
     
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getOrCreateSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
     var stock = body.stock;
 
@@ -246,7 +247,7 @@ function doPost(e) {
       saveStockToSheet(sheet, stock);
     }
 
-    var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true }));
+    var output = ContentService.createTextOutput(JSON.stringify({ status: 'success', saved: true, sheetUrl: ss.getUrl() }));
     output.setMimeType(ContentService.MimeType.JSON);
     return output;
   } catch (err) {
@@ -254,6 +255,24 @@ function doPost(e) {
     errOutput.setMimeType(ContentService.MimeType.JSON);
     return errOutput;
   }
+}
+
+function getOrCreateSpreadsheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss) return ss;
+
+  var props = PropertiesService.getScriptProperties();
+  var sheetId = props.getProperty('STOREPRINT_STOCK_SHEET_ID');
+  if (sheetId) {
+    try {
+      return SpreadsheetApp.openById(sheetId);
+    } catch(e) {}
+  }
+
+  // Auto-create spreadsheet in Google Drive if standalone project
+  var newSs = SpreadsheetApp.create('StorePrint - ניהול מלאי ומחסן');
+  props.setProperty('STOREPRINT_STOCK_SHEET_ID', newSs.getId());
+  return newSs;
 }
 
 function saveStockToSheet(sheet, stock) {
