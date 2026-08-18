@@ -219,13 +219,26 @@ function doGet(e) {
       var minThreshold = 10;
       var lastUpdated = '';
 
-      if (row.length >= 5) {
-        unit = String(row[2] || "יח'");
-        minThreshold = Number(row[3]) || 10;
-        lastUpdated = String(row[4] || '');
+      var col2 = row[2];
+      var col3 = row[3];
+      var col4 = row[4];
+
+      // Smart column detection (supports both old 4-column sheets and new 5-column sheets with packaging unit)
+      if (typeof col2 === 'string' && isNaN(Number(col2)) && col2.trim().length > 0 && !col2.includes('/') && !col2.includes(':')) {
+        unit = String(col2).trim();
+        minThreshold = Number(col3) || 10;
+        lastUpdated = String(col4 || '');
+      } else if (!isNaN(Number(col2)) && col2 !== '' && col2 !== null) {
+        minThreshold = Number(col2) || 10;
+        lastUpdated = String(col3 || '');
+        unit = "יח'";
+      } else if (row.length >= 5) {
+        unit = String(col2 || "יח'").trim();
+        minThreshold = Number(col3) || 10;
+        lastUpdated = String(col4 || '');
       } else {
-        minThreshold = Number(row[2]) || 10;
-        lastUpdated = String(row[3] || '');
+        minThreshold = Number(col2) || 10;
+        lastUpdated = String(col3 || '');
       }
 
       if (name) {

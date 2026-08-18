@@ -27,6 +27,7 @@ import { PhoneQRModal } from './PhoneQRModal';
 
 export const PACKAGING_UNITS = [
   { value: "יח'", label: "יח' (יחידות)" },
+  { value: "קרטון", label: "קרטון (קרטונים / קופסה גדולה)" },
   { value: "קופסה", label: "קופסה (קופסאות)" },
   { value: "מארז", label: "מארז (מארזים)" },
   { value: "חבילה", label: "חבילה (חבילות)" },

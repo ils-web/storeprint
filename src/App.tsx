@@ -209,8 +209,27 @@ export default function App() {
         fetchStockFromCloud(autoConfig)
           .then((cloudData) => {
             if (cloudData) {
-              setStock(cloudData);
-              saveStoredStock(cloudData);
+              setStock((prevLocal) => {
+                const merged: Record<string, StockItem> = { ...prevLocal };
+                Object.keys(cloudData).forEach((key) => {
+                  const cloudItem = cloudData[key];
+                  const localItem = prevLocal[key];
+                  merged[key] = {
+                    ...(localItem || {}),
+                    ...cloudItem,
+                    unit:
+                      cloudItem.unit && cloudItem.unit !== "יח'"
+                        ? cloudItem.unit
+                        : localItem?.unit || cloudItem.unit || "יח'",
+                    minThreshold:
+                      cloudItem.minThreshold !== undefined && cloudItem.minThreshold !== 10
+                        ? cloudItem.minThreshold
+                        : localItem?.minThreshold || cloudItem.minThreshold || 10,
+                  };
+                });
+                saveStoredStock(merged);
+                return merged;
+              });
               setSuccessMessage('טבלת המחסן חוברה בהצלחה מהקישור המשותף! ☁️');
               setTimeout(() => setSuccessMessage(null), 5000);
             }
