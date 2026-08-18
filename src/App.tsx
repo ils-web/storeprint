@@ -5,6 +5,7 @@ import { WarehouseView } from './components/WarehouseView';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { PrintConfirmModal } from './components/PrintConfirmModal';
+import { ScrollToTop } from './components/ScrollToTop';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import {
   DEFAULT_SPREADSHEET_ID,
@@ -502,6 +503,9 @@ export default function App() {
         onSaveConfig={handleSaveCloudConfig}
         onSyncNow={handleSyncWithCloud}
       />
+
+      {/* Floating Scroll-to-Top Button */}
+      <ScrollToTop />
 
     </div>
   );

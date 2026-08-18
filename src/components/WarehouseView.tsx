@@ -16,6 +16,7 @@ import {
   Cloud,
   CloudCheck,
   RefreshCw,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -37,13 +38,13 @@ interface StockRowInputProps {
   item: StockItem;
   globalThreshold: number;
   onUpdate: (name: string, newQty: number) => void;
+  isMobile?: boolean;
 }
 
-const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, onUpdate }) => {
+const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, onUpdate, isMobile = false }) => {
   const [val, setVal] = useState<string>(String(item.currentStock));
   const [isFocused, setIsFocused] = useState(false);
   const isLow = item.currentStock < (item.minThreshold || globalThreshold);
-  const currentUnit = item.unit || "יח'";
 
   useEffect(() => {
     if (!isFocused) {
@@ -61,30 +62,41 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
   };
 
   return (
-    <div className="inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs">
+    <div
+      className={`inline-flex items-center gap-1 sm:gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs ${
+        isMobile ? 'w-full justify-between py-1.5 px-2' : ''
+      }`}
+    >
       {/* -10 */}
       <button
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 10))}
-        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-700 font-black transition-colors cursor-pointer ${
+          isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
+        }`}
         title="הורד 10"
       >
         -10
       </button>
+
       {/* -1 */}
       <button
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 1))}
-        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer ${
+          isMobile ? 'w-11 h-10' : 'w-7 h-7'
+        }`}
         title="הורד 1"
       >
-        <Minus className="w-3.5 h-3.5" />
+        <Minus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
 
-      {/* Input - commits on Blur or Enter */}
-      <div className="relative flex items-center justify-center">
+      {/* Input - commits on Blur or Enter, with mobile numeric keypad */}
+      <div className="relative flex items-center justify-center flex-1 max-w-[90px]">
         <input
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           min={0}
           value={val}
           onFocus={() => setIsFocused(true)}
@@ -98,7 +110,9 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`w-16 text-center font-black text-sm py-1 rounded-xl border focus:outline-none focus:ring-2 ${
+          className={`w-full text-center font-black rounded-xl border focus:outline-none focus:ring-2 ${
+            isMobile ? 'text-base py-1.5' : 'text-sm py-1'
+          } ${
             isLow
               ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
               : 'border-slate-200 text-slate-900 focus:ring-sky-500'
@@ -110,16 +124,21 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       <button
         type="button"
         onClick={() => onUpdate(item.name, item.currentStock + 1)}
-        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+        className={`flex items-center justify-center rounded-xl bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer ${
+          isMobile ? 'w-11 h-10' : 'w-7 h-7'
+        }`}
         title="הוסף 1"
       >
-        <Plus className="w-3.5 h-3.5" />
+        <Plus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
+
       {/* +10 */}
       <button
         type="button"
         onClick={() => onUpdate(item.name, item.currentStock + 10)}
-        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
+        className={`flex items-center justify-center rounded-xl bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer ${
+          isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
+        }`}
         title="הוסף 10"
       >
         +10
@@ -132,12 +151,14 @@ interface ThresholdAndUnitInputProps {
   item: StockItem;
   globalThreshold: number;
   onUpdate: (name: string, currentStock: number, minThreshold: number, unit: string) => void;
+  isMobile?: boolean;
 }
 
 const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   item,
   globalThreshold,
   onUpdate,
+  isMobile = false,
 }) => {
   const currentTh = item.minThreshold || globalThreshold;
   const currentUnit = item.unit || "יח'";
@@ -166,12 +187,18 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   };
 
   return (
-    <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-2xl px-2 py-1 shadow-2xs">
+    <div
+      className={`inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-2xl px-2 py-1 shadow-2xs ${
+        isMobile ? 'w-full justify-between' : ''
+      }`}
+    >
       {/* Min threshold number input */}
       <div className="flex items-center gap-1">
-        <span className="text-[10px] font-bold text-slate-400">סף:</span>
+        <span className="text-[11px] font-bold text-slate-500">סף מינימום:</span>
         <input
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           min={1}
           value={val}
           onFocus={() => setIsFocused(true)}
@@ -185,24 +212,27 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-10 text-center text-xs font-black py-0.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+          className="w-12 text-center text-xs font-black py-1 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
           title="סף כמות מינימום לדוח חוסרים"
         />
       </div>
 
       {/* Packaging / Unit Dropdown Selector */}
-      <select
-        value={currentUnit}
-        onChange={(e) => handleUnitChange(e.target.value)}
-        className="bg-white border border-slate-300 text-slate-800 text-[11px] font-bold py-0.5 px-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-        title="בחר סוג אריזה / יחידת מידה"
-      >
-        {PACKAGING_UNITS.map((u) => (
-          <option key={u.value} value={u.value}>
-            {u.label}
-          </option>
-        ))}
-      </select>
+      <div className="flex items-center gap-1">
+        <span className="text-[11px] font-bold text-slate-500">אריזה:</span>
+        <select
+          value={currentUnit}
+          onChange={(e) => handleUnitChange(e.target.value)}
+          className="bg-white border border-slate-300 text-slate-800 text-xs font-bold py-1 px-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+          title="בחר סוג אריזה / יחידת מידה"
+        >
+          {PACKAGING_UNITS.map((u) => (
+            <option key={u.value} value={u.value}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 };
@@ -322,60 +352,60 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   return (
-    <div className="space-y-4 animate-fadeIn" dir="rtl">
+    <div className="space-y-4 animate-fadeIn pb-16" dir="rtl">
       
       {/* Top Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
         
         {/* Total Items */}
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">סה"כ פריטים בקטלוג</div>
-            <div className="text-3xl font-black text-slate-900 mt-1">{stats.total}</div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">סה"כ פריטים</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-0.5">{stats.total}</div>
           </div>
-          <div className="p-3.5 bg-slate-100 text-slate-700 rounded-2xl">
-            <Package className="w-6 h-6" />
+          <div className="p-2.5 sm:p-3.5 bg-slate-100 text-slate-700 rounded-2xl">
+            <Package className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
         </div>
 
         {/* In Stock */}
-        <div className="bg-white p-4.5 rounded-3xl border border-emerald-100 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-3xl border border-emerald-100 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider">במלאי תקין (≥ {globalThreshold})</div>
-            <div className="text-3xl font-black text-emerald-700 mt-1">{stats.ok}</div>
+            <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">במלאי תקין</div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-700 mt-0.5">{stats.ok}</div>
           </div>
-          <div className="p-3.5 bg-emerald-50 text-emerald-600 rounded-2xl">
-            <CheckCircle2 className="w-6 h-6" />
+          <div className="p-2.5 sm:p-3.5 bg-emerald-50 text-emerald-600 rounded-2xl">
+            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
         </div>
 
         {/* Low Stock Warning Card */}
-        <div className="bg-gradient-to-br from-red-50 to-amber-50 p-4.5 rounded-3xl border border-red-200 shadow-xs flex items-center justify-between">
+        <div className="bg-gradient-to-br from-red-50 to-amber-50 p-3.5 sm:p-4.5 rounded-3xl border border-red-200 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>דוח חוסרים (&lt; {globalThreshold})</span>
+            <div className="text-[11px] font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              <span>דוח חוסרים</span>
             </div>
-            <div className="text-3xl font-black text-red-700 mt-1">{stats.low} פריטים</div>
+            <div className="text-2xl sm:text-3xl font-black text-red-700 mt-0.5">{stats.low}</div>
           </div>
           <button
             onClick={handlePrintReorder}
             disabled={lowStockItems.length === 0}
-            className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white p-3 rounded-2xl shadow-md shadow-red-600/20 transition-all transform active:scale-95 cursor-pointer"
+            className="bg-red-600 hover:bg-red-700 active:scale-95 disabled:opacity-40 text-white p-2.5 sm:p-3 rounded-2xl shadow-md shadow-red-600/20 transition-all cursor-pointer"
             title="הדפס דוח חוסרים / הזמנת רכש"
           >
-            <Printer className="w-5 h-5" />
+            <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Zero Stock */}
-        <div className="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-3.5 sm:p-4.5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">אזל מהמלאי (0)</div>
-            <div className="text-3xl font-black text-slate-700 mt-1">{stats.out}</div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">אזל מהמלאי</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-700 mt-0.5">{stats.out}</div>
           </div>
-          <div className="p-3.5 bg-slate-100 text-slate-500 rounded-2xl">
-            <RotateCcw className="w-6 h-6" />
+          <div className="p-2.5 sm:p-3.5 bg-slate-100 text-slate-500 rounded-2xl">
+            <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
         </div>
 
@@ -385,143 +415,238 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Actions & Filter Toolbar */}
-        <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+        <div className="p-3 sm:p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col gap-3">
           
-          {/* Search Bar */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="חיפוש פריט לפי שם בעברית או מספר..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-2xl pr-9 pl-4 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-xs">
-            <button
-              onClick={() => setFilterType('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                filterType === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              הכל ({stats.total})
-            </button>
-            <button
-              onClick={() => setFilterType('low')}
-              className={`px-3 py-1.5 rounded-xl font-black transition-all cursor-pointer ${
-                filterType === 'low'
-                  ? 'bg-red-600 text-white shadow-xs'
-                  : 'text-red-700 hover:bg-red-50'
-              }`}
-            >
-              ⚠️ חוסרים &lt; {globalThreshold} ({stats.low})
-            </button>
-            <button
-              onClick={() => setFilterType('out')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                filterType === 'out'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              אזל מהמלאי ({stats.out})
-            </button>
-            <button
-              onClick={() => setFilterType('ok')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                filterType === 'ok'
-                  ? 'bg-white text-emerald-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              במלאי תקין ({stats.ok})
-            </button>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Row 1: Search & Filter Tabs */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
             
-            {/* Cloud Sync Status & Settings Button */}
-            <button
-              onClick={onOpenCloudModal}
-              className={`text-xs font-bold px-3.5 py-2 rounded-2xl border flex items-center gap-1.5 transition-all cursor-pointer ${
-                cloudConfig.enabled
-                  ? 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100'
-                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-              }`}
-              title="הגדרות סנכרון ענן"
-            >
-              <Cloud className={`w-4 h-4 ${cloudConfig.enabled ? 'text-sky-600' : 'text-slate-400'}`} />
-              <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן...'}</span>
-            </button>
+            {/* Search Bar */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="חיפוש פריט לפי שם בעברית..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-2xl pr-9 pl-4 py-2 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
 
-            {/* Direct Fetch / Pull Stock from Cloud */}
-            {cloudConfig.enabled && (
+            {/* Filter Tabs */}
+            <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-[11px] sm:text-xs overflow-x-auto">
               <button
-                onClick={onSyncWithCloud}
-                disabled={isSyncingCloud}
-                className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                title="משיכת נתוני המלאי העדכניים מטבלת ה-Google Sheets"
+                onClick={() => setFilterType('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  filterType === 'all'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
-                <span>{isSyncingCloud ? 'מושך נתונים...' : 'טען מלאי מהענן'}</span>
+                הכל ({stats.total})
               </button>
-            )}
+              <button
+                onClick={() => setFilterType('low')}
+                className={`px-3 py-1.5 rounded-xl font-black whitespace-nowrap transition-all cursor-pointer ${
+                  filterType === 'low'
+                    ? 'bg-red-600 text-white shadow-xs'
+                    : 'text-red-700 hover:bg-red-50'
+                }`}
+              >
+                ⚠️ חוסרים ({stats.low})
+              </button>
+              <button
+                onClick={() => setFilterType('out')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  filterType === 'out'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                אזל ({stats.out})
+              </button>
+              <button
+                onClick={() => setFilterType('ok')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  filterType === 'ok'
+                    ? 'bg-white text-emerald-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                תקין ({stats.ok})
+              </button>
+            </div>
 
-            {/* Print Reorder Sheet */}
-            <button
-              onClick={handlePrintReorder}
-              disabled={lowStockItems.length === 0}
-              className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white text-xs font-black px-4 py-2 rounded-2xl shadow-md shadow-red-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>הדפסת דוח חוסרים לרכש ({lowStockItems.length})</span>
-            </button>
+          </div>
 
-            {/* Batch Set Stock */}
-            <button
-              onClick={() => setBatchModalOpen(true)}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-2 rounded-2xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Sliders className="w-3.5 h-3.5 text-sky-600" />
-              <span>הגדרת מלאי לכולם</span>
-            </button>
+          {/* Row 2: Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/70">
+            
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Cloud Sync Status & Settings Button */}
+              <button
+                onClick={onOpenCloudModal}
+                className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  cloudConfig.enabled
+                    ? 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100'
+                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                }`}
+                title="הגדרות סנכרון ענן"
+              >
+                <Cloud className={`w-3.5 h-3.5 ${cloudConfig.enabled ? 'text-sky-600' : 'text-slate-400'}`} />
+                <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן'}</span>
+              </button>
 
-            {/* Export JSON */}
-            <button
-              onClick={handleExport}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-2xl border border-slate-300 transition-colors cursor-pointer"
-              title="ייצוא גיבוי מלאי לקובץ"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+              {/* Direct Fetch / Pull Stock from Cloud */}
+              {cloudConfig.enabled && (
+                <button
+                  onClick={onSyncWithCloud}
+                  disabled={isSyncingCloud}
+                  className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="משיכת נתוני המלאי העדכניים מטבלת ה-Google Sheets"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingCloud ? 'מושך...' : 'טען מהענן'}</span>
+                </button>
+              )}
+            </div>
 
-            {/* Import JSON */}
-            <label
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-2xl border border-slate-300 transition-colors cursor-pointer"
-              title="ייבוא גיבוי מלאי מקובץ"
-            >
-              <Upload className="w-4 h-4" />
-              <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Print Reorder Sheet */}
+              <button
+                onClick={handlePrintReorder}
+                disabled={lowStockItems.length === 0}
+                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>הדפס דוח חוסרים ({lowStockItems.length})</span>
+              </button>
+
+              {/* Batch Set Stock */}
+              <button
+                onClick={() => setBatchModalOpen(true)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5 text-sky-600" />
+                <span className="hidden sm:inline">הגדרת מלאי לכולם</span>
+                <span className="sm:hidden">הגדרה כוללת</span>
+              </button>
+
+              {/* Export JSON */}
+              <button
+                onClick={handleExport}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded-xl border border-slate-300 transition-colors cursor-pointer"
+                title="ייצוא גיבוי מלאי לקובץ"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+
+              {/* Import JSON */}
+              <label
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded-xl border border-slate-300 transition-colors cursor-pointer"
+                title="ייבוא גיבוי מלאי מקובץ"
+              >
+                <Upload className="w-4 h-4" />
+                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              </label>
+            </div>
 
           </div>
         </div>
 
-        {/* Stock Items Table */}
-        <div className="overflow-x-auto">
+        {/* 1. Mobile Cards View (Visible on Mobile Screens < 768px) */}
+        <div className="block md:hidden divide-y divide-slate-100 bg-slate-50/40">
+          {filteredItems.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 space-y-2">
+              <Package className="w-8 h-8 text-slate-300 mx-auto" />
+              <div className="font-bold text-slate-700 text-xs">לא נמצאו פריטים</div>
+            </div>
+          ) : (
+            filteredItems.map((item, idx) => {
+              const th = item.minThreshold || globalThreshold;
+              const isLow = item.currentStock < th;
+              const isOut = item.currentStock === 0;
+              const currentUnit = item.unit || "יח'";
+
+              return (
+                <div
+                  key={item.id}
+                  className={`p-3.5 space-y-3 transition-colors ${
+                    isOut
+                      ? 'bg-slate-100/70'
+                      : isLow
+                      ? 'bg-red-50/50'
+                      : 'bg-white'
+                  }`}
+                >
+                  {/* Top Row: Index, Title & Status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[10px] text-slate-400 font-bold">
+                          #{idx + 1}
+                        </span>
+                        <h4 className="font-black text-slate-900 text-sm leading-snug">
+                          {item.name}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="shrink-0">
+                      {isOut ? (
+                        <span className="inline-flex items-center text-[10px] font-black bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">
+                          ⚪ אזל
+                        </span>
+                      ) : isLow ? (
+                        <span className="inline-flex items-center text-[10px] font-black bg-red-100 text-red-700 border border-red-200 px-2.5 py-0.5 rounded-full animate-pulse">
+                          ⚠️ נמוך ({item.currentStock})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                          🟢 תקין ({item.currentStock})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stepper Input Controller for Fingers */}
+                  <div>
+                    <StockRowInput
+                      item={item}
+                      globalThreshold={globalThreshold}
+                      isMobile={true}
+                      onUpdate={(name, newQty) =>
+                        onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit)
+                      }
+                    />
+                  </div>
+
+                  {/* Threshold & Unit Selector Row */}
+                  <div>
+                    <ThresholdAndUnitInput
+                      item={item}
+                      globalThreshold={globalThreshold}
+                      isMobile={true}
+                      onUpdate={(name, currentStock, minTh, unit) =>
+                        onUpdateStockItem(name, currentStock, minTh, unit)
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* 2. Desktop Table View (Visible on Screens >= 768px) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-right border-collapse">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
                 <th className="py-3.5 px-4 w-14 text-center">מס'</th>
                 <th className="py-3.5 px-4">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
-                <th className="py-3.5 px-4 w-52 text-center">יתרת מלאי נוכחית</th>
-                <th className="py-3.5 px-4 w-52 text-center">סף מינימום וסוג אריזה</th>
+                <th className="py-3.5 px-4 w-56 text-center">יתרת מלאי נוכחית</th>
+                <th className="py-3.5 px-4 w-56 text-center">סף מינימום וסוג אריזה</th>
                 <th className="py-3.5 px-4 w-48 text-center">סטטוס מלאי</th>
               </tr>
             </thead>
@@ -573,6 +698,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <StockRowInput
                           item={item}
                           globalThreshold={globalThreshold}
+                          isMobile={false}
                           onUpdate={(name, newQty) =>
                             onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit)
                           }
@@ -584,6 +710,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <ThresholdAndUnitInput
                           item={item}
                           globalThreshold={globalThreshold}
+                          isMobile={false}
                           onUpdate={(name, currentStock, minTh, unit) =>
                             onUpdateStockItem(name, currentStock, minTh, unit)
                           }
@@ -641,6 +768,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="flex items-center gap-3">
               <input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 value={batchQtyInput}
                 onChange={(e) => setBatchQtyInput(e.target.value)}
