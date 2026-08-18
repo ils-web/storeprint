@@ -14,8 +14,22 @@ import {
   ChevronUp,
   AlertTriangle,
   FileCheck,
+  Calendar,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
 import { Order, StockItem } from '../types';
+import {
+  getIsraelWeekRange,
+  isDateInWeek,
+  isDateToday,
+  isDateInLastDays,
+  isDateInCurrentMonth,
+  isDateInCustomRange,
+  formatIsraelDate,
+} from '../utils/dateUtils';
+
+type PeriodFilterType = 'week' | 'today' | 'last7' | 'last30' | 'month' | 'custom' | 'all';
 
 interface OrderTableProps {
   orders: Order[];
@@ -47,7 +61,13 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unprinted' | 'printed'>('all');
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>('week');
+  const [customFromDate, setCustomFromDate] = useState<string>('');
+  const [customToDate, setCustomToDate] = useState<string>('');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+
+  // Current Israel week range
+  const currentWeek = useMemo(() => getIsraelWeekRange(), []);
 
   // Toggle accordion expand/collapse for an order
   const toggleExpand = (id: string) => {
@@ -62,19 +82,35 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     });
   };
 
-  // Filter orders
+  // Filter orders by period, search, dept, status
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      // Dept filter
+      // 1. Period / Date filter
+      if (periodFilter === 'today') {
+        if (!isDateToday(order.parsedDate)) return false;
+      } else if (periodFilter === 'week') {
+        if (!isDateInWeek(order.parsedDate, currentWeek)) return false;
+      } else if (periodFilter === 'last7') {
+        if (!isDateInLastDays(order.parsedDate, 7)) return false;
+      } else if (periodFilter === 'last30') {
+        if (!isDateInLastDays(order.parsedDate, 30)) return false;
+      } else if (periodFilter === 'month') {
+        if (!isDateInCurrentMonth(order.parsedDate)) return false;
+      } else if (periodFilter === 'custom') {
+        if (!isDateInCustomRange(order.parsedDate, customFromDate, customToDate)) return false;
+      }
+      // 'all' includes everything
+
+      // 2. Dept filter
       if (selectedDept !== 'ALL' && order.department !== selectedDept) {
         return false;
       }
 
-      // Printed status filter
+      // 3. Printed status filter
       if (statusFilter === 'unprinted' && order.printed) return false;
       if (statusFilter === 'printed' && !order.printed) return false;
 
-      // Search term filter
+      // 4. Search term filter
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase();
         const matchesId = order.id.toLowerCase().includes(query);
@@ -88,75 +124,133 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
       return true;
     });
-  }, [orders, selectedDept, statusFilter, searchTerm]);
+  }, [
+    orders,
+    periodFilter,
+    currentWeek,
+    customFromDate,
+    customToDate,
+    selectedDept,
+    statusFilter,
+    searchTerm,
+  ]);
 
   const isAllSelected =
     filteredOrders.length > 0 &&
     filteredOrders.every((o) => selectedOrderIds.includes(o.id));
 
-  // Count printed and pending
+  // Count printed and pending for filtered set
   const counts = useMemo(() => {
     let printed = 0;
     let unprinted = 0;
-    orders.forEach((o) => {
+    filteredOrders.forEach((o) => {
       if (o.printed) printed++;
       else unprinted++;
     });
-    return { all: orders.length, printed, unprinted };
-  }, [orders]);
+    return { all: filteredOrders.length, printed, unprinted };
+  }, [filteredOrders]);
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden" dir="rtl">
       
-      {/* Filters & Actions Bar */}
-      <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      {/* Top Filter Bar: Period, Department, Search & Status */}
+      <div className="p-4 bg-slate-50/90 border-b border-slate-200 space-y-3">
         
-        {/* Search Input */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="חיפוש לפי שם מחלקה, פריט, תאריך או מספר הזמנה..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded-2xl pr-9 pl-4 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all placeholder:text-slate-400"
-          />
-        </div>
-
-        {/* Department Filter Dropdown & Status Tabs */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Row 1: Search & Period Filter */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           
-          {/* Department Select */}
-          <div className="relative">
-            <select
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-              className="bg-white border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-            >
-              <option value="ALL">כל המחלקות ({departments.length})</option>
-              {departments.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept}
-                </option>
-              ))}
-            </select>
+          {/* Search Bar */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="חיפוש לפי שם מחלקה, פריט, תאריך או מספר הזמנה..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-2xl pr-9 pl-4 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all placeholder:text-slate-400"
+            />
           </div>
 
+          {/* Period Filter Selector */}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Period Selector Dropdown */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-2xl px-3 py-1.5 shadow-2xs">
+              <Calendar className="w-4 h-4 text-sky-600 shrink-0" />
+              <span className="text-[11px] font-bold text-slate-500">תקופה:</span>
+              <select
+                value={periodFilter}
+                onChange={(e) => setPeriodFilter(e.target.value as PeriodFilterType)}
+                className="bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
+              >
+                <option value="week">השבוע הנוכחי (ברירת מחדל)</option>
+                <option value="today">היום בלבד</option>
+                <option value="last7">7 ימים אחרונים</option>
+                <option value="last30">30 ימים אחרונים</option>
+                <option value="month">החודש הנוכחי</option>
+                <option value="custom">טווח תאריכים מותאם...</option>
+                <option value="all">כל השנה (כל ההזמנות)</option>
+              </select>
+            </div>
+
+            {/* Custom Date Pickers (visible only when 'custom' is selected) */}
+            {periodFilter === 'custom' && (
+              <div className="flex items-center gap-1.5 bg-white border border-sky-300 rounded-2xl px-2.5 py-1 text-xs">
+                <span className="text-[11px] font-bold text-slate-500">מ-:</span>
+                <input
+                  type="date"
+                  value={customFromDate}
+                  onChange={(e) => setCustomFromDate(e.target.value)}
+                  className="text-xs font-semibold focus:outline-none"
+                />
+                <span className="text-[11px] font-bold text-slate-500">עד:</span>
+                <input
+                  type="date"
+                  value={customToDate}
+                  onChange={(e) => setCustomToDate(e.target.value)}
+                  className="text-xs font-semibold focus:outline-none"
+                />
+              </div>
+            )}
+
+            {/* Department Select */}
+            <div className="relative">
+              <select
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+                className="bg-white border border-slate-300 rounded-2xl px-3.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">כל המחלקות ({departments.length})</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* Row 2: Status Tabs & Quick Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1 border-t border-slate-200/80">
+          
           {/* Status Tabs */}
           <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-xs">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'all'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              הכל ({counts.all})
+              הכל בתקופה ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('unprinted')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'unprinted'
                   ? 'bg-white text-amber-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -166,7 +260,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             </button>
             <button
               onClick={() => setStatusFilter('printed')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'printed'
                   ? 'bg-white text-emerald-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -176,17 +270,37 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             </button>
           </div>
 
-          {/* Mass Print Button */}
-          {selectedOrderIds.length > 0 && (
-            <button
-              onClick={onMassPrint}
-              className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>הדפס נבחרים ({selectedOrderIds.length})</span>
-            </button>
-          )}
+          {/* Active Filter Info & Mass Print */}
+          <div className="flex items-center gap-2">
+            
+            {/* Active Period Badge */}
+            <span className="text-[11px] text-slate-500 bg-slate-200/60 border border-slate-300/60 px-2.5 py-1 rounded-xl font-medium hidden sm:inline-flex items-center gap-1">
+              <Clock className="w-3 h-3 text-sky-600" />
+              <span>
+                {periodFilter === 'week' && `השבוע: ${currentWeek.formattedRange}`}
+                {periodFilter === 'today' && 'סינון: היום בלבד'}
+                {periodFilter === 'last7' && 'סינון: 7 ימים אחרונים'}
+                {periodFilter === 'last30' && 'סינון: 30 ימים אחרונים'}
+                {periodFilter === 'month' && 'סינון: החודש הנוכחי'}
+                {periodFilter === 'custom' && 'סינון: טווח מותאם'}
+                {periodFilter === 'all' && `כל ההזמנות (${orders.length})`}
+              </span>
+            </span>
+
+            {/* Mass Print Button */}
+            {selectedOrderIds.length > 0 && (
+              <button
+                onClick={onMassPrint}
+                className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black px-4 py-1.5 rounded-2xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>הדפס נבחרים ({selectedOrderIds.length})</span>
+              </button>
+            )}
+          </div>
+
         </div>
+
       </div>
 
       {/* Orders Table */}
@@ -218,13 +332,35 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-16 text-center text-slate-500">
-                  <div className="max-w-md mx-auto space-y-2">
-                    <Package className="w-10 h-10 text-slate-300 mx-auto" />
-                    <div className="font-bold text-slate-700 text-sm">לא נמצאו הזמנות</div>
+                <td colSpan={7} className="py-14 text-center text-slate-500">
+                  <div className="max-w-md mx-auto space-y-3">
+                    <Calendar className="w-10 h-10 text-slate-300 mx-auto" />
+                    <div className="font-extrabold text-slate-800 text-sm">
+                      {periodFilter === 'week'
+                        ? 'אין הזמנות לתקופת השבוע הנוכחי'
+                        : 'לא נמצאו הזמנות לפי הסינון שנבחר'}
+                    </div>
                     <p className="text-xs text-slate-400">
-                      נסו לשנות את מסנני החיפוש או לבחור מחלקה אחרת.
+                      {orders.length > 0
+                        ? `בטבלה קיימות ${orders.length} הזמנות מתקופות אחרות.`
+                        : 'אין כרגע נתונים בטבלה.'}
                     </p>
+                    {orders.length > 0 && periodFilter !== 'all' && (
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          onClick={() => setPeriodFilter('last30')}
+                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl text-xs border border-sky-200 transition-colors cursor-pointer"
+                        >
+                          הצג 30 ימים אחרונים
+                        </button>
+                        <button
+                          onClick={() => setPeriodFilter('all')}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 transition-colors cursor-pointer"
+                        >
+                          הצג את כל ההזמנות ({orders.length})
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -488,7 +624,14 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       {/* Footer Info */}
       <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
         <div>
-          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong>
+          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong> (סינון תקופה: {
+            periodFilter === 'week' ? 'השבוע' :
+            periodFilter === 'today' ? 'היום' :
+            periodFilter === 'last7' ? '7 ימים אחרונים' :
+            periodFilter === 'last30' ? '30 ימים אחרונים' :
+            periodFilter === 'month' ? 'החודש' :
+            periodFilter === 'custom' ? 'מותאם אישית' : 'הכל'
+          })
         </div>
         <div className="text-slate-400">
           * בלחיצה על «הדפסה» הכמויות מתקזזות באופן אוטומטי מיתרות המלאי של המחסן

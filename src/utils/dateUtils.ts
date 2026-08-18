@@ -1,15 +1,17 @@
 import { WeekRange } from '../types';
 
 /**
- * Gets the start (Monday) and end (Sunday) dates of the current calendar week.
+ * Gets the start (Sunday) and end (Saturday) dates of the Israeli calendar week.
  */
-export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange {
+export function getIsraelWeekRange(referenceDate: Date = new Date()): WeekRange {
   const current = new Date(referenceDate);
-  const day = current.getDay();
-  const diffToMonday = current.getDate() - day + (day === 0 ? -6 : 1);
+  const day = current.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+  // Calculate difference to Sunday (0)
+  const diffToSunday = -day;
 
   const startDate = new Date(current);
-  startDate.setDate(diffToMonday);
+  startDate.setDate(current.getDate() + diffToSunday);
   startDate.setHours(0, 0, 0, 0);
 
   const endDate = new Date(startDate);
@@ -27,7 +29,7 @@ export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange
   const weekNumber = 1 + Math.round((firstThursday - tempDate.valueOf()) / 604800000);
 
   const formatDay = (d: Date) =>
-    d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return {
     startDate,
@@ -36,6 +38,77 @@ export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange
     year: startDate.getFullYear(),
     formattedRange: `${formatDay(startDate)} — ${formatDay(endDate)}`,
   };
+}
+
+/**
+ * Legacy get current week range (Sunday to Saturday)
+ */
+export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange {
+  return getIsraelWeekRange(referenceDate);
+}
+
+/**
+ * Checks if a date falls on today (in local time)
+ */
+export function isDateToday(date: Date | null): boolean {
+  if (!date) return false;
+  const now = new Date();
+  return (
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear()
+  );
+}
+
+/**
+ * Checks if a date is within the last N days
+ */
+export function isDateInLastDays(date: Date | null, days: number = 7): boolean {
+  if (!date) return false;
+  const now = new Date();
+  const cutoff = new Date();
+  cutoff.setDate(now.getDate() - days);
+  cutoff.setHours(0, 0, 0, 0);
+  return date.getTime() >= cutoff.getTime();
+}
+
+/**
+ * Checks if a date is in the current month
+ */
+export function isDateInCurrentMonth(date: Date | null): boolean {
+  if (!date) return false;
+  const now = new Date();
+  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+}
+
+/**
+ * Checks if a date falls within a custom from..to range
+ */
+export function isDateInCustomRange(
+  date: Date | null,
+  fromDateStr: string,
+  toDateStr: string
+): boolean {
+  if (!date) return false;
+  const time = date.getTime();
+
+  if (fromDateStr) {
+    const from = new Date(fromDateStr);
+    from.setHours(0, 0, 0, 0);
+    if (!isNaN(from.getTime()) && time < from.getTime()) {
+      return false;
+    }
+  }
+
+  if (toDateStr) {
+    const to = new Date(toDateStr);
+    to.setHours(23, 59, 59, 999);
+    if (!isNaN(to.getTime()) && time > to.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -48,7 +121,13 @@ export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange
 export function parseSheetDate(value: string | number | null | undefined): Date | null {
   if (!value) return null;
 
-  if (typeof value === 'number' || (!isNaN(Number(value)) && !String(value).includes('.') && !String(value).includes('-') && !String(value).includes('/'))) {
+  if (
+    typeof value === 'number' ||
+    (!isNaN(Number(value)) &&
+      !String(value).includes('.') &&
+      !String(value).includes('-') &&
+      !String(value).includes('/'))
+  ) {
     const serial = Number(value);
     if (serial > 30000 && serial < 60000) {
       const utcDays = Math.floor(serial - 25569);
@@ -119,11 +198,11 @@ export function isDateInWeek(date: Date | null, weekRange: WeekRange): boolean {
 }
 
 /**
- * Formats a date for display
+ * Formats a date for display (Israeli format: DD/MM/YYYY)
  */
-export function formatRuDate(date: Date | null, includeTime: boolean = false): string {
+export function formatIsraelDate(date: Date | null, includeTime: boolean = false): string {
   if (!date) return '—';
-  return date.toLocaleDateString('ru-RU', {
+  return date.toLocaleDateString('he-IL', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
