@@ -62,7 +62,7 @@ export default function App() {
     }
   });
 
-  // Warehouse Stock State
+  // Warehouse Stock State (Initialized from localStorage)
   const [stock, setStock] = useState<Record<string, StockItem>>(() => loadStoredStock());
 
   // Cloud Sync State
@@ -97,34 +97,33 @@ export default function App() {
   // Count low stock items (< 10)
   const lowStockItems = useMemo(() => getLowStockItems(stock, 10), [stock]);
 
-  // Sync with Cloud
+  // Sync / Pull Stock from Cloud (Google Sheet)
   const handleSyncWithCloud = useCallback(async () => {
     if (!cloudConfig.endpointUrl) return false;
     setIsSyncingCloud(true);
     try {
       const cloudData = await fetchStockFromCloud(cloudConfig);
-      if (cloudData && typeof cloudData === 'object') {
-        if (Object.keys(cloudData).length > 0) {
-          setStock(cloudData);
-          saveStoredStock(cloudData);
-        } else {
-          // If cloud data is empty (fresh sheet), initialize it with local stock
-          pushStockToCloud(stock, cloudConfig).catch(() => {});
-        }
-        setSuccessMessage('המלאי סונכרן בהצלחה מול הטבלה בענן! ☁️');
+      if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
+        // Authoritative stock from Google Sheets
+        setStock((prevLocal) => {
+          const merged = { ...prevLocal, ...cloudData };
+          saveStoredStock(merged);
+          return merged;
+        });
+        setSuccessMessage('המלאי סונכרן ונטען בהצלחה מטבלת המחסן בענן! ☁️');
         setTimeout(() => setSuccessMessage(null), 4000);
         return true;
       }
       return false;
     } catch (err: any) {
-      console.warn('Cloud sync failed:', err);
+      console.warn('Cloud sync fetch failed:', err);
       return false;
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [cloudConfig, stock]);
+  }, [cloudConfig]);
 
-  // Load orders from Google Sheet
+  // Load orders from Google Sheet (Read-Only)
   const loadOrders = useCallback(async (isSilent: boolean = false) => {
     if (!isSilent) setIsLoading(true);
     setErrorMessage(null);
@@ -145,7 +144,7 @@ export default function App() {
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
 
-        // Sync stock map with product headers
+        // Ensure stock map contains all product headers without overwriting existing quantities
         setStock((prevStock) => {
           const synced = syncStockWithProductHeaders(result.productHeaders, prevStock);
           saveStoredStock(synced);
@@ -173,15 +172,15 @@ export default function App() {
     }
   }, [spreadsheetId, gid, autoRefreshSec, orders.length, printedOrderIds]);
 
-  // Initial Load & Cloud Sync
+  // Initial Load: Load orders and pull cloud stock
   useEffect(() => {
     loadOrders();
-    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+    if (cloudConfig.endpointUrl) {
       handleSyncWithCloud();
     }
   }, []);
 
-  // Auto-Refresh Countdown
+  // Auto-Refresh Countdown for orders
   useEffect(() => {
     if (autoRefreshSec <= 0) return;
 
@@ -285,10 +284,18 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 4000);
   };
 
-  // Trigger Print Confirmation Modal
+  // Trigger Print Confirmation Modal (for full control)
   const handleSinglePrint = (order: Order) => {
     setOrdersForConfirm([order]);
     setIsPrintConfirmOpen(true);
+  };
+
+  // Direct Quick Print as Copy (guaranteed NO stock deduction)
+  const handleDirectCopyPrint = (order: Order) => {
+    printOrdersHtml([order], printSettings, true);
+    markOrdersPrinted([order.id], true);
+    setSuccessMessage(`הזמנה עבור ${order.department} הודפסה כהעתק (ללא שום קיזוז מהמלאי) 📄`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   const handleMassPrint = () => {
@@ -300,10 +307,10 @@ export default function App() {
 
   // Execution after user chooses in PrintConfirmModal
   const handleExecutePrint = (ordersToPrint: Order[], deductFromStock: boolean, isCopy: boolean) => {
-    // 1. Print document (with copy badge if duplicate)
+    // 1. Print document
     printOrdersHtml(ordersToPrint, printSettings, isCopy);
 
-    // 2. Deduct from stock if requested
+    // 2. Deduct from stock ONLY if deductFromStock === true
     if (deductFromStock) {
       const deduction = deductOrdersFromStock(ordersToPrint, stock);
       setStock(deduction.updatedStock);
@@ -367,12 +374,7 @@ export default function App() {
     setCloudConfig(newCfg);
     saveCloudConfig(newCfg);
     if (newCfg.endpointUrl) {
-      pushStockToCloud(stock, newCfg)
-        .then(() => {
-          setSuccessMessage('טבלת המחסן החדשה חוברה ואוכלסה בהצלחה! ☁️');
-          setTimeout(() => setSuccessMessage(null), 4000);
-        })
-        .catch(() => {});
+      handleSyncWithCloud();
     }
   };
 
@@ -447,6 +449,7 @@ export default function App() {
             onToggleSelectOrder={handleToggleSelectOrder}
             onSelectAllOrders={handleSelectAllOrders}
             onSinglePrint={handleSinglePrint}
+            onDirectCopyPrint={handleDirectCopyPrint}
             onPreviewOrder={handlePreviewOrder}
             onMassPrint={handleMassPrint}
             onTogglePrintedStatus={handleTogglePrintedStatus}
@@ -473,6 +476,10 @@ export default function App() {
         orders={previewOrders}
         settings={printSettings}
         onUpdateSettings={setPrintSettings}
+        onOpenConfirmPrint={(ordersToConfirm) => {
+          setOrdersForConfirm(ordersToConfirm);
+          setIsPrintConfirmOpen(true);
+        }}
       />
 
       {/* Print Confirmation & Stock Control Modal */}

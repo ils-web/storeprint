@@ -17,6 +17,7 @@ import {
   Calendar,
   Filter,
   RotateCcw,
+  Copy,
 } from 'lucide-react';
 import { Order, StockItem } from '../types';
 import {
@@ -39,6 +40,7 @@ interface OrderTableProps {
   onToggleSelectOrder: (id: string) => void;
   onSelectAllOrders: (selected: boolean) => void;
   onSinglePrint: (order: Order) => void;
+  onDirectCopyPrint: (order: Order) => void;
   onPreviewOrder: (order: Order) => void;
   onMassPrint: () => void;
   onTogglePrintedStatus: (orderId: string) => void;
@@ -53,6 +55,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   onToggleSelectOrder,
   onSelectAllOrders,
   onSinglePrint,
+  onDirectCopyPrint,
   onPreviewOrder,
   onMassPrint,
   onTogglePrintedStatus,
@@ -193,7 +196,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               </select>
             </div>
 
-            {/* Custom Date Pickers (visible only when 'custom' is selected) */}
+            {/* Custom Date Pickers */}
             {periodFilter === 'custom' && (
               <div className="flex items-center gap-1.5 bg-white border border-sky-300 rounded-2xl px-2.5 py-1 text-xs">
                 <span className="text-[11px] font-bold text-slate-500">מ-:</span>
@@ -326,7 +329,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               <th className="py-3.5 px-4">פירוט פריטים להספקה (עמודות E..FM)</th>
               <th className="py-3.5 px-4 w-28 text-center">כמות פריטים</th>
               <th className="py-3.5 px-4 w-32 text-center">סטטוס הדפסה</th>
-              <th className="py-3.5 px-4 w-32 text-center">פעולות</th>
+              <th className="py-3.5 px-4 w-44 text-center">פעולות הדפסה</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
@@ -521,16 +524,29 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                         </button>
                       </td>
 
-                      {/* Action Buttons */}
+                      {/* Action Buttons: Print, Copy Print (No deduction), Preview */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          
+                          {/* Print with Stock Control */}
                           <button
                             onClick={() => onSinglePrint(order)}
                             className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
-                            title="הדפס הזמנה (קיזוז מהמלאי)"
+                            title="הדפסה ובקרת מלאי"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
+
+                          {/* Direct Copy Print (NO stock deduction guaranteed) */}
+                          <button
+                            onClick={() => onDirectCopyPrint(order)}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
+                            title="הדפסת העתק (ללא קיזוז מהמלאי)"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+
+                          {/* Preview */}
                           <button
                             onClick={() => onPreviewOrder(order)}
                             className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-xl transition-colors cursor-pointer"
@@ -538,6 +554,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+
                         </div>
                       </td>
                     </tr>
@@ -624,17 +641,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       {/* Footer Info */}
       <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
         <div>
-          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong> (סינון תקופה: {
-            periodFilter === 'week' ? 'השבוע' :
-            periodFilter === 'today' ? 'היום' :
-            periodFilter === 'last7' ? '7 ימים אחרונים' :
-            periodFilter === 'last30' ? '30 ימים אחרונים' :
-            periodFilter === 'month' ? 'החודש' :
-            periodFilter === 'custom' ? 'מותאם אישית' : 'הכל'
-          })
+          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong>
         </div>
         <div className="text-slate-400">
-          * בלחיצה על «הדפסה» הכמויות מתקזזות באופן אוטומטי מיתרות המלאי של המחסן
+          * בלחיצה על «הדפסה» נפתח חלון אישור ובקרת מלאי. בלחיצה על «העתק» מודפסת העתקה ללא שום קיזוז מהמלאי
         </div>
       </div>
     </div>

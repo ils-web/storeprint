@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Cloud,
   CloudCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -273,14 +274,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן...'}</span>
             </button>
 
+            {/* Direct Fetch / Pull Stock from Cloud */}
             {cloudConfig.enabled && (
               <button
                 onClick={onSyncWithCloud}
                 disabled={isSyncingCloud}
-                className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white p-2 rounded-2xl shadow-xs transition-colors cursor-pointer"
-                title="סנכרן מלאי עכשיו מול הענן"
+                className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="משיכת נתוני המלאי העדכניים מטבלת ה-Google Sheets"
               >
-                <RotateCcw className={`w-4 h-4 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                <span>{isSyncingCloud ? 'מושך נתונים...' : 'טען מלאי מהענן'}</span>
               </button>
             )}
 
@@ -484,7 +487,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             מוצגים פריטים: <strong>{filteredItems.length}</strong> מתוך <strong>{stockList.length}</strong>
           </div>
           <div className="text-slate-400">
-            * בכל הדפסת הזמנה מתבצע קיזוז אוטומטי מיתרות המלאי
+            * בכל הדפסה רגילה מבוצע קיזוז מהמלאי. בלחיצה על «העתק» לא מבוצע שום קיזוז
           </div>
         </div>
 
