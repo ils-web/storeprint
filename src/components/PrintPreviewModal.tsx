@@ -17,6 +17,7 @@ interface PrintPreviewModalProps {
   orders: Order[];
   settings: PrintSettings;
   onUpdateSettings: (newSettings: PrintSettings) => void;
+  onOpenConfirmPrint?: (orders: Order[]) => void;
 }
 
 export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
@@ -25,13 +26,19 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   orders,
   settings,
   onUpdateSettings,
+  onOpenConfirmPrint,
 }) => {
   if (!isOpen || orders.length === 0) return null;
 
   const previewOrder = orders[0];
 
   const handlePrint = () => {
-    printOrdersHtml(orders, settings);
+    if (onOpenConfirmPrint) {
+      onClose();
+      onOpenConfirmPrint(orders);
+    } else {
+      printOrdersHtml(orders, settings);
+    }
   };
 
   return (

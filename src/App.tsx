@@ -4,6 +4,7 @@ import { OrderTable } from './components/OrderTable';
 import { WarehouseView } from './components/WarehouseView';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
+import { PrintConfirmModal } from './components/PrintConfirmModal';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import {
   DEFAULT_SPREADSHEET_ID,
@@ -68,6 +69,10 @@ export default function App() {
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  // Print Confirm Modal State
+  const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
+  const [ordersForConfirm, setOrdersForConfirm] = useState<Order[]>([]);
 
   // Auto-refresh timer
   const [autoRefreshSec, setAutoRefreshSec] = useState<number>(30);
@@ -280,61 +285,57 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 4000);
   };
 
-  // Printing with Auto-Deduction & Cloud Push
+  // Trigger Print Confirmation Modal
   const handleSinglePrint = (order: Order) => {
-    // 1. Print document
-    printOrdersHtml([order], printSettings);
-
-    // 2. Deduct items from warehouse stock
-    const deduction = deductOrdersFromStock([order], stock);
-    setStock(deduction.updatedStock);
-
-    // Push to cloud if configured
-    if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
-      pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
-    }
-
-    // 3. Mark order as printed
-    markOrdersPrinted([order.id], true);
-
-    // 4. Feedback
-    setSuccessMessage(`הזמנה עבור ${order.department} הודפסה. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`);
-    setTimeout(() => setSuccessMessage(null), 4000);
-
-    if (deduction.newLowStockItems.length > 0) {
-      setWarningMessage(
-        `⚠️ שים לב: ${deduction.newLowStockItems.length} פריטים ירדו מתחת לסף 10 יח' במלאי!`
-      );
-      setTimeout(() => setWarningMessage(null), 6000);
-    }
+    setOrdersForConfirm([order]);
+    setIsPrintConfirmOpen(true);
   };
 
   const handleMassPrint = () => {
     const ordersToPrint = orders.filter((o) => selectedOrderIds.includes(o.id));
     if (ordersToPrint.length === 0) return;
+    setOrdersForConfirm(ordersToPrint);
+    setIsPrintConfirmOpen(true);
+  };
 
-    printOrdersHtml(ordersToPrint, printSettings);
+  // Execution after user chooses in PrintConfirmModal
+  const handleExecutePrint = (ordersToPrint: Order[], deductFromStock: boolean, isCopy: boolean) => {
+    // 1. Print document (with copy badge if duplicate)
+    printOrdersHtml(ordersToPrint, printSettings, isCopy);
 
-    const deduction = deductOrdersFromStock(ordersToPrint, stock);
-    setStock(deduction.updatedStock);
+    // 2. Deduct from stock if requested
+    if (deductFromStock) {
+      const deduction = deductOrdersFromStock(ordersToPrint, stock);
+      setStock(deduction.updatedStock);
 
-    if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
-      pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
-    }
+      if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
+        pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
+      }
 
-    markOrdersPrinted(selectedOrderIds, true);
-
-    setSuccessMessage(
-      `הודפסו ${ordersToPrint.length} הזמנות בהצלחה. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`
-    );
-    setTimeout(() => setSuccessMessage(null), 4000);
-
-    if (deduction.newLowStockItems.length > 0) {
-      setWarningMessage(
-        `⚠️ שים לב: ${deduction.newLowStockItems.length} פריטים ירדו מתחת לסף 10 יח' במלאי!`
+      setSuccessMessage(
+        ordersToPrint.length === 1
+          ? `הזמנה עבור ${ordersToPrint[0].department} הודפסה. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`
+          : `הודפסו ${ordersToPrint.length} הזמנות. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`
       );
-      setTimeout(() => setWarningMessage(null), 7000);
+      setTimeout(() => setSuccessMessage(null), 4000);
+
+      if (deduction.newLowStockItems.length > 0) {
+        setWarningMessage(
+          `⚠️ שים לב: ${deduction.newLowStockItems.length} פריטים ירדו מתחת לסף 10 יח' במלאי!`
+        );
+        setTimeout(() => setWarningMessage(null), 6000);
+      }
+    } else {
+      setSuccessMessage(
+        ordersToPrint.length === 1
+          ? `הזמנה עבור ${ordersToPrint[0].department} הודפסה כהעתק (ללא קיזוז מהמלאי) 📄`
+          : `הודפסו ${ordersToPrint.length} הזמנות כהעתק (ללא קיזוז מהמלאי) 📄`
+      );
+      setTimeout(() => setSuccessMessage(null), 4000);
     }
+
+    // 3. Mark orders as printed
+    markOrdersPrinted(ordersToPrint.map((o) => o.id), true);
   };
 
   const handlePreviewOrder = (order: Order) => {
@@ -366,7 +367,6 @@ export default function App() {
     setCloudConfig(newCfg);
     saveCloudConfig(newCfg);
     if (newCfg.endpointUrl) {
-      // Auto-push current stock to cloud to populate the new sheet
       pushStockToCloud(stock, newCfg)
         .then(() => {
           setSuccessMessage('טבלת המחסן החדשה חוברה ואוכלסה בהצלחה! ☁️');
@@ -473,6 +473,15 @@ export default function App() {
         orders={previewOrders}
         settings={printSettings}
         onUpdateSettings={setPrintSettings}
+      />
+
+      {/* Print Confirmation & Stock Control Modal */}
+      <PrintConfirmModal
+        isOpen={isPrintConfirmOpen}
+        onClose={() => setIsPrintConfirmOpen(false)}
+        ordersToPrint={ordersForConfirm}
+        stock={stock}
+        onConfirmPrint={handleExecutePrint}
       />
 
       {/* Cloud Sync Modal */}

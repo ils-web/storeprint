@@ -17,7 +17,7 @@ function escapeHtml(str: string | null | undefined): string {
  * Generates an HTML document for department orders and opens the print dialog.
  * 100% accurate Hebrew RTL rendering and styling.
  */
-export function printOrdersHtml(orders: Order[], settings: PrintSettings) {
+export function printOrdersHtml(orders: Order[], settings: PrintSettings, isCopy: boolean = false) {
   if (!orders || orders.length === 0) return;
 
   const printWindow = window.open('', '_blank', 'width=950,height=850');
@@ -44,7 +44,7 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings) {
     <html lang="he" dir="rtl">
     <head>
       <meta charset="UTF-8">
-      <title>הדפסת הזמנות - ${orders[0]?.department || 'הזמנה'}</title>
+      <title>הדפסת הזמנות - ${orders[0]?.department || 'הזמנה'}${isCopy ? ' (העתק)' : ''}</title>
       <style>
         ${pageCss}
         * { box-sizing: border-box; }
@@ -164,6 +164,7 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings) {
           border-top: 1.5px dashed #cbd5e1;
           display: flex;
           justify-content: space-between;
+          align-items: center;
           font-size: 10.5pt;
           color: #475569;
         }
@@ -192,6 +193,13 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings) {
                 </div>
               </div>
             </div>
+            ${
+              isCopy
+                ? `<div style="border: 2.5px dashed #dc2626; color: #dc2626; padding: 4px 14px; border-radius: 8px; font-size: 14pt; font-weight: 900; background: #fef2f2; transform: rotate(-3deg);">
+                    העתק (ללא קיזוז מלאי)
+                   </div>`
+                : ''
+            }
           </div>
 
           <table class="items-table">
@@ -252,14 +260,11 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings) {
 }
 
 /**
- * Generates an HTML document for the Reorder List / Low Stock Items (< 10 units) and opens print dialog
+ * Generates and prints the Reorder / Low Stock defect sheet (< 10 units)
  */
-export function printReorderListHtml(
-  lowStockItems: StockItem[],
-  threshold: number = 10
-) {
+export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: number = 10) {
   if (!lowStockItems || lowStockItems.length === 0) {
-    alert('Нет позиций с остатком меньше указанного порога!');
+    alert('אין פריטים בחוסר כרגע. כל המלאי מעל לסף המינימום!');
     return;
   }
 
@@ -270,10 +275,10 @@ export function printReorderListHtml(
   }
 
   const now = new Date();
-  const dateFormatted = now.toLocaleDateString('he-IL', {
-    year: 'numeric',
-    month: '2-digit',
+  const dateStr = now.toLocaleDateString('he-IL', {
     day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -283,7 +288,7 @@ export function printReorderListHtml(
     <html lang="he" dir="rtl">
     <head>
       <meta charset="UTF-8">
-      <title>דוח חוסרים והזמנת רכש למחסן - ${dateFormatted}</title>
+      <title>דוח חוסרים והזמנת רכש - ${dateStr}</title>
       <style>
         @page { size: A4 portrait; margin: 10mm; }
         * { box-sizing: border-box; }
@@ -293,14 +298,11 @@ export function printReorderListHtml(
           margin: 0;
           padding: 0;
           background: #ffffff;
-          font-size: 11pt;
+          font-size: 11.5pt;
           line-height: 1.35;
           direction: rtl;
         }
-        .page-container {
-          padding: 10px;
-        }
-        .header-box {
+        .header {
           border-bottom: 3px solid #dc2626;
           padding-bottom: 12px;
           margin-bottom: 16px;
@@ -310,91 +312,85 @@ export function printReorderListHtml(
         }
         .title {
           font-size: 20pt;
-          font-weight: 800;
-          color: #b91c1c;
-          margin: 0 0 6px 0;
+          font-weight: 900;
+          color: #991b1b;
+          margin: 0 0 4px 0;
         }
         .subtitle {
           font-size: 11pt;
           color: #475569;
           font-weight: 600;
         }
-        .meta-tags {
-          display: flex;
-          gap: 12px;
-          margin-top: 8px;
-        }
-        .meta-tag {
+        .meta-badge {
           background: #fee2e2;
-          border: 1px solid #fecaca;
           color: #991b1b;
-          padding: 4px 10px;
+          font-weight: 800;
+          padding: 4px 12px;
           border-radius: 6px;
-          font-weight: bold;
-          font-size: 10.5pt;
+          border: 1px solid #fca5a5;
+          font-size: 11pt;
         }
-        .items-table {
+        table {
           width: 100%;
           border-collapse: collapse;
           margin-top: 10px;
-          margin-bottom: 20px;
+          font-size: 10.5pt;
         }
-        .items-table th {
+        th {
           background: #f1f5f9;
           border: 1.5px solid #475569;
           padding: 8px 10px;
           text-align: right;
           font-weight: 800;
           color: #0f172a;
-          font-size: 10.5pt;
         }
-        .items-table td {
+        td {
           border: 1px solid #94a3b8;
-          padding: 8px 10px;
+          padding: 7px 10px;
           vertical-align: middle;
           text-align: right;
         }
-        .items-table tr:nth-child(even) {
+        tr:nth-child(even) {
           background-color: #f8fafc;
         }
-        .num-col {
-          width: 40px;
-          text-align: center !important;
-          font-weight: 700;
-          color: #64748b;
-        }
+        .num-col { width: 36px; text-align: center !important; font-weight: 700; color: #64748b; }
         .stock-col {
-          width: 95px;
+          width: 90px;
           text-align: center !important;
-          font-weight: 800;
+          font-weight: 900;
           font-size: 12pt;
           color: #dc2626;
           background: #fef2f2;
         }
         .threshold-col {
-          width: 75px;
+          width: 90px;
           text-align: center !important;
+          font-weight: 700;
           color: #475569;
-          font-weight: 600;
         }
-        .order-qty-col {
+        .order-col {
           width: 110px;
           text-align: center !important;
-          border-bottom: 2px dashed #0284c7;
         }
         .notes-col {
           width: 130px;
         }
-        .footer-box {
+        .empty-line {
+          display: inline-block;
+          width: 80%;
+          border-bottom: 1.5px dotted #94a3b8;
+          height: 16px;
+        }
+        .footer {
           margin-top: 24px;
           padding-top: 12px;
           border-top: 1.5px dashed #cbd5e1;
           display: flex;
           justify-content: space-between;
           font-size: 10.5pt;
-          color: #334155;
+          color: #475569;
         }
-        .sign-line {
+        .signature-line {
           display: inline-block;
           width: 160px;
           border-bottom: 1.5px solid #0f172a;
@@ -403,51 +399,50 @@ export function printReorderListHtml(
       </style>
     </head>
     <body>
-      <div class="page-container">
-        <div class="header-box">
-          <div>
-            <h1 class="title">📋 דוח חוסרים והזמנת רכש למחסן</h1>
-            <div class="subtitle">רשימת פריטים שיתרת המלאי שלהם נמוכה מסף המינימום (&lt; ${threshold} יחידות)</div>
-            <div class="meta-tags">
-              <div class="meta-tag">תאריך הפקה: ${dateFormatted}</div>
-              <div class="meta-tag">סה"כ פריטים להזמנה: ${lowStockItems.length}</div>
-            </div>
-          </div>
+      <div class="header">
+        <div>
+          <h1 class="title">דוח חוסרים והזמנת רכש (מתחת ל-${minThreshold} יחידות)</h1>
+          <div class="subtitle">רשימת פריטים שיתרת המלאי שלהם נמוכה ומחייבת הזמנת רכש דחופה</div>
         </div>
+        <div style="text-align: left;">
+          <div class="meta-badge">${lowStockItems.length} פריטים בחוסר</div>
+          <div style="font-size: 10pt; color: #64748b; margin-top: 6px;">תאריך הפקה: ${dateStr}</div>
+        </div>
+      </div>
 
-        <table class="items-table">
-          <thead>
+      <table>
+        <thead>
+          <tr>
+            <th class="num-col">№</th>
+            <th>שם הפריט / מק"ט (מתוך טבלת המחסן)</th>
+            <th class="stock-col">יתרת מלאי</th>
+            <th class="threshold-col">סף מינימום</th>
+            <th class="order-col">כמות להזמנה</th>
+            <th class="notes-col">הערות / ספק</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lowStockItems
+            .map(
+              (item, i) => `
             <tr>
-              <th class="num-col">№</th>
-              <th>שם המוצר / פריט (עמודה בטבלה)</th>
-              <th class="stock-col">מלאי נוכחי</th>
-              <th class="threshold-col">סף מינימום</th>
-              <th class="order-qty-col">כמות להזמנה</th>
-              <th class="notes-col">הערות / ספק</th>
+              <td class="num-col">${i + 1}</td>
+              <td style="font-weight: 800; color: #0f172a;">${escapeHtml(item.name)}</td>
+              <td class="stock-col">${item.currentStock}</td>
+              <td class="threshold-col">${item.minThreshold || minThreshold}</td>
+              <td class="order-col"><span class="empty-line"></span></td>
+              <td class="notes-col"><span class="empty-line"></span></td>
             </tr>
-          </thead>
-          <tbody>
-            ${lowStockItems
-              .map(
-                (item, idx) => `
-              <tr>
-                <td class="num-col">${idx + 1}</td>
-                <td style="font-weight: 700; color: #0f172a;">${escapeHtml(item.name)}</td>
-                <td class="stock-col">${item.currentStock}</td>
-                <td class="threshold-col">${item.minThreshold || threshold}</td>
-                <td class="order-qty-col"></td>
-                <td class="notes-col"></td>
-              </tr>
-            `
-              )
-              .join('')}
-          </tbody>
-        </table>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
 
-        <div class="footer-box">
-          <div><strong>סה"כ שורות בדוח:</strong> ${lowStockItems.length} פריטים דורשים אספקה</div>
-          <div><strong>חתימת מנהל מחסן / אחראי רכש:</strong> <span class="sign-line"></span></div>
-        </div>
+      <div class="footer">
+        <div><strong>סה"כ שורות להזמנה:</strong> ${lowStockItems.length} פריטים</div>
+        <div><strong>חתימת מנהל מחסן:</strong> <span class="signature-line"></span></div>
+        <div><strong>אישור רכש / הנהלה:</strong> <span class="signature-line"></span></div>
       </div>
 
       <script>
