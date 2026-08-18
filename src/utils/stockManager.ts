@@ -69,10 +69,16 @@ export function syncStockWithProductHeaders(
         colIndex: idx + 4,
         currentStock: 0,
         minThreshold: DEFAULT_MIN_THRESHOLD,
+        unit: "יח'",
       };
     } else {
-      // Update colIndex in case headers shifted
-      result[cleanName].colIndex = idx + 4;
+      // Update colIndex in case headers shifted, preserving unit and minThreshold
+      result[cleanName] = {
+        ...result[cleanName],
+        colIndex: idx + 4,
+        unit: result[cleanName].unit || "יח'",
+        minThreshold: result[cleanName].minThreshold || DEFAULT_MIN_THRESHOLD,
+      };
     }
   });
 

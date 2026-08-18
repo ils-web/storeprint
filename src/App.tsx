@@ -106,9 +106,27 @@ export default function App() {
     try {
       const cloudData = await fetchStockFromCloud(cloudConfig);
       if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
-        // Authoritative stock from Google Sheets
+        // Merge cloud data with local data, strictly preserving custom packaging units and thresholds
         setStock((prevLocal) => {
-          const merged = { ...prevLocal, ...cloudData };
+          const merged: Record<string, StockItem> = { ...prevLocal };
+          Object.keys(cloudData).forEach((key) => {
+            const cloudItem = cloudData[key];
+            const localItem = prevLocal[key];
+            merged[key] = {
+              ...(localItem || {}),
+              ...cloudItem,
+              // Preserve local custom unit (e.g. 'קופסה', 'מארז') if cloud returned default 'יח''
+              unit:
+                cloudItem.unit && cloudItem.unit !== "יח'"
+                  ? cloudItem.unit
+                  : localItem?.unit || cloudItem.unit || "יח'",
+              // Preserve custom minThreshold
+              minThreshold:
+                cloudItem.minThreshold !== undefined && cloudItem.minThreshold !== 10
+                  ? cloudItem.minThreshold
+                  : localItem?.minThreshold || cloudItem.minThreshold || 10,
+            };
+          });
           saveStoredStock(merged);
           return merged;
         });
