@@ -17,10 +17,13 @@ import {
   CloudCheck,
   RefreshCw,
   SlidersHorizontal,
+  QrCode,
+  Smartphone,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { exportStockToJson, importStockFromJson } from '../utils/stockManager';
+import { PhoneQRModal } from './PhoneQRModal';
 
 export const PACKAGING_UNITS = [
   { value: "יח'", label: "יח' (יחידות)" },
@@ -263,6 +266,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [globalThreshold, setGlobalThreshold] = useState<number>(10);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchQtyInput, setBatchQtyInput] = useState<string>('50');
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
 
   const stockList = useMemo(() => Object.values(stock), [stock]);
 
@@ -508,6 +512,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   <span>{isSyncingCloud ? 'מושך...' : 'טען מהענן'}</span>
                 </button>
               )}
+
+              {/* Phone QR Connect Button */}
+              <button
+                onClick={() => setIsQRModalOpen(true)}
+                className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="הצג קוד QR לחיבור הטלפון למחסן"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>חיבור טלפון (קוד QR) 📱</span>
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -822,6 +836,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Phone QR Modal */}
+      <PhoneQRModal
+        isOpen={isQRModalOpen}
+        onClose={() => setIsQRModalOpen(false)}
+        cloudConfig={cloudConfig}
+        onOpenCloudConfig={onOpenCloudModal}
+      />
 
     </div>
   );
