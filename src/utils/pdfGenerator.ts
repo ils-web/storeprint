@@ -423,18 +423,24 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
         </thead>
         <tbody>
           ${lowStockItems
-            .map(
-              (item, i) => `
+            .map((item, i) => {
+              const th = item.minThreshold || minThreshold;
+              const neededQty = Math.max(1, th - item.currentStock);
+              const unit = escapeHtml(item.unit || "יח'");
+
+              return `
             <tr>
               <td class="num-col">${i + 1}</td>
               <td style="font-weight: 800; color: #0f172a;">${escapeHtml(item.name)}</td>
-              <td class="stock-col">${item.currentStock} ${escapeHtml(item.unit || 'יח\'')}</td>
-              <td class="threshold-col">${item.minThreshold || minThreshold} ${escapeHtml(item.unit || 'יח\'')}</td>
-              <td class="order-col"><span class="empty-line"></span></td>
+              <td class="stock-col">${item.currentStock} ${unit}</td>
+              <td class="threshold-col">${th} ${unit}</td>
+              <td class="order-col" style="font-weight: 900; font-size: 12.5pt; color: #0369a1; background: #f0f9ff; text-align: center;">
+                ${neededQty} ${unit}
+              </td>
               <td class="notes-col"><span class="empty-line"></span></td>
             </tr>
-          `
-            )
+          `;
+            })
             .join('')}
         </tbody>
       </table>

@@ -1,5 +1,20 @@
 import React, { useState } from 'react';
-import { X, Cloud, RefreshCw, Copy, Check, ExternalLink, HelpCircle, ShieldCheck, FileSpreadsheet, PlusCircle, AlertCircle, UploadCloud } from 'lucide-react';
+import {
+  X,
+  Cloud,
+  RefreshCw,
+  Copy,
+  Check,
+  ExternalLink,
+  HelpCircle,
+  ShieldCheck,
+  FileSpreadsheet,
+  PlusCircle,
+  AlertCircle,
+  UploadCloud,
+  Smartphone,
+  QrCode,
+} from 'lucide-react';
 import { CloudSyncConfig } from '../types';
 import { generateGoogleAppsScriptCode, testCloudConnection, normalizeCloudUrl } from '../utils/cloudSync';
 
@@ -26,6 +41,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
   const [testErrorMessage, setTestErrorMessage] = useState<string>('');
   const [connectedSheetUrl, setConnectedSheetUrl] = useState<string>('');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
 
   if (!isOpen) return null;
 
@@ -35,6 +51,17 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
     navigator.clipboard.writeText(scriptCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 3000);
+  };
+
+  const shareUrl = localConfig.endpointUrl
+    ? `https://ils-web.github.io/storeprint/?cloudUrl=${encodeURIComponent(localConfig.endpointUrl)}`
+    : '';
+
+  const handleCopyShareLink = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedShareLink(true);
+    setTimeout(() => setCopiedShareLink(false), 3000);
   };
 
   const handleTest = async () => {
@@ -109,54 +136,37 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Content */}
-        <div className="p-6 space-y-5 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
+        {/* Content Body */}
+        <div className="p-6 space-y-5 text-xs max-h-[80vh] overflow-y-auto">
           
-          {/* Strict Separation Guarantee Banner */}
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="font-extrabold text-sm text-emerald-950">
-                הגנה מלאה: טבלת ההזמנות נשארת לקריאה בלבד
-              </div>
-              <div className="text-emerald-800 text-xs leading-relaxed">
-                טבלת ההזמנות של המחלקות <strong>אינה משתנה כלל</strong>.  
-                הסקריפט יוצר אוטומטית טבלה חדשה בשם <strong>"StorePrint - ניהול מלאי ומחסן"</strong> ב-Google Drive שלכם!
-              </div>
-            </div>
-          </div>
-
-          {/* Endpoint URL Input */}
-          <div className="space-y-1.5">
-            <label className="font-bold text-slate-800 block text-xs">
-              כתובת ה-Web App של טבלת המחסן (URL שמסתיים ב-/exec):
+          {/* Endpoint Input & Test Section */}
+          <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+            <label className="font-black text-slate-900 block text-xs">
+              כתובת ה-Web App של Google Apps Script (מסתיים ב-<code>/exec</code>):
             </label>
-            <input
-              type="url"
-              placeholder="https://script.google.com/macros/s/.../exec"
-              value={localConfig.endpointUrl}
-              onChange={(e) => {
-                setLocalConfig({ ...localConfig, endpointUrl: e.target.value });
-                setTestResult(null);
-              }}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 ltr"
-              dir="ltr"
-            />
-          </div>
-
-          {/* Test Connection Button & Status */}
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
+            
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                placeholder="https://script.google.com/macros/s/.../exec"
+                value={localConfig.endpointUrl}
+                onChange={(e) => setLocalConfig({ ...localConfig, endpointUrl: e.target.value })}
+                className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                dir="ltr"
+              />
               <button
                 type="button"
                 onClick={handleTest}
-                disabled={isTesting || !localConfig.endpointUrl}
-                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                disabled={isTesting}
+                className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-                <span>{isTesting ? 'בודק חיבור...' : 'בדיקת חיבור לטבלת המחסן'}</span>
+                <span>{isTesting ? 'בודק...' : 'בדוק חיבור'}</span>
               </button>
+            </div>
 
+            {/* Test Result Message */}
+            <div>
               {testResult === 'success' && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-emerald-800 bg-emerald-50 border border-emerald-300 px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 animate-fadeIn">
@@ -187,13 +197,45 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 <div className="text-xs leading-relaxed pr-5 font-medium">
                   {testErrorMessage}
                 </div>
-                <div className="text-[11px] text-slate-700 bg-white/80 p-2.5 rounded-lg border border-red-100 pr-3 space-y-1">
-                  <div><strong>צעד קריטי ב-Apps Script:</strong></div>
-                  <div>בחלון ניהול הפריסות (ניהול הפריסות / Manage deployments) לחצו על הכפתור הכחול <strong>לפריסה (Deploy)</strong> בפינה השמאלית התחתונה כדי שהשרת יפרסם את השינויים!</div>
-                </div>
               </div>
             )}
           </div>
+
+          {/* Quick Phone Connect QR Code & Share Link */}
+          {localConfig.endpointUrl && (
+            <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-black text-xs text-sky-900 flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-sky-600" />
+                  <span>חיבור מהיר של הטלפון הנייד (סריקה ב-1 קליק)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyShareLink}
+                  className="text-[11px] bg-white border border-sky-300 text-sky-800 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 hover:bg-sky-100 cursor-pointer shadow-2xs"
+                >
+                  {copiedShareLink ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedShareLink ? 'הועתק!' : 'העתק קישור לטלפון'}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3.5 rounded-xl border border-sky-100">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}`}
+                  alt="QR Code"
+                  className="w-28 h-28 rounded-lg border border-slate-200 shadow-2xs shrink-0"
+                />
+                <div className="text-xs text-slate-700 space-y-1.5">
+                  <p className="font-bold text-slate-900">
+                    פתחו את מצלמת הטלפון וסרקו את קוד ה-QR:
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    הטלפון ייפתח מיד כשהוא מחובר ישירות לאותה טבלת ענן, וכל היתרות והמוצרים יופיעו במלואם ללא צורך בהקלדה ידנית!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Step-by-step Setup Guide */}
           <div className="border border-slate-200 rounded-2xl overflow-hidden">
@@ -224,7 +266,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <ol className="list-decimal list-inside space-y-2 text-slate-700 font-medium leading-relaxed pt-1">
                 <li>הדביקו ושמרו את הקוד (Ctrl + S).</li>
                 <li>לחצו <strong>Deploy (פריסה) ➔ Manage deployments (ניהול פריסות)</strong>.</li>
-                <li>ודאו ש-<em>Execute as</em> הוא <strong>עצמי</strong>, ו-<em>Who has access</em> הוא <strong>כולם</strong>.</li>
+                <li>ודאו ש-<em>Execute as</em> הוא <strong>עצמי (Me)</strong>, ו-<em>Who has access</em> הוא <strong>כולם (Anyone)</strong>.</li>
                 <li><strong>חשוב מאוד:</strong> לחצו על הכפתור הכחול <strong>לפריסה (Deploy)</strong> בפינה התחתונה!</li>
                 <li>העתיקו את הקישור שהתקבל והדביקו כאן.</li>
               </ol>

@@ -6,6 +6,7 @@ import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { PrintConfirmModal } from './components/PrintConfirmModal';
 import { ScrollToTop } from './components/ScrollToTop';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import {
   DEFAULT_SPREADSHEET_ID,
@@ -173,8 +174,36 @@ export default function App() {
     }
   }, [spreadsheetId, gid, autoRefreshSec, orders.length, printedOrderIds]);
 
-  // Initial Load: Load orders and pull cloud stock
+  // Initial Load: Check shared URL params, load orders, pull cloud stock
   useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const sharedCloudUrl = params.get('cloudUrl');
+      if (sharedCloudUrl) {
+        const cleanUrl = decodeURIComponent(sharedCloudUrl);
+        const autoConfig: CloudSyncConfig = {
+          ...cloudConfig,
+          enabled: true,
+          endpointUrl: cleanUrl,
+        };
+        setCloudConfig(autoConfig);
+        saveCloudConfig(autoConfig);
+        fetchStockFromCloud(autoConfig)
+          .then((cloudData) => {
+            if (cloudData) {
+              setStock(cloudData);
+              saveStoredStock(cloudData);
+              setSuccessMessage('טבלת המחסן חוברה בהצלחה מהקישור המשותף! ☁️');
+              setTimeout(() => setSuccessMessage(null), 5000);
+            }
+          })
+          .catch(() => {});
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (e) {
+      console.warn('Failed to parse URL params:', e);
+    }
+
     loadOrders();
     if (cloudConfig.endpointUrl) {
       handleSyncWithCloud();
@@ -506,6 +535,9 @@ export default function App() {
 
       {/* Floating Scroll-to-Top Button */}
       <ScrollToTop />
+
+      {/* PWA Mobile Install Banner */}
+      <PWAInstallBanner />
 
     </div>
   );
