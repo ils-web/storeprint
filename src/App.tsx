@@ -221,7 +221,7 @@ export default function App() {
   };
 
   // Stock Management Handlers
-  const handleUpdateStockItem = (name: string, newQty: number, minThreshold?: number) => {
+  const handleUpdateStockItem = (name: string, newQty: number, minThreshold?: number, unit?: string) => {
     setStock((prev) => {
       const existing = prev[name] || {
         id: `stock-${Date.now()}`,
@@ -229,6 +229,7 @@ export default function App() {
         colIndex: 0,
         currentStock: 0,
         minThreshold: 10,
+        unit: 'יח\'',
       };
 
       const updated = {
@@ -237,6 +238,7 @@ export default function App() {
           ...existing,
           currentStock: newQty,
           minThreshold: minThreshold !== undefined ? minThreshold : (existing.minThreshold || 10),
+          unit: unit !== undefined ? unit : (existing.unit || 'יח\''),
         },
       };
 

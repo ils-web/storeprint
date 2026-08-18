@@ -21,6 +21,18 @@ import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { exportStockToJson, importStockFromJson } from '../utils/stockManager';
 
+export const PACKAGING_UNITS = [
+  { value: "יח'", label: "יח' (יחידות)" },
+  { value: "קופסה", label: "קופסה (קופסאות)" },
+  { value: "מארז", label: "מארז (מארזים)" },
+  { value: "חבילה", label: "חבילה (חבילות)" },
+  { value: "גליל", label: "גליל (גלילים)" },
+  { value: "בקבוק", label: "בקבוק (בקבוקים)" },
+  { value: "דלי", label: "דלי (דליים)" },
+  { value: "סט", label: "סט (ערכות)" },
+  { value: "זוג", label: "זוג (זוגות)" },
+];
+
 interface StockRowInputProps {
   item: StockItem;
   globalThreshold: number;
@@ -31,6 +43,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
   const [val, setVal] = useState<string>(String(item.currentStock));
   const [isFocused, setIsFocused] = useState(false);
   const isLow = item.currentStock < (item.minThreshold || globalThreshold);
+  const currentUnit = item.unit || "יח'";
 
   useEffect(() => {
     if (!isFocused) {
@@ -54,7 +67,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 10))}
         className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
-        title="הורד 10 יח'"
+        title="הורד 10"
       >
         -10
       </button>
@@ -63,40 +76,42 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 1))}
         className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-        title="הורד 1 יח'"
+        title="הורד 1"
       >
         <Minus className="w-3.5 h-3.5" />
       </button>
 
-      {/* Input - commits on Blur or Enter, does NOT re-filter mid-typing */}
-      <input
-        type="number"
-        min={0}
-        value={val}
-        onFocus={() => setIsFocused(true)}
-        onChange={(e) => setVal(e.target.value)}
-        onBlur={() => {
-          setIsFocused(false);
-          commit();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        className={`w-16 text-center font-black text-sm py-1 rounded-xl border focus:outline-none focus:ring-2 ${
-          isLow
-            ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
-            : 'border-slate-200 text-slate-900 focus:ring-sky-500'
-        }`}
-      />
+      {/* Input - commits on Blur or Enter */}
+      <div className="relative flex items-center justify-center">
+        <input
+          type="number"
+          min={0}
+          value={val}
+          onFocus={() => setIsFocused(true)}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={() => {
+            setIsFocused(false);
+            commit();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className={`w-16 text-center font-black text-sm py-1 rounded-xl border focus:outline-none focus:ring-2 ${
+            isLow
+              ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
+              : 'border-slate-200 text-slate-900 focus:ring-sky-500'
+          }`}
+        />
+      </div>
 
       {/* +1 */}
       <button
         type="button"
         onClick={() => onUpdate(item.name, item.currentStock + 1)}
         className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-        title="הוסף 1 יח'"
+        title="הוסף 1"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>
@@ -105,7 +120,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, item.currentStock + 10)}
         className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
-        title="הוסף 10 יח'"
+        title="הוסף 10"
       >
         +10
       </button>
@@ -113,14 +128,19 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
   );
 };
 
-interface ThresholdInputProps {
+interface ThresholdAndUnitInputProps {
   item: StockItem;
   globalThreshold: number;
-  onUpdate: (name: string, currentStock: number, minThreshold: number) => void;
+  onUpdate: (name: string, currentStock: number, minThreshold: number, unit: string) => void;
 }
 
-const ThresholdInput: React.FC<ThresholdInputProps> = ({ item, globalThreshold, onUpdate }) => {
+const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
+  item,
+  globalThreshold,
+  onUpdate,
+}) => {
   const currentTh = item.minThreshold || globalThreshold;
+  const currentUnit = item.unit || "יח'";
   const [val, setVal] = useState<string>(String(currentTh));
   const [isFocused, setIsFocused] = useState(false);
 
@@ -130,35 +150,59 @@ const ThresholdInput: React.FC<ThresholdInputProps> = ({ item, globalThreshold, 
     }
   }, [currentTh, isFocused]);
 
-  const commit = () => {
+  const commitThreshold = () => {
     const parsed = parseInt(val, 10);
     const finalTh = isNaN(parsed) ? 10 : Math.max(1, parsed);
     setVal(String(finalTh));
     if (finalTh !== currentTh) {
-      onUpdate(item.name, item.currentStock, finalTh);
+      onUpdate(item.name, item.currentStock, finalTh, currentUnit);
     }
   };
 
+  const handleUnitChange = (newUnit: string) => {
+    const parsed = parseInt(val, 10);
+    const finalTh = isNaN(parsed) ? currentTh : Math.max(1, parsed);
+    onUpdate(item.name, item.currentStock, finalTh, newUnit);
+  };
+
   return (
-    <div className="inline-flex items-center gap-1.5 text-slate-600">
-      <input
-        type="number"
-        min={1}
-        value={val}
-        onFocus={() => setIsFocused(true)}
-        onChange={(e) => setVal(e.target.value)}
-        onBlur={() => {
-          setIsFocused(false);
-          commit();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        className="w-12 text-center text-xs font-bold py-1 rounded-xl border border-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500"
-      />
-      <span className="text-[11px] text-slate-400 font-medium">יח'</span>
+    <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-2xl px-2 py-1 shadow-2xs">
+      {/* Min threshold number input */}
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] font-bold text-slate-400">סף:</span>
+        <input
+          type="number"
+          min={1}
+          value={val}
+          onFocus={() => setIsFocused(true)}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={() => {
+            setIsFocused(false);
+            commitThreshold();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="w-10 text-center text-xs font-black py-0.5 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+          title="סף כמות מינימום לדוח חוסרים"
+        />
+      </div>
+
+      {/* Packaging / Unit Dropdown Selector */}
+      <select
+        value={currentUnit}
+        onChange={(e) => handleUnitChange(e.target.value)}
+        className="bg-white border border-slate-300 text-slate-800 text-[11px] font-bold py-0.5 px-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+        title="בחר סוג אריזה / יחידת מידה"
+      >
+        {PACKAGING_UNITS.map((u) => (
+          <option key={u.value} value={u.value}>
+            {u.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 };
@@ -169,7 +213,7 @@ interface WarehouseViewProps {
   onOpenCloudModal: () => void;
   onSyncWithCloud: () => void;
   isSyncingCloud: boolean;
-  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number) => void;
+  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string) => void;
   onBatchUpdateStock: (updatedStock: Record<string, StockItem>) => void;
   onSetAllStock: (qty: number) => void;
 }
@@ -297,7 +341,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         {/* In Stock */}
         <div className="bg-white p-4.5 rounded-3xl border border-emerald-100 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider">במלאי תקין (≥ {globalThreshold} יח')</div>
+            <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider">במלאי תקין (≥ {globalThreshold})</div>
             <div className="text-3xl font-black text-emerald-700 mt-1">{stats.ok}</div>
           </div>
           <div className="p-3.5 bg-emerald-50 text-emerald-600 rounded-2xl">
@@ -310,7 +354,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <div>
             <div className="text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span>דוח חוסרים (&lt; {globalThreshold} יח')</span>
+              <span>דוח חוסרים (&lt; {globalThreshold})</span>
             </div>
             <div className="text-3xl font-black text-red-700 mt-1">{stats.low} פריטים</div>
           </div>
@@ -327,7 +371,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         {/* Zero Stock */}
         <div className="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">אזל מהמלאי (0 יח')</div>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">אזל מהמלאי (0)</div>
             <div className="text-3xl font-black text-slate-700 mt-1">{stats.out}</div>
           </div>
           <div className="p-3.5 bg-slate-100 text-slate-500 rounded-2xl">
@@ -476,9 +520,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
                 <th className="py-3.5 px-4 w-14 text-center">מס'</th>
                 <th className="py-3.5 px-4">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
-                <th className="py-3.5 px-4 w-60 text-center">יתרת מלאי נוכחית</th>
-                <th className="py-3.5 px-4 w-36 text-center">סף מינימום</th>
-                <th className="py-3.5 px-4 w-40 text-center">סטטוס מלאי</th>
+                <th className="py-3.5 px-4 w-52 text-center">יתרת מלאי נוכחית</th>
+                <th className="py-3.5 px-4 w-52 text-center">סף מינימום וסוג אריזה</th>
+                <th className="py-3.5 px-4 w-48 text-center">סטטוס מלאי</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -499,6 +543,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   const th = item.minThreshold || globalThreshold;
                   const isLow = item.currentStock < th;
                   const isOut = item.currentStock === 0;
+                  const currentUnit = item.unit || "יח'";
 
                   return (
                     <tr
@@ -523,37 +568,41 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Interactive Stock Adjuster - Buffered input with Blur/Enter commit */}
+                      {/* Interactive Stock Adjuster */}
                       <td className="py-3.5 px-4 text-center">
                         <StockRowInput
                           item={item}
                           globalThreshold={globalThreshold}
-                          onUpdate={(name, newQty) => onUpdateStockItem(name, newQty)}
+                          onUpdate={(name, newQty) =>
+                            onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit)
+                          }
                         />
                       </td>
 
-                      {/* Threshold Input */}
+                      {/* Threshold & Packaging Unit Selector */}
                       <td className="py-3.5 px-4 text-center">
-                        <ThresholdInput
+                        <ThresholdAndUnitInput
                           item={item}
                           globalThreshold={globalThreshold}
-                          onUpdate={onUpdateStockItem}
+                          onUpdate={(name, currentStock, minTh, unit) =>
+                            onUpdateStockItem(name, currentStock, minTh, unit)
+                          }
                         />
                       </td>
 
-                      {/* Status Badge */}
+                      {/* Status Badge with Custom Packaging Unit */}
                       <td className="py-3.5 px-4 text-center">
                         {isOut ? (
                           <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-[11px] font-bold">
-                            ⚪ אזל מהמלאי
+                            ⚪ אזל ({item.currentStock} {currentUnit})
                           </span>
                         ) : isLow ? (
                           <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 px-3 py-1 rounded-full text-[11px] font-black animate-pulse">
-                            ⚠️ מלאי נמוך ({item.currentStock} &lt; {th})
+                            ⚠️ נמוך ({item.currentStock} {currentUnit} &lt; {th})
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-[11px] font-bold">
-                            🟢 מלאי תקין ({item.currentStock})
+                            🟢 תקין ({item.currentStock} {currentUnit})
                           </span>
                         )}
                       </td>

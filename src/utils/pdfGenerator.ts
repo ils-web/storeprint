@@ -428,8 +428,8 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
             <tr>
               <td class="num-col">${i + 1}</td>
               <td style="font-weight: 800; color: #0f172a;">${escapeHtml(item.name)}</td>
-              <td class="stock-col">${item.currentStock}</td>
-              <td class="threshold-col">${item.minThreshold || minThreshold}</td>
+              <td class="stock-col">${item.currentStock} ${escapeHtml(item.unit || 'יח\'')}</td>
+              <td class="threshold-col">${item.minThreshold || minThreshold} ${escapeHtml(item.unit || 'יח\'')}</td>
               <td class="order-col"><span class="empty-line"></span></td>
               <td class="notes-col"><span class="empty-line"></span></td>
             </tr>

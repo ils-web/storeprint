@@ -215,7 +215,19 @@ function doGet(e) {
       var row = data[i];
       var name = String(row[0] || '').trim();
       var currentStock = Number(row[1]) || 0;
-      var minThreshold = Number(row[2]) || 10;
+      var unit = "יח'";
+      var minThreshold = 10;
+      var lastUpdated = '';
+
+      if (row.length >= 5) {
+        unit = String(row[2] || "יח'");
+        minThreshold = Number(row[3]) || 10;
+        lastUpdated = String(row[4] || '');
+      } else {
+        minThreshold = Number(row[2]) || 10;
+        lastUpdated = String(row[3] || '');
+      }
+
       if (name) {
         stock[name] = {
           id: 'stock-' + (i + 3),
@@ -223,7 +235,8 @@ function doGet(e) {
           colIndex: i + 3,
           currentStock: currentStock,
           minThreshold: minThreshold,
-          lastUpdated: String(row[3] || '')
+          unit: unit,
+          lastUpdated: lastUpdated
         };
       }
     }
@@ -290,7 +303,7 @@ function getOrCreateSpreadsheet() {
 
 function saveStockToSheet(sheet, stock) {
   sheet.clearContents();
-  sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
+  sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'יחידת מידה / אריזה', 'סף מינימום', 'עדכון אחרון']);
   
   var nowFormatted = Utilities.formatDate(new Date(), "Asia/Jerusalem", "dd/MM/yyyy HH:mm:ss");
   var rows = [];
@@ -298,14 +311,15 @@ function saveStockToSheet(sheet, stock) {
   for (var name in stock) {
     var item = stock[name];
     var qty = (item.currentStock !== undefined && item.currentStock !== null) ? Number(item.currentStock) : 0;
+    var unit = item.unit || "יח'";
     var threshold = (item.minThreshold !== undefined && item.minThreshold !== null) ? Number(item.minThreshold) : 10;
-    rows.push([name, qty, threshold, nowFormatted]);
+    rows.push([name, qty, unit, threshold, nowFormatted]);
   }
   
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+    sheet.getRange(2, 1, rows.length, 5).setValues(rows);
     // Align columns nicely in Hebrew RTL
-    sheet.getRange(1, 1, rows.length + 1, 4).setHorizontalAlignment("right");
+    sheet.getRange(1, 1, rows.length + 1, 5).setHorizontalAlignment("right");
   }
 }
 
@@ -315,7 +329,7 @@ function createStockSheet(ss) {
     sheet = ss.insertSheet('מלאי');
   }
   sheet.clearContents();
-  sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'סף מינימום', 'עדכון אחרון']);
+  sheet.appendRow(['שם הפריט', 'יתרת מלאי', 'יחידת מידה / אריזה', 'סף מינימום', 'עדכון אחרון']);
   return sheet;
 }
 `;
