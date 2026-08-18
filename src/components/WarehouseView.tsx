@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -20,6 +20,148 @@ import {
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { exportStockToJson, importStockFromJson } from '../utils/stockManager';
+
+interface StockRowInputProps {
+  item: StockItem;
+  globalThreshold: number;
+  onUpdate: (name: string, newQty: number) => void;
+}
+
+const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, onUpdate }) => {
+  const [val, setVal] = useState<string>(String(item.currentStock));
+  const [isFocused, setIsFocused] = useState(false);
+  const isLow = item.currentStock < (item.minThreshold || globalThreshold);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setVal(String(item.currentStock));
+    }
+  }, [item.currentStock, isFocused]);
+
+  const commit = () => {
+    const parsed = parseInt(val, 10);
+    const finalQty = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    setVal(String(finalQty));
+    if (finalQty !== item.currentStock) {
+      onUpdate(item.name, finalQty);
+    }
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs">
+      {/* -10 */}
+      <button
+        type="button"
+        onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 10))}
+        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
+        title="הורד 10 יח'"
+      >
+        -10
+      </button>
+      {/* -1 */}
+      <button
+        type="button"
+        onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 1))}
+        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+        title="הורד 1 יח'"
+      >
+        <Minus className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Input - commits on Blur or Enter, does NOT re-filter mid-typing */}
+      <input
+        type="number"
+        min={0}
+        value={val}
+        onFocus={() => setIsFocused(true)}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={() => {
+          setIsFocused(false);
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={`w-16 text-center font-black text-sm py-1 rounded-xl border focus:outline-none focus:ring-2 ${
+          isLow
+            ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
+            : 'border-slate-200 text-slate-900 focus:ring-sky-500'
+        }`}
+      />
+
+      {/* +1 */}
+      <button
+        type="button"
+        onClick={() => onUpdate(item.name, item.currentStock + 1)}
+        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+        title="הוסף 1 יח'"
+      >
+        <Plus className="w-3.5 h-3.5" />
+      </button>
+      {/* +10 */}
+      <button
+        type="button"
+        onClick={() => onUpdate(item.name, item.currentStock + 10)}
+        className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
+        title="הוסף 10 יח'"
+      >
+        +10
+      </button>
+    </div>
+  );
+};
+
+interface ThresholdInputProps {
+  item: StockItem;
+  globalThreshold: number;
+  onUpdate: (name: string, currentStock: number, minThreshold: number) => void;
+}
+
+const ThresholdInput: React.FC<ThresholdInputProps> = ({ item, globalThreshold, onUpdate }) => {
+  const currentTh = item.minThreshold || globalThreshold;
+  const [val, setVal] = useState<string>(String(currentTh));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setVal(String(currentTh));
+    }
+  }, [currentTh, isFocused]);
+
+  const commit = () => {
+    const parsed = parseInt(val, 10);
+    const finalTh = isNaN(parsed) ? 10 : Math.max(1, parsed);
+    setVal(String(finalTh));
+    if (finalTh !== currentTh) {
+      onUpdate(item.name, item.currentStock, finalTh);
+    }
+  };
+
+  return (
+    <div className="inline-flex items-center gap-1.5 text-slate-600">
+      <input
+        type="number"
+        min={1}
+        value={val}
+        onFocus={() => setIsFocused(true)}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={() => {
+          setIsFocused(false);
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="w-12 text-center text-xs font-bold py-1 rounded-xl border border-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500"
+      />
+      <span className="text-[11px] text-slate-400 font-medium">יח'</span>
+    </div>
+  );
+};
 
 interface WarehouseViewProps {
   stock: Record<string, StockItem>;
@@ -381,80 +523,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Interactive Stock Adjuster */}
+                      {/* Interactive Stock Adjuster - Buffered input with Blur/Enter commit */}
                       <td className="py-3.5 px-4 text-center">
-                        <div className="inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs">
-                          {/* -10 */}
-                          <button
-                            onClick={() => onUpdateStockItem(item.name, Math.max(0, item.currentStock - 10))}
-                            className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
-                            title="הורד 10 יח'"
-                          >
-                            -10
-                          </button>
-                          {/* -1 */}
-                          <button
-                            onClick={() => onUpdateStockItem(item.name, Math.max(0, item.currentStock - 1))}
-                            className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            title="הורד 1 יח'"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Direct Input */}
-                          <input
-                            type="number"
-                            min={0}
-                            value={item.currentStock}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              onUpdateStockItem(item.name, isNaN(val) ? 0 : Math.max(0, val));
-                            }}
-                            className={`w-16 text-center font-black text-sm py-1 rounded-xl border focus:outline-none focus:ring-2 ${
-                              isLow
-                                ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
-                                : 'border-slate-200 text-slate-900 focus:ring-sky-500'
-                            }`}
-                          />
-
-                          {/* +1 */}
-                          <button
-                            onClick={() => onUpdateStockItem(item.name, item.currentStock + 1)}
-                            className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                            title="הוסף 1 יח'"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                          {/* +10 */}
-                          <button
-                            onClick={() => onUpdateStockItem(item.name, item.currentStock + 10)}
-                            className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-[10px] transition-colors cursor-pointer"
-                            title="הוסף 10 יח'"
-                          >
-                            +10
-                          </button>
-                        </div>
+                        <StockRowInput
+                          item={item}
+                          globalThreshold={globalThreshold}
+                          onUpdate={(name, newQty) => onUpdateStockItem(name, newQty)}
+                        />
                       </td>
 
                       {/* Threshold Input */}
                       <td className="py-3.5 px-4 text-center">
-                        <div className="inline-flex items-center gap-1.5 text-slate-600">
-                          <input
-                            type="number"
-                            min={1}
-                            value={item.minThreshold || globalThreshold}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              onUpdateStockItem(
-                                item.name,
-                                item.currentStock,
-                                isNaN(val) ? 10 : Math.max(1, val)
-                              );
-                            }}
-                            className="w-12 text-center text-xs font-bold py-1 rounded-xl border border-slate-300 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                          />
-                          <span className="text-[11px] text-slate-400 font-medium">יח'</span>
-                        </div>
+                        <ThresholdInput
+                          item={item}
+                          globalThreshold={globalThreshold}
+                          onUpdate={onUpdateStockItem}
+                        />
                       </td>
 
                       {/* Status Badge */}
