@@ -186,20 +186,95 @@ export async function pushStockToCloud(
 }
 
 /**
+ * Department order payload structure
+ */
+export interface DepartmentOrderPayload {
+  department: string;
+  orderedBy?: string;
+  patientsCount?: string;
+  notes?: string;
+  items: Record<string, { qty: number; unit?: string }>;
+}
+
+/**
+ * Submits a new department order directly to Google Sheets via Google Apps Script
+ */
+export async function submitDepartmentOrderToCloud(
+  payload: DepartmentOrderPayload,
+  config: CloudSyncConfig
+): Promise<{ success: boolean; message?: string; orderId?: string; timestamp?: string }> {
+  const cleanUrl = normalizeCloudUrl(config.endpointUrl);
+  if (!cleanUrl) {
+    return { success: false, message: 'קישור הענן (Web App) אינו מוגדר בהגדרות המערכת' };
+  }
+
+  const cleanItems: Record<string, string | number> = {};
+  Object.keys(payload.items).forEach((name) => {
+    const item = payload.items[name];
+    if (item.qty > 0) {
+      cleanItems[name] = item.unit && item.unit !== "יח'" ? `${item.qty} ${item.unit}` : item.qty;
+    }
+  });
+
+  const bodyData = {
+    action: 'submitDepartmentOrder',
+    department: payload.department,
+    orderedBy: payload.orderedBy || '',
+    patientsCount: payload.patientsCount || '',
+    notes: payload.notes || '',
+    items: cleanItems,
+    timestamp: formatIsraelDateTime(),
+  };
+
+  try {
+    await fetch(cleanUrl, {
+      method: 'POST',
+      mode: 'no-cors', // Avoid CORS errors across browsers
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(bodyData),
+    });
+
+    return {
+      success: true,
+      orderId: `ORD-${Date.now().toString().slice(-6)}`,
+      timestamp: formatIsraelDateTime(),
+      message: 'ההזמנה נשלחה בהצלחה ונרשמה בטבלת Google Sheets!',
+    };
+  } catch (err: any) {
+    console.warn('Submit department order failed:', err);
+    return {
+      success: false,
+      message: err.message || 'שגיאת רשת בשליחת ההזמנה',
+    };
+  }
+}
+
+/**
  * Generates the Universal Google Apps Script code (works both standalone and inside sheets)
  */
 export function generateGoogleAppsScriptCode(): string {
   return `/**
- * StorePrint Cloud Warehouse Sync Backend (v2.1 - Israel Date Format)
- * עובד אוטומטית גם מתוך טבלת Google Sheets וגם כפרויקט עצמאי ב-Apps Script!
+ * StorePrint Cloud Warehouse & Department Orders Backend (v3.0)
+ * תומך ב: 
+ * 1. סנכרון מלאי מחסן
+ * 2. רישום וכתיבה ישירה של הזמנות מחלקות (במקביל ל-Google Forms)
  */
 
 function doGet(e) {
   try {
+    // If submitting order via GET
+    if (e && e.parameter && e.parameter.action === 'submitDepartmentOrder' && e.parameter.data) {
+      var orderData = JSON.parse(e.parameter.data);
+      var res = submitDepartmentOrderToSheet(orderData);
+      return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var ss = getOrCreateSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
 
-    // If saving via GET parameter
+    // If saving stock via GET parameter
     if (e && e.parameter && e.parameter.action === 'saveStock' && e.parameter.data) {
       var stock = JSON.parse(e.parameter.data);
       saveStockToSheet(sheet, stock);
@@ -223,7 +298,7 @@ function doGet(e) {
       var col3 = row[3];
       var col4 = row[4];
 
-      // Smart column detection (supports both old 4-column sheets and new 5-column sheets with packaging unit)
+      // Smart column detection
       if (typeof col2 === 'string' && isNaN(Number(col2)) && col2.trim().length > 0 && !col2.includes('/') && !col2.includes(':')) {
         unit = String(col2).trim();
         minThreshold = Number(col3) || 10;
@@ -278,6 +353,15 @@ function doPost(e) {
       body = JSON.parse(e.parameter.data);
     }
     
+    // Action 1: Submit Department Order (Direct Write to Google Sheet)
+    if (body.action === 'submitDepartmentOrder') {
+      var orderResult = submitDepartmentOrderToSheet(body);
+      var outputOrder = ContentService.createTextOutput(JSON.stringify(orderResult));
+      outputOrder.setMimeType(ContentService.MimeType.JSON);
+      return outputOrder;
+    }
+    
+    // Action 2: Save Stock
     var ss = getOrCreateSpreadsheet();
     var sheet = ss.getSheetByName('מלאי') || createStockSheet(ss);
     var stock = body.stock;
@@ -294,6 +378,63 @@ function doPost(e) {
     errOutput.setMimeType(ContentService.MimeType.JSON);
     return errOutput;
   }
+}
+
+function submitDepartmentOrderToSheet(body) {
+  var ordersSpreadsheetId = '1NJq4sJV0HPvkKUXy6kot3FUA7dnKAHD-iWTVXIY4qms';
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(ordersSpreadsheetId);
+  } catch(e) {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  }
+  
+  if (!ss) throw new Error('לא ניתן לגשת לטבלת ההזמנות');
+  
+  var sheet = ss.getSheetByName('תגובות לטופס 1') || ss.getSheets()[0];
+  var lastCol = sheet.getLastColumn();
+  
+  // Read top 6 rows to locate exact header row
+  var headerMatrix = sheet.getRange(1, 1, Math.min(6, sheet.getLastRow()), lastCol).getValues();
+  var headerRowIdx = 3; // Default Row 4 (0-indexed 3)
+  for (var r = 0; r < headerMatrix.length; r++) {
+    var rowText = headerMatrix[r].join(' ');
+    if (rowText.indexOf('חותמת זמן') !== -1 || rowText.indexOf('מחלקה') !== -1) {
+      headerRowIdx = r;
+      break;
+    }
+  }
+  
+  var headers = headerMatrix[headerRowIdx];
+  var nowFormatted = Utilities.formatDate(new Date(), "Asia/Jerusalem", "dd/MM/yyyy HH:mm:ss");
+  var dateOnly = Utilities.formatDate(new Date(), "Asia/Jerusalem", "dd/MM/yyyy");
+  
+  var newRow = new Array(headers.length);
+  for (var k = 0; k < newRow.length; k++) newRow[k] = "";
+  
+  newRow[0] = nowFormatted; // Col A: Timestamp
+  newRow[1] = dateOnly;     // Col B: Date
+  newRow[2] = body.department || ""; // Col C: Department
+  newRow[3] = body.patientsCount || body.notes || body.orderedBy || ""; // Col D: Patients / Notes
+  
+  // Fill ordered items matching column headers E..FM
+  var items = body.items || {};
+  for (var j = 4; j < headers.length; j++) {
+    var colHeader = String(headers[j] || "").trim();
+    if (colHeader && items[colHeader] !== undefined && items[colHeader] !== null && items[colHeader] !== "" && items[colHeader] !== 0) {
+      newRow[j] = items[colHeader];
+    }
+  }
+  
+  sheet.appendRow(newRow);
+  
+  return {
+    status: 'success',
+    orderId: 'ORD-' + sheet.getLastRow(),
+    rowNumber: sheet.getLastRow(),
+    timestamp: nowFormatted,
+    message: 'ההזמנה נקלטה בהצלחה בטבלה!'
+  };
 }
 
 function getOrCreateSpreadsheet() {
@@ -331,7 +472,6 @@ function saveStockToSheet(sheet, stock) {
   
   if (rows.length > 0) {
     sheet.getRange(2, 1, rows.length, 5).setValues(rows);
-    // Align columns nicely in Hebrew RTL
     sheet.getRange(1, 1, rows.length + 1, 5).setHorizontalAlignment("right");
   }
 }

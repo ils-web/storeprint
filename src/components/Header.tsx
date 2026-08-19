@@ -4,8 +4,8 @@ import { RefreshCw, ShieldCheck, FileSpreadsheet, ExternalLink, Printer, Package
 interface HeaderProps {
   sheetUrl: string;
   activeSheetTitle: string;
-  activeTab: 'orders' | 'warehouse';
-  setActiveTab: (tab: 'orders' | 'warehouse') => void;
+  activeTab: 'orders' | 'warehouse' | 'order_portal';
+  setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal') => void;
   autoRefreshSec: number;
   setAutoRefreshSec: (sec: number) => void;
   countdown: number;
@@ -61,7 +61,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Navigation Tabs (Orders / Warehouse) */}
+            {/* Navigation Tabs (Orders / Warehouse / Department Order) */}
             <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 border border-slate-700/80">
               
               {/* Tab 1: Orders */}
@@ -97,6 +97,18 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{lowStockCount}</span>
                   </span>
                 )}
+              </button>
+
+              {/* Tab 3: Department Order Portal */}
+              <button
+                onClick={() => setActiveTab('order_portal')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'order_portal'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30'
+                    : 'text-emerald-400 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <span>📝 טופס הזמנה</span>
               </button>
 
             </div>

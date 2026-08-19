@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Header } from './components/Header';
 import { OrderTable } from './components/OrderTable';
 import { WarehouseView } from './components/WarehouseView';
+import { DepartmentOrderView } from './components/DepartmentOrderView';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { PrintConfirmModal } from './components/PrintConfirmModal';
@@ -40,8 +41,8 @@ export default function App() {
   const [gid, setGid] = useState<string>(DEFAULT_GID);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
-  // Navigation Tab ('orders' | 'warehouse')
-  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse'>('orders');
+  // Navigation Tab ('orders' | 'warehouse' | 'order_portal')
+  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal'>('orders');
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -196,6 +197,10 @@ export default function App() {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('mode') === 'order' || window.location.hash.includes('order')) {
+        setActiveTab('order_portal');
+      }
+
       const sharedCloudUrl = params.get('cloudUrl');
       if (sharedCloudUrl) {
         const cleanUrl = decodeURIComponent(sharedCloudUrl);
@@ -509,7 +514,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full">
-        {activeTab === 'orders' ? (
+        {activeTab === 'orders' && (
           <OrderTable
             orders={orders}
             departments={departments}
@@ -524,7 +529,9 @@ export default function App() {
             onTogglePrintedStatus={handleTogglePrintedStatus}
             isSheetLoaded={!isLoading}
           />
-        ) : (
+        )}
+
+        {activeTab === 'warehouse' && (
           <WarehouseView
             stock={stock}
             cloudConfig={cloudConfig}
@@ -534,6 +541,20 @@ export default function App() {
             onUpdateStockItem={handleUpdateStockItem}
             onBatchUpdateStock={handleBatchUpdateStock}
             onSetAllStock={handleSetAllStock}
+          />
+        )}
+
+        {activeTab === 'order_portal' && (
+          <DepartmentOrderView
+            productHeaders={productHeaders}
+            stock={stock}
+            departments={departments}
+            cloudConfig={cloudConfig}
+            onOrderSubmitted={() => {
+              loadOrders(true);
+              setSuccessMessage('ההזמנה נקלטה בהצלחה ותופיע בטבלת ההזמנות! 🎉');
+              setTimeout(() => setSuccessMessage(null), 5000);
+            }}
           />
         )}
       </main>
