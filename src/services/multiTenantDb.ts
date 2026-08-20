@@ -9,6 +9,17 @@ import {
   STANDARD_PACKAGING_UNITS,
 } from '../types/multiTenant';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
+import { db } from './firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+} from 'firebase/firestore';
 
 const STORAGE_KEY_PREFIX = 'storeprint_mt_v1_';
 const TENANTS_KEY = `${STORAGE_KEY_PREFIX}tenants`;
@@ -76,7 +87,7 @@ export const BILLING_PLANS: Record<PlanType, {
   },
 };
 
-// Initial Default Tenant (Preserves current working setup)
+// Initial Default Tenant
 const DEFAULT_INITIAL_TENANT: Tenant = {
   id: 'tenant-main-01',
   name: 'Основной медицинский центр (Филиал №1)',
@@ -118,9 +129,6 @@ const DEFAULT_INITIAL_WAREHOUSE: Warehouse = {
   createdAt: new Date().toISOString(),
 };
 
-/**
- * Helper to safely get parsed item from localStorage
- */
 function getStoredJson<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
   try {
@@ -132,9 +140,6 @@ function getStoredJson<T>(key: string, defaultValue: T): T {
   }
 }
 
-/**
- * Helper to safely set item in localStorage
- */
 function setStoredJson<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
@@ -151,12 +156,44 @@ export function initMultiTenantDb(): void {
   const tenants = getStoredJson<Tenant[]>(TENANTS_KEY, []);
   if (tenants.length === 0) {
     setStoredJson(TENANTS_KEY, [DEFAULT_INITIAL_TENANT]);
+    // Save to Firestore in background
+    syncTenantToFirestore(DEFAULT_INITIAL_TENANT).catch(console.warn);
   }
 
   const warehouses = getStoredJson<Warehouse[]>(WAREHOUSES_KEY, []);
   if (warehouses.length === 0) {
     setStoredJson(WAREHOUSES_KEY, [DEFAULT_INITIAL_WAREHOUSE]);
   }
+}
+
+// ----------------------------------------------------------------------------
+// FIRESTORE BACKGROUND SYNC HELPERS
+// ----------------------------------------------------------------------------
+
+async function syncTenantToFirestore(tenant: Tenant): Promise<void> {
+  try {
+    if (!db) return;
+    const docRef = doc(db, 'tenants', tenant.id);
+    await setDoc(docRef, tenant, { merge: true });
+  } catch (e) {
+    // Silently continue (offline mode / client resilience)
+  }
+}
+
+async function syncWarehouseToFirestore(warehouse: Warehouse): Promise<void> {
+  try {
+    if (!db) return;
+    const docRef = doc(db, 'tenants', warehouse.tenantId, 'warehouses', warehouse.id);
+    await setDoc(docRef, warehouse, { merge: true });
+  } catch (e) {}
+}
+
+async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
+  try {
+    if (!db) return;
+    const docRef = doc(db, 'tenants', order.tenantId, 'orders', order.id);
+    await setDoc(docRef, order, { merge: true });
+  } catch (e) {}
 }
 
 // ----------------------------------------------------------------------------
@@ -228,6 +265,7 @@ export function createTenant(data: {
 
   tenants.push(newTenant);
   setStoredJson(TENANTS_KEY, tenants);
+  syncTenantToFirestore(newTenant).catch(console.warn);
 
   // Automatically create a default warehouse for the new tenant
   createWarehouse({
@@ -254,6 +292,7 @@ export function updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant
 
   tenants[index] = updated;
   setStoredJson(TENANTS_KEY, tenants);
+  syncTenantToFirestore(updated).catch(console.warn);
   return updated;
 }
 
@@ -305,6 +344,7 @@ export function createWarehouse(data: {
 
   all.push(newWarehouse);
   setStoredJson(WAREHOUSES_KEY, all);
+  syncWarehouseToFirestore(newWarehouse).catch(console.warn);
   return newWarehouse;
 }
 
@@ -315,6 +355,7 @@ export function updateWarehouse(warehouseId: string, updates: Partial<Warehouse>
 
   all[index] = { ...all[index], ...updates };
   setStoredJson(WAREHOUSES_KEY, all);
+  syncWarehouseToFirestore(all[index]).catch(console.warn);
   return all[index];
 }
 
@@ -413,6 +454,7 @@ export function createTenantOrder(tenantId: string, orderData: Omit<MultiTenantO
 
   orders.unshift(newOrder);
   saveTenantOrders(tenantId, orders);
+  syncOrderToFirestore(newOrder).catch(console.warn);
   return newOrder;
 }
 
@@ -433,6 +475,7 @@ export function updateOrderStatus(
   };
 
   saveTenantOrders(tenantId, orders);
+  syncOrderToFirestore(orders[idx]).catch(console.warn);
   return orders[idx];
 }
 
