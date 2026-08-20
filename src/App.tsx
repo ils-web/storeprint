@@ -28,6 +28,7 @@ import {
   syncStockWithProductHeaders,
   deductOrdersFromStock,
   getLowStockItems,
+  detectPackagingUnitFromProductName,
 } from './utils/stockManager';
 import {
   loadCloudConfig,
@@ -129,18 +130,19 @@ export default function App() {
     const warehouses = getWarehouses(activeTenant.id);
     const primaryWhId = warehouses[0]?.id || 'wh-main-01';
 
-    // Build Inventory Products
+    // Build Inventory Products with preserved packaging units
     const items: InventoryProduct[] = prods.map((name, idx) => {
       const existing = currentStockMap[name];
+      const detectedUnit = detectPackagingUnitFromProductName(name);
       return {
         id: `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
         tenantId: activeTenant.id,
         warehouseId: primaryWhId,
         name,
         colIndex: idx + 4,
-        currentStock: existing ? existing.currentStock : 100,
-        minThreshold: existing ? existing.minThreshold : 10,
-        unit: (existing?.unit as any) || 'pcs',
+        currentStock: existing ? existing.currentStock : 0,
+        minThreshold: existing?.minThreshold || 10,
+        unit: existing?.unit || detectedUnit,
         updatedAt: new Date().toISOString(),
       };
     });
@@ -168,7 +170,7 @@ export default function App() {
         const rows = await fetchPublicCsvValues(spreadsheetId, gid);
 
         if (!rows || rows.length < 2) {
-          throw new Error('הקובץ ריק או שאין בו מספיק נתונים');
+          throw new Error('קובץ הטבלה ריק או שאין בו מספיק נתונים');
         }
 
         const result = processRawRowsToOrders(rows);
@@ -192,7 +194,7 @@ export default function App() {
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
 
-        // Sync and initialize warehouse stock
+        // Sync and initialize warehouse stock with packaging units auto-detection
         setStock((prevStock) => {
           const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
           saveStoredStock(updatedStock);
@@ -224,7 +226,7 @@ export default function App() {
         });
 
         if (isManualRefresh) {
-          setWarningMessage('טוען נתוני דוגמה (בדוק חיבור ל-Google Sheets)');
+          setWarningMessage('נטענו נתוני גיבוי (בדוק חיבור ל-Google Sheets)');
           setTimeout(() => setWarningMessage(null), 5000);
         }
       } finally {
@@ -463,7 +465,7 @@ export default function App() {
 
   // 4. Main Tenant Warehouse & Orders Workspace View
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white" dir="rtl">
       {/* Header */}
       <Header
         sheetUrl={spreadsheetUrl}
@@ -498,7 +500,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-indigo-400" />
-            <span>Текущий филиал:</span>
+            <span>סניף פעיל:</span>
             <select
               value={activeTenantId}
               onChange={(e) => {
@@ -522,7 +524,7 @@ export default function App() {
               className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Открыть PWA-портал заказа</span>
+              <span>פורטל הזמנות (PWA)</span>
             </button>
 
             <button
@@ -536,14 +538,14 @@ export default function App() {
               className="px-2.5 py-1 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Панель Суперадмина</span>
+              <span>סופר-אדמין</span>
             </button>
 
             <button
               onClick={() => setCurrentView('landing')}
               className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              Лендинг
+              דף ראשי / תוכניות
             </button>
           </div>
         </div>

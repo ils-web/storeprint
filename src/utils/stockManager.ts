@@ -22,6 +22,25 @@ export function parseNumericQty(qtyStr: string | number | null | undefined): num
 }
 
 /**
+ * Detects default packaging unit from item name
+ */
+export function detectPackagingUnitFromProductName(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('קרטון') || n.includes('carton')) return 'קרטון';
+  if (n.includes('קופס') || n.includes('ארגז') || n.includes('box')) return 'קופסה';
+  if (n.includes('חביל') || n.includes('מארז') || n.includes('pack')) return 'חבילה';
+  if (n.includes('גליל') || n.includes('roll')) return 'גליל';
+  if (n.includes('בקבוק') || n.includes('bottle')) return 'בקבוק';
+  if (n.includes('דלי') || n.includes('bucket')) return 'דלי';
+  if (n.includes('מטר') || n.includes('meter')) return 'מטר';
+  if (n.includes('סט') || n.includes('ערכה') || n.includes('set')) return 'סט';
+  if (n.includes('זוג') || n.includes('pair')) return 'זוג';
+  if (n.includes('ק״ג') || n.includes('ק"ג') || n.includes('kg')) return 'ק״ג';
+  if (n.includes('ליטר') || n.includes('liter')) return 'ליטר';
+  return "יח'";
+}
+
+/**
  * Loads stored stock from localStorage
  */
 export function loadStoredStock(): Record<string, StockItem> {
@@ -50,7 +69,7 @@ export function saveStoredStock(stock: Record<string, StockItem>): void {
 
 /**
  * Synchronizes stock items with the product headers from the Google Sheet (E..FM).
- * Existing stock values are preserved.
+ * Existing stock values and units are preserved.
  */
 export function syncStockWithProductHeaders(
   productHeaders: string[],
@@ -62,6 +81,8 @@ export function syncStockWithProductHeaders(
     const cleanName = header.trim();
     if (!cleanName) return;
 
+    const detectedUnit = detectPackagingUnitFromProductName(cleanName);
+
     if (!result[cleanName]) {
       result[cleanName] = {
         id: `stock-${idx + 4}`,
@@ -69,14 +90,14 @@ export function syncStockWithProductHeaders(
         colIndex: idx + 4,
         currentStock: 0,
         minThreshold: DEFAULT_MIN_THRESHOLD,
-        unit: "יח'",
+        unit: detectedUnit,
       };
     } else {
-      // Update colIndex in case headers shifted, preserving unit and minThreshold
+      // Update colIndex in case headers shifted, preserving existing unit and minThreshold
       result[cleanName] = {
         ...result[cleanName],
         colIndex: idx + 4,
-        unit: result[cleanName].unit || "יח'",
+        unit: result[cleanName].unit || detectedUnit,
         minThreshold: result[cleanName].minThreshold || DEFAULT_MIN_THRESHOLD,
       };
     }
@@ -118,13 +139,14 @@ export function deductOrdersFromStock(
             newLowStockItems.push(stockEntry);
           }
         } else {
-          // If item wasn't in stock map yet, add with 0
+          // If item wasn't in stock map yet, add with detected unit
           updated[item.name] = {
             id: `stock-auto-${Date.now()}`,
             name: item.name,
             colIndex: item.colIndex || 0,
             currentStock: 0,
             minThreshold: DEFAULT_MIN_THRESHOLD,
+            unit: detectPackagingUnitFromProductName(item.name),
             lastDeducted: new Date().toISOString(),
           };
           totalDeductedCount += qtyToDeduct;

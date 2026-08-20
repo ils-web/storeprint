@@ -2,20 +2,21 @@ export type PackagingUnit = 'pcs' | 'box' | 'pack' | 'carton' | 'roll' | 'bottle
 
 export interface PackagingUnitOption {
   value: PackagingUnit;
-  labelRu: string;
   labelHe: string;
-  defaultRatio?: number; // e.g. 1 carton = 24 pcs
+  labelRu: string;
+  defaultRatio?: number;
 }
 
 export const STANDARD_PACKAGING_UNITS: PackagingUnitOption[] = [
-  { value: 'pcs', labelRu: 'Штука (шт)', labelHe: 'יח׳', defaultRatio: 1 },
-  { value: 'pack', labelRu: 'Пачка / Упаковка', labelHe: 'חבילה / מארז', defaultRatio: 10 },
-  { value: 'box', labelRu: 'Коробка (кор)', labelHe: 'קופסה / ארגז', defaultRatio: 24 },
-  { value: 'carton', labelRu: 'Картон (ящик)', labelHe: 'קרטון', defaultRatio: 48 },
-  { value: 'roll', labelRu: 'Рулон', labelHe: 'גליל', defaultRatio: 1 },
-  { value: 'bottle', labelRu: 'Флакон / Бутылка', labelHe: 'בקבוק', defaultRatio: 1 },
-  { value: 'kg', labelRu: 'Килограмм (кг)', labelHe: 'ק״ג', defaultRatio: 1 },
-  { value: 'liter', labelRu: 'Литр (л)', labelHe: 'ליטר', defaultRatio: 1 },
+  { value: "יח'", labelHe: "יחידה (יח')", labelRu: 'Штука (шт)', defaultRatio: 1 },
+  { value: 'חבילה', labelHe: 'חבילה / מארז', labelRu: 'Пачка / Упаковка', defaultRatio: 10 },
+  { value: 'קופסה', labelHe: 'קופסה / ארגז', labelRu: 'Коробка (кор)', defaultRatio: 24 },
+  { value: 'קרטון', labelHe: 'קרטון (יצוא)', labelRu: 'Картон (ящик)', defaultRatio: 48 },
+  { value: 'גליל', labelHe: 'גליל', labelRu: 'Рулон', defaultRatio: 1 },
+  { value: 'בקבוק', labelHe: 'בקבוק / בקבוקון', labelRu: 'Флакон / Бутылка', defaultRatio: 1 },
+  { value: 'מטר', labelHe: 'מטר (מ\')', labelRu: 'Метр', defaultRatio: 1 },
+  { value: 'ק״ג', labelHe: 'קילוגרם (ק״ג)', labelRu: 'Килограмм (кг)', defaultRatio: 1 },
+  { value: 'ליטר', labelHe: 'ליטר (ל\')', labelRu: 'Литр (л)', defaultRatio: 1 },
 ];
 
 export type TenantStatus = 'active' | 'trial' | 'suspended';
@@ -27,25 +28,24 @@ export interface TenantBilling {
   planId: PlanType;
   trialEndsAt?: string;
   subscriptionRenewsAt?: string;
-  monthlyPriceUsd?: number;
-  paymentProvider?: 'stripe' | 'paypal' | 'manual';
+  monthlyPriceNis?: number; // Israeli New Shekels (₪)
+  paymentProvider?: 'stripe' | 'isracard' | 'meshulam' | 'manual';
   paymentMethodLast4?: string;
-  stripeCustomerId?: string;
 }
 
 export interface TenantLimits {
   maxWarehouses: number;
   maxDepartments: number;
   maxOrdersPerMonth: number;
-  allowSelfWarehouseCreation: boolean; // Flag allowing tenant to create warehouses on their own
+  allowSelfWarehouseCreation: boolean;
 }
 
 export interface Tenant {
   id: string;
-  name: string;             // e.g. "Госпиталь Хадасса - Филиал №1"
+  name: string;             // e.g. "מרכז רפואי הדסה - סניף 1"
   slug: string;             // e.g. "hadassah-branch-1"
   login: string;            // email / username
-  passwordHash: string;     // hashed or plain for local demo
+  passwordHash: string;
   contactPerson?: string;
   phone?: string;
   address?: string;
@@ -63,7 +63,7 @@ export interface Tenant {
 export interface Warehouse {
   id: string;
   tenantId: string;
-  name: string;             // "Центральный склад", "Расходный склад", "Аптека"
+  name: string;             // "מחסן מרכזי", "מחסן מתכלים", "בית מרקחת"
   code?: string;
   isPrimary: boolean;
   address?: string;
@@ -79,8 +79,8 @@ export interface InventoryProduct {
   colIndex?: number;
   currentStock: number;
   minThreshold: number;
-  unit: PackagingUnit;
-  unitRatio?: number;       // conversion ratio to pieces
+  unit: string;             // "יח'", "חבילה", "קופסה", "קרטון", etc.
+  unitRatio?: number;
   category?: string;
   barcode?: string;
   lastDeducted?: string;
@@ -90,11 +90,10 @@ export interface InventoryProduct {
 export interface TenantDepartment {
   id: string;
   tenantId: string;
-  name: string;             // Department / Ward name e.g. "ג' 2 סיעוד מורכב"
+  name: string;             // e.g. "ג' 2 סיעוד מורכב"
   code?: string;
   pinCode?: string;
   contactEmail?: string;
-  orderDays?: string[];     // Days of week allowed to order
 }
 
 export type OrderStatus = 'NEW' | 'IN_PROGRESS' | 'PRINTED' | 'ISSUED' | 'CANCELLED';
@@ -105,7 +104,7 @@ export interface MultiTenantOrderItem {
   productId: string;
   name: string;
   orderedQty: number;
-  orderedUnit: PackagingUnit;
+  orderedUnit: string;
   numericQtyInPieces?: number;
   fulfilledQty?: number;
   checked?: boolean;

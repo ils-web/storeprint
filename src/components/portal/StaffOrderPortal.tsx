@@ -15,7 +15,6 @@ import {
   getTenantDepartments,
   getTenantOrders,
   createTenantOrder,
-  addTenantDepartment,
 } from '../../services/multiTenantDb';
 import {
   ShoppingBag,
@@ -29,6 +28,7 @@ import {
   Package,
   Building2,
   ArrowLeft,
+  ArrowRight,
   Send,
   AlertCircle,
   Sparkles,
@@ -95,7 +95,7 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
         productId: product.id,
         name: product.name,
         orderedQty: 0,
-        orderedUnit: unit || product.unit || 'pcs',
+        orderedUnit: unit || product.unit || "יח'",
       };
 
       const newQty = Math.max(0, existing.orderedQty + delta);
@@ -132,11 +132,11 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDepartmentName.trim()) {
-      alert('Пожалуйста, выберите или укажите ваше отделение.');
+      alert('נא לבחור או להקליד את שם המחלקה המזמינה.');
       return;
     }
     if (cartItemsList.length === 0) {
-      alert('Корзина пуста. Добавьте хотя бы один товар.');
+      alert('סל ההזמנות ריק. נא להוסיף לפחות פריט אחד.');
       return;
     }
 
@@ -159,7 +159,7 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
       setNotes('');
       setIsCartOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Ошибка отправки заказа');
+      alert(err.message || 'שגיאה בשליחת ההזמנה');
     }
   };
 
@@ -168,7 +168,7 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
   }, [selectedTenantId, orderSuccessNumber]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24" dir="rtl">
       {/* Top Header */}
       <header className="bg-slate-950 border-b border-slate-800 sticky top-0 z-30 px-4 py-3 shadow-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
@@ -177,14 +177,14 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
               <button
                 onClick={onBackToMain}
                 className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 transition-colors cursor-pointer"
-                title="Назад"
+                title="חזרה למסך הראשי"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" />
               </button>
             )}
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base text-white">Портал Заказа</span>
+                <span className="font-extrabold text-base text-white">פורטל הזמנות מחלקות</span>
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-400 rounded-full border border-indigo-500/30 uppercase">
                   PWA
                 </span>
@@ -216,9 +216,9 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
             <div className="flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-white text-sm">Заказ успешно оформлен!</h4>
+                <h4 className="font-bold text-white text-sm">ההזמנה נשלחה בהצלחה למחסן!</h4>
                 <p className="text-xs text-emerald-300 mt-0.5">
-                  Номер заказа: <strong className="font-mono">{orderSuccessNumber}</strong>. Склад уже видит вашу заявку и готовит к сборке.
+                  מספר הזמנה: <strong className="font-mono">{orderSuccessNumber}</strong>. המחסן קיבל את הדרישה ומכין אותה לליקוט.
                 </p>
               </div>
             </div>
@@ -236,37 +236,37 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Building2 className="w-4 h-4 text-indigo-400" />
-              Отделение / Палата
+              מחלקה / אגף מזמין
             </label>
-            <span className="text-[11px] text-slate-400">Укажите ваше отделение</span>
+            <span className="text-[11px] text-slate-400">בחר את המחלקה שלך</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <select
               value={selectedDepartmentName}
               onChange={(e) => setSelectedDepartmentName(e.target.value)}
-              className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
-              <option value="">-- Выберите отделение из списка --</option>
+              <option value="">-- בחר מחלקה מהרשימה --</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.name}>
                   {d.name}
                 </option>
               ))}
-              <option value="custom">+ Ввести другое отделение...</option>
+              <option value="custom">+ הקלד מחלקה אחרת...</option>
             </select>
 
             {selectedDepartmentName === 'custom' ? (
               <input
                 type="text"
-                placeholder="Введите название отделения"
+                placeholder="הקלד את שם המחלקה"
                 onChange={(e) => setSelectedDepartmentName(e.target.value)}
                 className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
               />
             ) : (
               <input
                 type="text"
-                placeholder="Или напишите вручную (e.g. ג' 2)"
+                placeholder="או הקלד ידנית (לדוגמה: ג' 2 סיעוד)"
                 value={selectedDepartmentName}
                 onChange={(e) => setSelectedDepartmentName(e.target.value)}
                 className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
@@ -286,7 +286,7 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>Каталог товаров</span>
+            <span>קטלוג פריטים</span>
           </button>
 
           <button
@@ -298,87 +298,81 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
             }`}
           >
             <ClipboardList className="w-3.5 h-3.5" />
-            <span>История заказов ({pastOrders.length})</span>
+            <span>מעקב הזמנות ({pastOrders.length})</span>
           </button>
         </div>
 
-        {/* TAB: CATALOG */}
+        {/* TAB 1: CATALOG */}
         {activeTab === 'catalog' && (
-          <div className="space-y-4">
-            {/* Search Input */}
+          <div className="space-y-3">
+            {/* Search Bar */}
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Поиск товара по названию..."
+                placeholder="חיפוש פריט, תרופה, ציוד מתכלה..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full pr-10 pl-4 py-2.5 bg-slate-800/90 border border-slate-700 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 shadow-inner"
               />
             </div>
 
-            {/* Products List */}
-            <div className="space-y-3">
-              {filteredProducts.map((product) => {
-                const inCart = cart[product.id];
+            {/* Product Cards List */}
+            <div className="space-y-2.5">
+              {filteredProducts.map((prod) => {
+                const inCart = cart[prod.id];
                 const qty = inCart ? inCart.orderedQty : 0;
-                const unit = inCart?.orderedUnit || product.unit || 'pcs';
+                const unit = inCart?.orderedUnit || prod.unit || "יח'";
 
                 return (
                   <div
-                    key={product.id}
-                    className="p-4 bg-slate-800/70 border border-slate-700/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm hover:border-slate-600 transition-all"
+                    key={prod.id}
+                    className="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md hover:border-slate-600 transition-all"
                   >
                     <div className="flex-1">
-                      <h4 className="font-bold text-sm text-white text-right leading-snug" dir="rtl">
-                        {product.name}
-                      </h4>
-                      <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400">
-                        <span className="bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-slate-300 font-mono">
-                          Остаток: {product.currentStock} {product.unit || 'шт'}
+                      <h4 className="font-bold text-sm text-white">{prod.name}</h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          יתרה במחסן: <strong className="text-slate-200">{prod.currentStock} {prod.unit || "יח'"}</strong>
                         </span>
-                        {product.minThreshold && (
-                          <span className="text-[11px] text-slate-500">
-                            Мин: {product.minThreshold}
-                          </span>
-                        )}
                       </div>
                     </div>
 
-                    {/* Controls with Packaging Units */}
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-700/60">
-                      {/* Unit Selector */}
+                    {/* Packaging Unit & Quantity Selector */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
                       <select
                         value={unit}
-                        onChange={(e) => handleUnitChange(product, e.target.value as PackagingUnit)}
-                        className="px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-indigo-300 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
+                        onChange={(e) => {
+                          const newUnit = e.target.value;
+                          handleUnitChange(prod, newUnit);
+                        }}
+                        className="px-2 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-indigo-300 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
                       >
                         {STANDARD_PACKAGING_UNITS.map((u) => (
                           <option key={u.value} value={u.value}>
-                            {u.labelRu} ({u.labelHe})
+                            {u.labelHe}
                           </option>
                         ))}
                       </select>
 
-                      {/* Plus/Minus Counter */}
-                      <div className="flex items-center bg-slate-900 rounded-xl border border-slate-700 p-0.5">
+                      <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-700">
                         <button
                           type="button"
-                          onClick={() => handleUpdateQty(product, unit, -1)}
-                          disabled={qty <= 0}
-                          className="p-1.5 text-slate-400 hover:text-white disabled:opacity-30 rounded-lg transition-colors cursor-pointer"
+                          onClick={() => handleUpdateQty(prod, unit, -1)}
+                          disabled={qty === 0}
+                          className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center transition-colors cursor-pointer"
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
 
-                        <span className="w-8 text-center text-xs font-bold text-white font-mono">
+                        <span className="w-8 text-center font-bold text-sm text-white font-mono">
                           {qty}
                         </span>
 
                         <button
                           type="button"
-                          onClick={() => handleUpdateQty(product, unit, 1)}
-                          className="p-1.5 text-indigo-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                          onClick={() => handleUpdateQty(prod, unit, 1)}
+                          className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition-colors cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -391,162 +385,163 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
               {filteredProducts.length === 0 && (
                 <div className="py-12 text-center text-slate-400 bg-slate-800/30 rounded-2xl border border-dashed border-slate-700">
                   <Package className="w-10 h-10 mx-auto mb-2 text-slate-600" />
-                  <p className="text-sm font-medium">Товары не найдены</p>
-                  <p className="text-xs text-slate-500 mt-1">Попробуйте изменить поисковый запрос</p>
+                  <p className="text-sm font-medium">לא נמצאו פריטים</p>
+                  <p className="text-xs text-slate-500 mt-0.5">נסה לחפש פריט אחר</p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB: MY ORDERS */}
+        {/* TAB 2: MY ORDERS TRACKING */}
         {activeTab === 'my_orders' && (
           <div className="space-y-3">
-            {pastOrders.map((order) => (
-              <div
-                key={order.id}
-                className="p-4 bg-slate-800/70 border border-slate-700/80 rounded-2xl space-y-2 shadow-sm"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-xs text-indigo-300">{order.orderNumber}</span>
-                    <span
-                      className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
-                        order.status === 'PRINTED' || order.status === 'ISSUED'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                      }`}
-                    >
-                      {order.status === 'PRINTED'
-                        ? 'Напечатан / В сборке'
-                        : order.status === 'ISSUED'
-                        ? 'Выдан'
-                        : 'Новый заказ'}
+            {pastOrders.map((ord) => {
+              const statusBg =
+                ord.status === 'PRINTED' || ord.printed
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : ord.status === 'ISSUED'
+                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+
+              const statusText =
+                ord.status === 'PRINTED' || ord.printed
+                  ? 'הודפס / הוכן לניפוק'
+                  : ord.status === 'ISSUED'
+                  ? 'נופק ונמסר'
+                  : 'התקבל במחסן (חדש)';
+
+              return (
+                <div
+                  key={ord.id}
+                  className="bg-slate-800/70 border border-slate-700/80 rounded-2xl p-4 shadow-md space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">{ord.orderNumber}</span>
+                        <span className="text-xs text-indigo-400 font-medium">({ord.departmentName})</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {new Date(ord.createdAt).toLocaleString('he-IL')}
+                      </span>
+                    </div>
+
+                    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusBg}`}>
+                      {statusText}
                     </span>
                   </div>
 
-                  <span className="text-[11px] text-slate-400">
-                    {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
+                  <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800/80 text-xs space-y-1.5">
+                    {ord.items.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-slate-300">
+                        <span>{it.name}</span>
+                        <span className="font-mono font-bold text-indigo-300">
+                          {it.orderedQty} {it.orderedUnit}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
 
-                <div className="text-xs text-slate-300">
-                  <strong>Отделение:</strong> {order.departmentName}
+                  {ord.notes && (
+                    <p className="text-xs text-slate-400 italic">הערות: {ord.notes}</p>
+                  )}
                 </div>
-
-                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-slate-300">
-                      <span className="truncate max-w-[200px]">{item.name}</span>
-                      <span className="font-mono font-bold text-indigo-400">
-                        {item.orderedQty} {item.orderedUnit || 'шт'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {pastOrders.length === 0 && (
               <div className="py-12 text-center text-slate-400 bg-slate-800/30 rounded-2xl border border-dashed border-slate-700">
-                <Clock className="w-10 h-10 mx-auto mb-2 text-slate-600" />
-                <p className="text-sm font-medium">История заказов пуста</p>
-                <p className="text-xs text-slate-500 mt-1">Оформите первый заказ во вкладке "Каталог товаров"</p>
+                <ClipboardList className="w-10 h-10 mx-auto mb-2 text-slate-600" />
+                <p className="text-sm font-medium">אין הזמנות קודמות</p>
+                <p className="text-xs text-slate-500 mt-0.5">הזמנות שתיצור יופיעו כאן בזמן אמת</p>
               </div>
             )}
           </div>
         )}
       </main>
 
-      {/* Bottom Sticky Cart Banner */}
-      {totalCartCount > 0 && !isCartOpen && (
-        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-3xl mx-auto">
+      {/* Floating Bottom Cart Bar */}
+      {cartItemsList.length > 0 && !isCartOpen && (
+        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto z-40">
           <button
             onClick={() => setIsCartOpen(true)}
-            className="w-full py-3.5 px-5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-2xl shadow-xl shadow-indigo-500/30 flex items-between justify-between font-bold text-sm transition-all cursor-pointer"
+            className="w-full py-3.5 px-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white rounded-2xl font-bold text-sm shadow-2xl shadow-indigo-600/40 flex items-center justify-between transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <ShoppingBag className="w-5 h-5" />
-              <span>В корзине: {cartItemsList.length} позиций ({totalCartCount} ед.)</span>
+              <span>סל הזמנה: {totalCartCount} פריטים</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span>Оформить заказ</span>
-              <ChevronRight className="w-4 h-4" />
-            </div>
+            <span className="flex items-center gap-1 text-xs underline">
+              סיום ושליחה למחסן
+              <ChevronRight className="w-4 h-4 rotate-180" />
+            </span>
           </button>
         </div>
       )}
 
-      {/* Cart Modal / Drawer */}
+      {/* CART MODAL / BOTTOM SHEET */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm" dir="rtl">
+          <div className="bg-slate-900 border-t sm:border border-slate-700 rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+            <div className="p-4 px-6 border-b border-slate-800 flex items-center justify-between bg-slate-950">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-white">Оформление заявки</h3>
+                <h3 className="font-bold text-base text-white">סיכום הזמנה למחסן</h3>
               </div>
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="text-slate-400 hover:text-white cursor-pointer"
+                className="text-slate-400 hover:text-white text-base cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmitOrder} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={handleSubmitOrder} className="p-6 overflow-y-auto space-y-4 flex-1">
               <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400 block mb-0.5">Получатель (Отделение):</span>
-                <strong className="text-white text-sm">
-                  {selectedDepartmentName || 'Не указано (пожалуйста, укажите выше)'}
+                <span className="text-xs text-slate-400 block mb-1">מחלקה מזמינה:</span>
+                <strong className="text-sm text-white">
+                  {selectedDepartmentName || 'לא נבחרה מחלקה (נא לבחור למעלה)'}
                 </strong>
               </div>
 
               {/* Items in Cart */}
               <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Выбранные позиции ({cartItemsList.length})
-                </span>
-                <div className="bg-slate-950/80 rounded-xl p-3 border border-slate-800 space-y-2 max-h-48 overflow-y-auto">
-                  {cartItemsList.map((item) => (
-                    <div key={item.productId} className="flex items-center justify-between text-xs text-slate-200">
-                      <span className="truncate max-w-[220px]">{item.name}</span>
-                      <span className="font-mono font-bold text-indigo-400">
-                        {item.orderedQty} {item.orderedUnit}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <span className="text-xs font-semibold uppercase text-slate-400">פריטים שהוזמנו</span>
+                {cartItemsList.map((item) => (
+                  <div
+                    key={item.productId}
+                    className="p-3 bg-slate-800/80 rounded-xl border border-slate-700 flex items-center justify-between text-xs"
+                  >
+                    <span className="font-bold text-white">{item.name}</span>
+                    <span className="font-mono text-indigo-300 font-semibold bg-indigo-950 px-2 py-0.5 rounded border border-indigo-800">
+                      {item.orderedQty} {item.orderedUnit}
+                    </span>
+                  </div>
+                ))}
               </div>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Примечание для склада (опционально)
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  הערות מיוחדות למחסן (דחיפות / בקשות)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Срочно к 12:00 / Доставить в процедурную"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="הערות לחלוקה או ליקוט..."
+                  className="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCartOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm cursor-pointer"
-                >
-                  Продолжить выбор
-                </button>
+              <div className="pt-3 border-t border-slate-800">
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 cursor-pointer"
+                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Отправить на склад</span>
+                  <span>שלח הזמנה למחסן</span>
                 </button>
               </div>
             </form>

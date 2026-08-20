@@ -11,14 +11,8 @@ import {
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
 import { db } from './firebase';
 import {
-  collection,
   doc,
   setDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
 } from 'firebase/firestore';
 
 const STORAGE_KEY_PREFIX = 'storeprint_mt_v1_';
@@ -32,13 +26,13 @@ const AUTH_SESSION_KEY = `${STORAGE_KEY_PREFIX}auth_session`;
 export const SUPERADMIN_CREDENTIALS = {
   login: 'admin',
   password: 'admin123',
-  name: 'Главный администратор платформы',
+  name: 'מנהל מערכת ראשי (SuperAdmin)',
 };
 
 export const BILLING_PLANS: Record<PlanType, {
   id: PlanType;
   name: string;
-  priceMonthlyUsd: number;
+  priceMonthlyNis: number;
   description: string;
   features: string[];
   maxWarehouses: number;
@@ -47,62 +41,62 @@ export const BILLING_PLANS: Record<PlanType, {
 }> = {
   free: {
     id: 'free',
-    name: 'Базовый / Пробный',
-    priceMonthlyUsd: 0,
-    description: 'Для тестирования и небольших складов',
-    features: ['1 склад филиала', 'До 10 отделений', 'До 200 заказов/мес', 'Печать накладных'],
+    name: 'בסיסי / ניסיון',
+    priceMonthlyNis: 0,
+    description: 'לסניפים קטנים ובדיקת המערכת',
+    features: ['מחסן סניף 1', 'עד 10 מחלקות', 'עד 200 הזמנות בחודש', 'הדפסת טפסי ניפוק'],
     maxWarehouses: 1,
     maxDepartments: 10,
     maxOrdersPerMonth: 200,
   },
   starter: {
     id: 'starter',
-    name: 'Стартовый',
-    priceMonthlyUsd: 29,
-    description: 'Для отдельных медицинских центров и клиник',
-    features: ['2 склада филиала', 'До 25 отделений', 'Неограниченно заказов', 'Учет упаковок', 'QR-доступ'],
+    name: 'התחלתי (Starter)',
+    priceMonthlyNis: 99,
+    description: 'למרפאות ומרכזים רפואיים בינוניים',
+    features: ['2 מחסנים בסניף', 'עד 25 מחלקות', 'הזמנות ללא הגבלה', 'ניהול סוגי אריזות', 'גישת QR מהירה'],
     maxWarehouses: 2,
     maxDepartments: 25,
     maxOrdersPerMonth: 5000,
   },
   pro: {
     id: 'pro',
-    name: 'Профессиональный (Pro)',
-    priceMonthlyUsd: 79,
-    description: 'Для крупных больниц и распределительных складов',
-    features: ['До 5 складов филиала', 'Неограниченно отделений', 'PWA портал заказов', 'Приоритетная синхронизация', 'Межскладские перемещения'],
+    name: 'מקצועי (Pro)',
+    priceMonthlyNis: 279,
+    description: 'לבתי חולים ומרכזים גריאטריים/סיעודיים',
+    features: ['עד 5 מחסנים בסניף', 'מחלקות ללא הגבלה', 'פורטל הזמנות PWA למובייל', 'סנכרון ענן בזמן אמת', 'העברות בין מחסנים'],
     maxWarehouses: 5,
     maxDepartments: 100,
     maxOrdersPerMonth: 50000,
   },
   enterprise: {
     id: 'enterprise',
-    name: 'Корпоративный (Enterprise)',
-    priceMonthlyUsd: 199,
-    description: 'Для сетей клиник с неограниченными ресурсами',
-    features: ['Неограниченно складов', 'Самостоятельное создание складов', 'Выделенная база данных', 'Интеграция с 1С/ERP', 'Персональная поддержка 24/7'],
+    name: 'ארגוני (Enterprise)',
+    priceMonthlyNis: 699,
+    description: 'לרשתות מוסדות וארגוני בריאות גדולים',
+    features: ['מחסנים ללא הגבלה', 'יצירת מחסנים עצמאית ע״י הסניף', 'מסד נתונים ייעודי מבודד', 'התאמה אישית מלאה', 'תמיכה טכנית 24/7'],
     maxWarehouses: 999,
     maxDepartments: 999,
     maxOrdersPerMonth: 999999,
   },
 };
 
-// Initial Default Tenant
+// Initial Default Tenant (Preserves current Israeli working setup)
 const DEFAULT_INITIAL_TENANT: Tenant = {
   id: 'tenant-main-01',
-  name: 'Основной медицинский центр (Филиал №1)',
+  name: 'מרכז רפואי (סניף ראשי מרכזי)',
   slug: 'main-center',
   login: 'center1',
   passwordHash: 'pass123',
-  contactPerson: 'Отдел логистики и снабжения',
-  phone: '+972-50-000-0000',
-  address: 'Главный корпус',
+  contactPerson: 'מחלקת אספקה ולוגיסטיקה',
+  phone: '050-000-0000',
+  address: 'בניין מרכזי',
   status: 'active',
   plan: 'pro',
   billing: {
     status: 'active',
     planId: 'pro',
-    monthlyPriceUsd: 79,
+    monthlyPriceNis: 279,
     paymentProvider: 'manual',
     subscriptionRenewsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   },
@@ -121,11 +115,11 @@ const DEFAULT_INITIAL_TENANT: Tenant = {
 const DEFAULT_INITIAL_WAREHOUSE: Warehouse = {
   id: 'wh-main-01',
   tenantId: 'tenant-main-01',
-  name: 'Центральный расходный склад',
+  name: 'מחסן מתכלים מרכזי',
   code: 'WH-01',
   isPrimary: true,
-  address: 'Корпус А, этаж -1',
-  responsiblePerson: 'Старший кладовщик',
+  address: 'קומת קרקע - אגף לוגיסטיקה',
+  responsiblePerson: 'מנהל מחסן ראשי',
   createdAt: new Date().toISOString(),
 };
 
@@ -156,7 +150,6 @@ export function initMultiTenantDb(): void {
   const tenants = getStoredJson<Tenant[]>(TENANTS_KEY, []);
   if (tenants.length === 0) {
     setStoredJson(TENANTS_KEY, [DEFAULT_INITIAL_TENANT]);
-    // Save to Firestore in background
     syncTenantToFirestore(DEFAULT_INITIAL_TENANT).catch(console.warn);
   }
 
@@ -166,18 +159,12 @@ export function initMultiTenantDb(): void {
   }
 }
 
-// ----------------------------------------------------------------------------
-// FIRESTORE BACKGROUND SYNC HELPERS
-// ----------------------------------------------------------------------------
-
 async function syncTenantToFirestore(tenant: Tenant): Promise<void> {
   try {
     if (!db) return;
     const docRef = doc(db, 'tenants', tenant.id);
     await setDoc(docRef, tenant, { merge: true });
-  } catch (e) {
-    // Silently continue (offline mode / client resilience)
-  }
+  } catch (e) {}
 }
 
 async function syncWarehouseToFirestore(warehouse: Warehouse): Promise<void> {
@@ -229,7 +216,7 @@ export function createTenant(data: {
   const newTenantId = `tenant-${Date.now()}`;
   const slug = data.name
     .toLowerCase()
-    .replace(/[^a-z0-9а-яё]/gi, '-')
+    .replace(/[^a-z0-9א-ת]/gi, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '') || `tenant-${Date.now()}`;
 
@@ -247,7 +234,7 @@ export function createTenant(data: {
     billing: {
       status: 'active',
       planId: plan,
-      monthlyPriceUsd: planConfig.priceMonthlyUsd,
+      monthlyPriceNis: planConfig.priceMonthlyNis,
       paymentProvider: 'manual',
       trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
     },
@@ -267,13 +254,12 @@ export function createTenant(data: {
   setStoredJson(TENANTS_KEY, tenants);
   syncTenantToFirestore(newTenant).catch(console.warn);
 
-  // Automatically create a default warehouse for the new tenant
   createWarehouse({
     tenantId: newTenantId,
-    name: `Склад - ${newTenant.name}`,
+    name: `מחסן ראשי - ${newTenant.name}`,
     code: 'WH-01',
     isPrimary: true,
-    address: newTenant.address || 'Основной корпус',
+    address: newTenant.address || 'בניין ראשי',
   });
 
   return newTenant;
@@ -506,7 +492,7 @@ export function authenticate(login: string, password: string): AuthSession | nul
 
   if (foundTenant) {
     if (foundTenant.status === 'suspended') {
-      throw new Error('Данный филиал временно заблокирован. Обратитесь к администратору.');
+      throw new Error('סניף זה מושעה זמנית. אנא פנה למנהל המערכת.');
     }
 
     const session: AuthSession = {
