@@ -8,7 +8,12 @@ import { CloudSyncModal } from './components/CloudSyncModal';
 import { PrintConfirmModal } from './components/PrintConfirmModal';
 import { ScrollToTop } from './components/ScrollToTop';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
+import { LandingPage } from './components/landing/LandingPage';
+import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
+import { LoginModal } from './components/auth/LoginModal';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
+import { AuthSession, InventoryProduct, TenantDepartment } from './types/multiTenant';
 import {
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_GID,
@@ -30,18 +35,39 @@ import {
   fetchStockFromCloud,
   pushStockToCloud,
 } from './utils/cloudSync';
+import {
+  getActiveAuthSession,
+  saveAuthSession,
+  logout as logoutDb,
+  getTenants,
+  getWarehouses,
+  saveInventory,
+  saveTenantDepartments,
+} from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
-import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2 } from 'lucide-react';
 
 const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
 
 export default function App() {
+  // Navigation View ('app' | 'landing' | 'superadmin' | 'portal_pwa')
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => getActiveAuthSession());
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa'>('app');
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  // Active Tenant
+  const tenants = getTenants();
+  const [activeTenantId, setActiveTenantId] = useState<string>(
+    authSession?.tenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
+  );
+  const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
+
   // Spreadsheet state
-  const [spreadsheetId, setSpreadsheetId] = useState<string>(DEFAULT_SPREADSHEET_ID);
-  const [gid, setGid] = useState<string>(DEFAULT_GID);
+  const [spreadsheetId, setSpreadsheetId] = useState<string>(activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID);
+  const [gid, setGid] = useState<string>(activeTenant?.spreadsheetGid || DEFAULT_GID);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
-  // Navigation Tab ('orders' | 'warehouse' | 'order_portal')
+  // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal')
   const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal'>('orders');
 
   // Orders State
@@ -94,329 +120,234 @@ export default function App() {
     showClientDetails: true,
     showNotes: true,
     customTitle: 'טופס ניפוק והספקה',
-    fontSizePt: 12,
+    fontSizePt: 10,
   });
 
-  // Count low stock items (< 10)
-  const lowStockItems = useMemo(() => getLowStockItems(stock, 10), [stock]);
+  // Sync to Multi-Tenant DB helper
+  const syncToMultiTenantDb = useCallback((prods: string[], depts: string[], currentStockMap: Record<string, StockItem>) => {
+    if (!activeTenant) return;
+    const warehouses = getWarehouses(activeTenant.id);
+    const primaryWhId = warehouses[0]?.id || 'wh-main-01';
 
-  // Sync / Pull Stock from Cloud (Google Sheet)
-  const handleSyncWithCloud = useCallback(async () => {
-    if (!cloudConfig.endpointUrl) return false;
-    setIsSyncingCloud(true);
-    try {
-      const cloudData = await fetchStockFromCloud(cloudConfig);
-      if (cloudData && typeof cloudData === 'object' && Object.keys(cloudData).length > 0) {
-        // Merge cloud data with local data, strictly preserving custom packaging units and thresholds
-        setStock((prevLocal) => {
-          const merged: Record<string, StockItem> = { ...prevLocal };
-          Object.keys(cloudData).forEach((key) => {
-            const cloudItem = cloudData[key];
-            const localItem = prevLocal[key];
-            merged[key] = {
-              ...(localItem || {}),
-              ...cloudItem,
-              // Preserve local custom unit (e.g. 'קופסה', 'מארז') if cloud returned default 'יח''
-              unit:
-                cloudItem.unit && cloudItem.unit !== "יח'"
-                  ? cloudItem.unit
-                  : localItem?.unit || cloudItem.unit || "יח'",
-              // Preserve custom minThreshold
-              minThreshold:
-                cloudItem.minThreshold !== undefined && cloudItem.minThreshold !== 10
-                  ? cloudItem.minThreshold
-                  : localItem?.minThreshold || cloudItem.minThreshold || 10,
-            };
-          });
-          saveStoredStock(merged);
-          return merged;
-        });
-        setSuccessMessage('המלאי סונכרן ונטען בהצלחה מטבלת המחסן בענן! ☁️');
-        setTimeout(() => setSuccessMessage(null), 4000);
-        return true;
+    // Build Inventory Products
+    const items: InventoryProduct[] = prods.map((name, idx) => {
+      const existing = currentStockMap[name];
+      return {
+        id: `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
+        tenantId: activeTenant.id,
+        warehouseId: primaryWhId,
+        name,
+        colIndex: idx + 4,
+        currentStock: existing ? existing.currentStock : 100,
+        minThreshold: existing ? existing.minThreshold : 10,
+        unit: (existing?.unit as any) || 'pcs',
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    saveInventory(activeTenant.id, items);
+
+    // Build Departments
+    const deptItems: TenantDepartment[] = depts.map((dName, idx) => ({
+      id: `dept-${idx}`,
+      tenantId: activeTenant.id,
+      name: dName,
+    }));
+    saveTenantDepartments(activeTenant.id, deptItems);
+  }, [activeTenant]);
+
+  // Load and Process Google Sheet Orders
+  const loadOrders = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) {
+        setIsLoading(true);
+        setErrorMessage(null);
       }
-      return false;
-    } catch (err: any) {
-      console.warn('Cloud sync fetch failed:', err);
-      return false;
-    } finally {
-      setIsSyncingCloud(false);
-    }
-  }, [cloudConfig]);
 
-  // Load orders from Google Sheet (Read-Only)
-  const loadOrders = useCallback(async (isSilent: boolean = false) => {
-    if (!isSilent) setIsLoading(true);
-    setErrorMessage(null);
+      try {
+        const rows = await fetchPublicCsvValues(spreadsheetId, gid);
 
-    try {
-      const rawRows = await fetchPublicCsvValues(spreadsheetId, gid);
-      const result = processRawRowsToOrders(rawRows);
+        if (!rows || rows.length < 2) {
+          throw new Error('הקובץ ריק או שאין בו מספיק נתונים');
+        }
 
-      if (result.orders.length > 0) {
-        // Apply printed status memory
-        const hydratedOrders = result.orders.map((o) => ({
+        const result = processRawRowsToOrders(rows);
+
+        const currentPrinted = new Set<string>();
+        try {
+          const raw = localStorage.getItem(PRINTED_ORDERS_STORAGE_KEY);
+          if (raw) {
+            const arr = JSON.parse(raw);
+            arr.forEach((id: string) => currentPrinted.add(id));
+          }
+        } catch {}
+
+        const syncedOrders = result.orders.map((o) => ({
           ...o,
-          printed: printedOrderIds.has(o.id) || o.printed,
+          printed: currentPrinted.has(o.id),
         }));
 
-        setOrders(hydratedOrders);
+        setOrders(syncedOrders);
         setDepartments(result.departments);
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
 
-        // Ensure stock map contains all product headers without overwriting existing quantities
+        // Sync and initialize warehouse stock
         setStock((prevStock) => {
-          const synced = syncStockWithProductHeaders(result.productHeaders, prevStock);
-          saveStoredStock(synced);
-          return synced;
+          const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
+          saveStoredStock(updatedStock);
+          // Also sync to multi-tenant DB
+          syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
+          return updatedStock;
         });
 
-        if (!isSilent) {
-          setSuccessMessage(`נטענו ${result.orders.length} הזמנות מ-${result.departments.length} מחלקות`);
-          setTimeout(() => setSuccessMessage(null), 4000);
+        if (isManualRefresh) {
+          setSuccessMessage('הנתונים נטענו בהצלחה!');
+          setTimeout(() => setSuccessMessage(null), 3500);
         }
+      } catch (err: any) {
+        console.warn('Live fetch error, falling back to mock data:', err);
+        const mockOrders = getMockCurrentWeekOrders();
+        const mockProductNames = Array.from(new Set(mockOrders.flatMap((o) => o.items.map((i) => i.name))));
+        const mockDeptNames = Array.from(new Set(mockOrders.map((o) => o.department)));
+
+        setOrders(mockOrders);
+        setDepartments(mockDeptNames);
+        setProductHeaders(mockProductNames);
+        setLastUpdated(new Date());
+
+        setStock((prevStock) => {
+          const updatedStock = syncStockWithProductHeaders(mockProductNames, prevStock);
+          saveStoredStock(updatedStock);
+          syncToMultiTenantDb(mockProductNames, mockDeptNames, updatedStock);
+          return updatedStock;
+        });
+
+        if (isManualRefresh) {
+          setWarningMessage('טוען נתוני דוגמה (בדוק חיבור ל-Google Sheets)');
+          setTimeout(() => setWarningMessage(null), 5000);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [spreadsheetId, gid, syncToMultiTenantDb]
+  );
+
+  // Initial Load
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  // Handle Cloud Sync
+  const handleSyncWithCloud = useCallback(async () => {
+    if (!cloudConfig.enabled || !cloudConfig.endpointUrl) {
+      setIsCloudModalOpen(true);
+      return;
+    }
+
+    setIsSyncingCloud(true);
+    try {
+      const fetched = await fetchStockFromCloud(cloudConfig);
+      if (fetched) {
+        setStock(fetched);
+        saveStoredStock(fetched);
+        setSuccessMessage('סנכרון ענן הושלם בהצלחה!');
+        setTimeout(() => setSuccessMessage(null), 3000);
       } else {
-        setOrders(getMockCurrentWeekOrders());
+        const ok = await pushStockToCloud(stock, cloudConfig);
+        if (ok) {
+          setSuccessMessage('מלאי נשלח בהצלחה לענן!');
+          setTimeout(() => setSuccessMessage(null), 3000);
+        }
       }
     } catch (err: any) {
-      console.warn('שגיאה בטעינת נתונים מ-Google Sheets:', err);
-      setErrorMessage(
-        err.message || 'לא ניתן לטעון נתונים מ-Google Sheets. אנא בדקו את החיבור וההרשאות.'
-      );
-      if (orders.length === 0) {
-        setOrders(getMockCurrentWeekOrders());
-      }
+      setErrorMessage(`שגיאת סנכרון: ${err.message}`);
     } finally {
-      setIsLoading(false);
-      setCountdown(autoRefreshSec);
+      setIsSyncingCloud(false);
     }
-  }, [spreadsheetId, gid, autoRefreshSec, orders.length, printedOrderIds]);
+  }, [cloudConfig, stock]);
 
-  // Initial Load: Check shared URL params, load orders, pull cloud stock
-  useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('mode') === 'order' || window.location.hash.includes('order')) {
-        setActiveTab('order_portal');
-      }
-
-      const sharedCloudUrl = params.get('cloudUrl');
-      if (sharedCloudUrl) {
-        const cleanUrl = decodeURIComponent(sharedCloudUrl);
-        const autoConfig: CloudSyncConfig = {
-          ...cloudConfig,
-          enabled: true,
-          endpointUrl: cleanUrl,
-        };
-        setCloudConfig(autoConfig);
-        saveCloudConfig(autoConfig);
-        fetchStockFromCloud(autoConfig)
-          .then((cloudData) => {
-            if (cloudData) {
-              setStock((prevLocal) => {
-                const merged: Record<string, StockItem> = { ...prevLocal };
-                Object.keys(cloudData).forEach((key) => {
-                  const cloudItem = cloudData[key];
-                  const localItem = prevLocal[key];
-                  merged[key] = {
-                    ...(localItem || {}),
-                    ...cloudItem,
-                    unit:
-                      cloudItem.unit && cloudItem.unit !== "יח'"
-                        ? cloudItem.unit
-                        : localItem?.unit || cloudItem.unit || "יח'",
-                    minThreshold:
-                      cloudItem.minThreshold !== undefined && cloudItem.minThreshold !== 10
-                        ? cloudItem.minThreshold
-                        : localItem?.minThreshold || cloudItem.minThreshold || 10,
-                  };
-                });
-                saveStoredStock(merged);
-                return merged;
-              });
-              setSuccessMessage('טבלת המחסן חוברה בהצלחה מהקישור המשותף! ☁️');
-              setTimeout(() => setSuccessMessage(null), 5000);
-            }
-          })
-          .catch(() => {});
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    } catch (e) {
-      console.warn('Failed to parse URL params:', e);
-    }
-
-    loadOrders();
-    if (cloudConfig.endpointUrl) {
-      handleSyncWithCloud();
-    }
-  }, []);
-
-  // Auto-Refresh Countdown for orders
-  useEffect(() => {
-    if (autoRefreshSec <= 0) return;
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          loadOrders(true);
-          return autoRefreshSec;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [autoRefreshSec, loadOrders]);
-
-  // Save printed order IDs in localStorage
-  const markOrdersPrinted = (ids: string[], isPrinted: boolean = true) => {
-    setPrintedOrderIds((prev) => {
-      const next = new Set(prev);
-      ids.forEach((id) => {
-        if (isPrinted) next.add(id);
-        else next.delete(id);
-      });
-      try {
-        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch (e) {
-        console.warn('Failed to save printed orders:', e);
-      }
-      return next;
-    });
-
-    setOrders((prev) =>
-      prev.map((o) =>
-        ids.includes(o.id) ? { ...o, printed: isPrinted, printedAt: isPrinted ? new Date().toISOString() : undefined } : o
-      )
-    );
+  // Handle Cloud Config Save
+  const handleSaveCloudConfig = (newConfig: CloudSyncConfig) => {
+    setCloudConfig(newConfig);
+    saveCloudConfig(newConfig);
+    setSuccessMessage('הגדרות סנכרון ענן נשמרו בהצלחה!');
+    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  // Stock Management Handlers
-  const handleUpdateStockItem = (name: string, newQty: number, minThreshold?: number, unit?: string) => {
+  // Stock Updates
+  const handleUpdateStockItem = useCallback((itemId: string, newStock: number) => {
     setStock((prev) => {
-      const existing = prev[name] || {
-        id: `stock-${Date.now()}`,
-        name,
-        colIndex: 0,
-        currentStock: 0,
-        minThreshold: 10,
-        unit: 'יח\'',
-      };
-
+      if (!prev[itemId]) return prev;
       const updated = {
         ...prev,
-        [name]: {
-          ...existing,
-          currentStock: newQty,
-          minThreshold: minThreshold !== undefined ? minThreshold : (existing.minThreshold || 10),
-          unit: unit !== undefined ? unit : (existing.unit || 'יח\''),
+        [itemId]: {
+          ...prev[itemId],
+          currentStock: Math.max(0, newStock),
+          lastDeducted: new Date().toISOString(),
         },
       };
-
       saveStoredStock(updated);
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        pushStockToCloud(updated, cloudConfig).catch(() => {});
-      }
       return updated;
     });
-  };
+  }, []);
 
-  const handleBatchUpdateStock = (newStock: Record<string, StockItem>) => {
-    setStock(newStock);
-    saveStoredStock(newStock);
-    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-      pushStockToCloud(newStock, cloudConfig).catch(() => {});
-    }
-  };
-
-  const handleSetAllStock = (qty: number) => {
+  const handleBatchUpdateStock = useCallback((updates: Record<string, number>) => {
     setStock((prev) => {
-      const updated: Record<string, StockItem> = {};
-      Object.keys(prev).forEach((k) => {
-        updated[k] = { ...prev[k], currentStock: qty };
-      });
-      productHeaders.forEach((h, idx) => {
-        const name = h.trim();
-        if (name && !updated[name]) {
-          updated[name] = {
-            id: `stock-${idx + 4}`,
-            name,
-            colIndex: idx + 4,
-            currentStock: qty,
-            minThreshold: 10,
+      const next = { ...prev };
+      Object.entries(updates).forEach(([id, qty]) => {
+        if (next[id]) {
+          next[id] = {
+            ...next[id],
+            currentStock: Math.max(0, qty),
+            lastDeducted: new Date().toISOString(),
           };
         }
       });
-      saveStoredStock(updated);
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        pushStockToCloud(updated, cloudConfig).catch(() => {});
-      }
-      return updated;
+      saveStoredStock(next);
+      return next;
     });
-    setSuccessMessage(`יתרת מלאי של ${qty} יח' הוגדרה לכל הפריטים בהצלחה!`);
-    setTimeout(() => setSuccessMessage(null), 4000);
+  }, []);
+
+  const handleSetAllStock = useCallback((defaultVal: number) => {
+    setStock((prev) => {
+      const next: Record<string, StockItem> = {};
+      Object.keys(prev).forEach((id) => {
+        const item = prev[id];
+        if (item) {
+          next[id] = {
+            ...item,
+            currentStock: defaultVal,
+          };
+        }
+      });
+      saveStoredStock(next);
+      return next;
+    });
+  }, []);
+
+  // Print Handlers
+  const handleToggleSelectOrder = (orderId: string) => {
+    setSelectedOrderIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
   };
 
-  // Trigger Print Confirmation Modal (for full control)
+  const handleSelectAllOrders = (orderIds: string[]) => {
+    setSelectedOrderIds(orderIds);
+  };
+
   const handleSinglePrint = (order: Order) => {
     setOrdersForConfirm([order]);
     setIsPrintConfirmOpen(true);
   };
 
-  // Direct Quick Print as Copy (guaranteed NO stock deduction)
-  const handleDirectCopyPrint = (order: Order) => {
-    printOrdersHtml([order], printSettings, true);
-    markOrdersPrinted([order.id], true);
-    setSuccessMessage(`הזמנה עבור ${order.department} הודפסה כהעתק (ללא שום קיזוז מהמלאי) 📄`);
-    setTimeout(() => setSuccessMessage(null), 4000);
-  };
-
-  const handleMassPrint = () => {
-    const ordersToPrint = orders.filter((o) => selectedOrderIds.includes(o.id));
-    if (ordersToPrint.length === 0) return;
-    setOrdersForConfirm(ordersToPrint);
+  const handleMassPrint = (selectedIds: string[]) => {
+    const toPrint = orders.filter((o) => selectedIds.includes(o.id));
+    if (toPrint.length === 0) return;
+    setOrdersForConfirm(toPrint);
     setIsPrintConfirmOpen(true);
-  };
-
-  // Execution after user chooses in PrintConfirmModal
-  const handleExecutePrint = (ordersToPrint: Order[], deductFromStock: boolean, isCopy: boolean) => {
-    // 1. Print document
-    printOrdersHtml(ordersToPrint, printSettings, isCopy);
-
-    // 2. Deduct from stock ONLY if deductFromStock === true
-    if (deductFromStock) {
-      const deduction = deductOrdersFromStock(ordersToPrint, stock);
-      setStock(deduction.updatedStock);
-
-      if (cloudConfig.enabled && cloudConfig.endpointUrl && cloudConfig.autoSyncOnPrint) {
-        pushStockToCloud(deduction.updatedStock, cloudConfig).catch(() => {});
-      }
-
-      setSuccessMessage(
-        ordersToPrint.length === 1
-          ? `הזמנה עבור ${ordersToPrint[0].department} הודפסה. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`
-          : `הודפסו ${ordersToPrint.length} הזמנות. קוזזו ${deduction.totalDeductedCount} פריטים מהמלאי.`
-      );
-      setTimeout(() => setSuccessMessage(null), 4000);
-
-      if (deduction.newLowStockItems.length > 0) {
-        setWarningMessage(
-          `⚠️ שים לב: ${deduction.newLowStockItems.length} פריטים ירדו מתחת לסף 10 יח' במלאי!`
-        );
-        setTimeout(() => setWarningMessage(null), 6000);
-      }
-    } else {
-      setSuccessMessage(
-        ordersToPrint.length === 1
-          ? `הזמנה עבור ${ordersToPrint[0].department} הודפסה כהעתק (ללא קיזוז מהמלאי) 📄`
-          : `הודפסו ${ordersToPrint.length} הזמנות כהעתק (ללא קיזוז מהמלאי) 📄`
-      );
-      setTimeout(() => setSuccessMessage(null), 4000);
-    }
-
-    // 3. Mark orders as printed
-    markOrdersPrinted(ordersToPrint.map((o) => o.id), true);
   };
 
   const handlePreviewOrder = (order: Order) => {
@@ -424,87 +355,235 @@ export default function App() {
     setIsPreviewOpen(true);
   };
 
-  const handleToggleSelectOrder = (id: string) => {
-    setSelectedOrderIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+  const handleDirectCopyPrint = (order: Order) => {
+    printOrdersHtml([order], printSettings, false);
   };
 
-  const handleSelectAllOrders = (selectAll: boolean) => {
-    if (selectAll) {
-      setSelectedOrderIds(orders.map((o) => o.id));
-    } else {
-      setSelectedOrderIds([]);
+  const handleExecutePrint = (ordersToPrint: Order[], deductStock: boolean) => {
+    printOrdersHtml(ordersToPrint, printSettings, deductStock);
+
+    const newPrinted = new Set(printedOrderIds);
+    ordersToPrint.forEach((o) => newPrinted.add(o.id));
+    setPrintedOrderIds(newPrinted);
+    localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(newPrinted)));
+
+    setOrders((prev) =>
+      prev.map((o) => (newPrinted.has(o.id) ? { ...o, printed: true } : o))
+    );
+
+    if (deductStock) {
+      setStock((prevStock) => {
+        const { updatedStock } = deductOrdersFromStock(ordersToPrint, prevStock);
+        saveStoredStock(updatedStock);
+        if (cloudConfig.enabled && cloudConfig.autoSyncOnPrint) {
+          pushStockToCloud(updatedStock, cloudConfig).catch(console.error);
+        }
+        return updatedStock;
+      });
     }
+
+    setIsPrintConfirmOpen(false);
+    setIsPreviewOpen(false);
+    setSelectedOrderIds([]);
   };
 
   const handleTogglePrintedStatus = (orderId: string) => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) return;
-    markOrdersPrinted([orderId], !order.printed);
+    setPrintedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, printed: !o.printed } : o))
+    );
   };
 
-  const handleSaveCloudConfig = (newCfg: CloudSyncConfig) => {
-    setCloudConfig(newCfg);
-    saveCloudConfig(newCfg);
-    if (newCfg.endpointUrl) {
-      handleSyncWithCloud();
+  // Auth & View Handlers
+  const handleLoginSuccess = (session: AuthSession) => {
+    setAuthSession(session);
+    if (session.userRole === 'superadmin') {
+      setCurrentView('superadmin');
+    } else if (session.tenantId) {
+      setActiveTenantId(session.tenantId);
+      setCurrentView('app');
     }
   };
 
+  const handleLogout = () => {
+    logoutDb();
+    setAuthSession(null);
+    setCurrentView('landing');
+  };
+
+  // Low stock calculation
+  const lowStockCount = useMemo(() => {
+    return getLowStockItems(stock).length;
+  }, [stock]);
+
+  // VIEW ROUTER:
+  // 1. SuperAdmin View
+  if (currentView === 'superadmin' && authSession?.userRole === 'superadmin') {
+    return (
+      <SuperAdminDashboard
+        currentSession={authSession}
+        onLogout={handleLogout}
+        onSelectTenantApp={(tenantId) => {
+          setActiveTenantId(tenantId);
+          setCurrentView('app');
+        }}
+      />
+    );
+  }
+
+  // 2. Landing View
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onLoginSuccess={handleLoginSuccess}
+        onOpenOrderPortal={() => setCurrentView('portal_pwa')}
+      />
+    );
+  }
+
+  // 3. PWA Staff Order Portal View
+  if (currentView === 'portal_pwa') {
+    return (
+      <StaffOrderPortal
+        initialTenantId={activeTenantId}
+        onBackToMain={() => setCurrentView('app')}
+      />
+    );
+  }
+
+  // 4. Main Tenant Warehouse & Orders Workspace View
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900" dir="rtl">
-      
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
       {/* Header */}
       <Header
         sheetUrl={spreadsheetUrl}
-        activeSheetTitle="Заявки"
+        activeSheetTitle="טבלת הזמנות אספקה"
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         autoRefreshSec={autoRefreshSec}
         setAutoRefreshSec={setAutoRefreshSec}
         countdown={countdown}
-        onRefresh={() => loadOrders(false)}
+        onRefresh={() => loadOrders(true)}
         isRefreshing={isLoading}
         ordersCount={orders.length}
         departmentsCount={departments.length}
-        lowStockCount={lowStockItems.length}
+        lowStockCount={lowStockCount}
         lastUpdated={lastUpdated}
+        authSession={authSession}
+        onOpenSuperadmin={() => {
+          if (authSession?.userRole === 'superadmin') {
+            setCurrentView('superadmin');
+          } else {
+            setIsLoginModalOpen(true);
+          }
+        }}
+        onOpenLanding={() => setCurrentView('landing')}
+        onOpenPortalPwa={() => setCurrentView('portal_pwa')}
+        onLogout={handleLogout}
+        tenantName={activeTenant?.name}
       />
 
-      {/* Alert Banners */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full space-y-2">
+      {/* Multi-Tenant Quick Switcher & Info Banner */}
+      <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-2 text-xs text-slate-300">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-indigo-400" />
+            <span>Текущий филиал:</span>
+            <select
+              value={activeTenantId}
+              onChange={(e) => {
+                setActiveTenantId(e.target.value);
+                const t = tenants.find((item) => item.id === e.target.value);
+                if (t?.spreadsheetId) setSpreadsheetId(t.spreadsheetId);
+              }}
+              className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
+            >
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.plan.toUpperCase()})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentView('portal_pwa')}
+              className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Открыть PWA-портал заказа</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (authSession?.userRole === 'superadmin') {
+                  setCurrentView('superadmin');
+                } else {
+                  setIsLoginModalOpen(true);
+                }
+              }}
+              className="px-2.5 py-1 bg-purple-600/80 hover:bg-purple-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Панель Суперадмина</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentView('landing')}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Лендинг
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Notification Toast Messages */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 w-full space-y-2">
         {errorMessage && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-xs flex items-center justify-between shadow-xs">
+          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{errorMessage}</span>
             </div>
-            <button
-              onClick={() => loadOrders(false)}
-              className="font-bold underline hover:text-red-900 mr-3 shrink-0 cursor-pointer"
-            >
-              נסה שוב
+            <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-white font-bold cursor-pointer">
+              ✕
             </button>
           </div>
         )}
 
         {successMessage && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 shadow-xs animate-fadeIn font-bold">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{successMessage}</span>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+            <button onClick={() => setSuccessMessage(null)} className="text-emerald-400 hover:text-white font-bold cursor-pointer">
+              ✕
+            </button>
           </div>
         )}
 
         {warningMessage && (
-          <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between shadow-xs animate-bounce">
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="font-bold">{warningMessage}</span>
             </div>
             <button
               onClick={() => setActiveTab('warehouse')}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded-xl text-xs transition-colors cursor-pointer"
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-1 rounded-xl text-xs transition-colors cursor-pointer"
             >
               פתח מסך מחסן
             </button>
@@ -591,12 +670,22 @@ export default function App() {
         onSyncNow={handleSyncWithCloud}
       />
 
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSuccess={handleLoginSuccess}
+        onOpenOrderPortal={() => {
+          setIsLoginModalOpen(false);
+          setCurrentView('portal_pwa');
+        }}
+      />
+
       {/* Floating Scroll-to-Top Button */}
       <ScrollToTop />
 
       {/* PWA Mobile Install Banner */}
       <PWAInstallBanner />
-
     </div>
   );
 }
