@@ -196,7 +196,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
                   PWA
                 </span>
               </div>
-              <p className="text-xs text-slate-400 truncate max-w-[200px]">{activeTenant?.name}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-xs font-bold text-sky-300 bg-sky-950/90 px-2 py-0.5 rounded-lg border border-sky-700/60 flex items-center gap-1">
+                  <Building2 className="w-3 h-3 text-sky-400 shrink-0" />
+                  <span className="truncate max-w-[220px]">{activeTenant?.name || 'מרכז רפואי ראשי'}</span>
+                </span>
+              </div>
             </div>
           </div>
 

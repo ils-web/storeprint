@@ -15,12 +15,14 @@ import {
 interface InstallAppModalProps {
   isOpen: boolean;
   onClose: () => void;
+  tenantId?: string;
   tenantName?: string;
 }
 
 export function InstallAppModal({
   isOpen,
   onClose,
+  tenantId,
   tenantName = 'מרכז רפואי (סניף ראשי)',
 }: InstallAppModalProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -29,7 +31,8 @@ export function InstallAppModal({
   const [copiedLink, setCopiedLink] = useState(false);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const portalUrl = `${origin}/?view=portal_pwa`;
+  const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
+  const portalUrl = `${origin}/?view=portal_pwa${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
 
   useEffect(() => {

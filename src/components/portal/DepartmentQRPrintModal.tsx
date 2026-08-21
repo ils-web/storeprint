@@ -5,6 +5,7 @@ interface DepartmentQRPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   departments: string[];
+  tenantId?: string;
   tenantName?: string;
 }
 
@@ -12,6 +13,7 @@ export function DepartmentQRPrintModal({
   isOpen,
   onClose,
   departments,
+  tenantId,
   tenantName = 'מרכז רפואי (סניף ראשי)',
 }: DepartmentQRPrintModalProps) {
   const [selectedDept, setSelectedDept] = useState<string>('all');
@@ -23,7 +25,8 @@ export function DepartmentQRPrintModal({
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 
   const getPortalUrlForDept = (dept: string) => {
-    return `${origin}/?view=portal_pwa&dept=${encodeURIComponent(dept)}`;
+    const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
+    return `${origin}/?view=portal_pwa${tenantQuery}&dept=${encodeURIComponent(dept)}`;
   };
 
   const getQrImageUrl = (dept: string) => {

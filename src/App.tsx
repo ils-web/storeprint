@@ -879,6 +879,7 @@ export default function App() {
           <WarehouseView
             stock={stock}
             departments={departments}
+            tenantId={activeTenantId}
             tenantName={activeTenant?.name}
             isEmergencyMode={isEmergencyMode}
             onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
@@ -954,6 +955,7 @@ export default function App() {
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+        tenantId={activeTenantId}
         tenantName={activeTenant?.name}
       />
 

@@ -74,7 +74,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
 
   return (
     <div
-      className={`inline-flex items-center gap-1 sm:gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs ${
+      className={`inline-flex items-center gap-1 sm:gap-1.5 bg-white border border-slate-300 rounded-2xl p-1 shadow-2xs shrink-0 ${
         isMobile ? 'w-full justify-between py-1.5 px-2' : ''
       }`}
     >
@@ -82,7 +82,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       <button
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, safeStock - 10))}
-        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-black transition-colors cursor-pointer ${
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-black transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
         }`}
         title="הורד 10"
@@ -94,7 +94,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       <button
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, safeStock - 1))}
-        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer ${
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10' : 'w-7 h-7'
         }`}
         title="הורד 1"
@@ -102,8 +102,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         <Minus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
 
-      {/* Input - commits on Blur or Enter, with mobile numeric keypad */}
-      <div className="relative flex items-center justify-center flex-1 max-w-[90px]">
+      {/* Input - commits on Blur or Enter, with mobile numeric keypad and no clipped numbers */}
+      <div className="relative flex items-center justify-center shrink-0">
         <input
           type="number"
           inputMode="numeric"
@@ -121,7 +121,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`w-full text-center font-black rounded-xl border focus:outline-none focus:ring-2 ${
+          className={`w-16 sm:w-20 min-w-[65px] px-1 text-center font-black rounded-xl border focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
             isMobile ? 'text-base py-1.5' : 'text-sm py-1'
           } ${
             isLow
@@ -135,7 +135,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       <button
         type="button"
         onClick={() => onUpdate(item.name, safeStock + 1)}
-        className={`flex items-center justify-center rounded-xl bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer ${
+        className={`flex items-center justify-center rounded-xl bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10' : 'w-7 h-7'
         }`}
         title="הוסף 1"
@@ -147,7 +147,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       <button
         type="button"
         onClick={() => onUpdate(item.name, safeStock + 10)}
-        className={`flex items-center justify-center rounded-xl bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer ${
+        className={`flex items-center justify-center rounded-xl bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
         }`}
         title="הוסף 10"
@@ -204,7 +204,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 border rounded-2xl px-2 py-1 shadow-2xs ${
+      className={`inline-flex items-center gap-1.5 border rounded-2xl px-2 py-1 shadow-2xs shrink-0 ${
         isEmergencyMode
           ? 'bg-red-50/80 border-red-300 ring-1 ring-red-400'
           : 'bg-slate-50 border-slate-300'
@@ -232,7 +232,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-12 text-center text-xs font-black py-1 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs"
+          className="w-14 sm:w-16 min-w-[50px] text-center text-xs font-black py-1 px-1 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           title="סף כמות מינימום לדוח חוסרים"
         />
         {isEmergencyMode && (
@@ -269,6 +269,7 @@ import { printEmergencyReorderListHtml } from '../utils/emergencyPdfGenerator';
 interface WarehouseViewProps {
   stock: Record<string, StockItem>;
   departments?: string[];
+  tenantId?: string;
   tenantName?: string;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
@@ -284,6 +285,7 @@ interface WarehouseViewProps {
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
   stock,
   departments = [],
+  tenantId,
   tenantName,
   isEmergencyMode = false,
   onOpenEmergencyConfirm,
@@ -761,15 +763,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
         {/* 2. Desktop Table View (Visible on Screens >= 768px) */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-right border-collapse">
+          <table className="w-full text-right border-collapse min-w-[1150px]">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
-                <th className="py-3.5 px-4 w-14 text-center">מס'</th>
-                <th className="py-3.5 px-4">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
-                <th className="py-3.5 px-4 w-52 text-center">יתרת מלאי נוכחית</th>
-                <th className="py-3.5 px-4 w-56 text-center">סף מינימום וסוג אריזה</th>
-                <th className="py-3.5 px-4 w-44 text-center">סטטוס מלאי</th>
-                <th className="py-3.5 px-4 w-32 text-center">פעילות / השהייה</th>
+                <th className="py-3.5 px-3 w-12 text-center">מס'</th>
+                <th className="py-3.5 px-4 min-w-[260px]">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
+                <th className="py-3.5 px-4 w-64 min-w-[240px] text-center">יתרת מלאי נוכחית</th>
+                <th className="py-3.5 px-4 w-64 min-w-[240px] text-center">סף מינימום וסוג אריזה</th>
+                <th className="py-3.5 px-4 w-44 min-w-[160px] text-center">סטטוס מלאי</th>
+                <th className="py-3.5 px-4 w-32 min-w-[120px] text-center">פעילות / השהייה</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -1005,6 +1007,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         isOpen={isDeptQRModalOpen}
         onClose={() => setIsDeptQRModalOpen(false)}
         departments={departments}
+        tenantId={tenantId}
         tenantName={tenantName}
       />
 
