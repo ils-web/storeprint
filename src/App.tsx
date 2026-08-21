@@ -14,6 +14,9 @@ import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { InstallAppModal } from './components/portal/InstallAppModal';
 import { LoginModal } from './components/auth/LoginModal';
+import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmModal';
+import { EmergencyBanner } from './components/emergency/EmergencyBanner';
+import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import { AuthSession, InventoryProduct, TenantDepartment } from './types/multiTenant';
 import {
@@ -143,6 +146,41 @@ export default function App() {
   // Print Confirm Modal State
   const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
   const [ordersForConfirm, setOrdersForConfirm] = useState<Order[]>([]);
+
+  // Emergency Mode State (Hospital x3 Buffer Stock)
+  const EMERGENCY_MODE_STORAGE_KEY = 'storeprint_emergency_mode_v1';
+  const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(EMERGENCY_MODE_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isEmergencyConfirmOpen, setIsEmergencyConfirmOpen] = useState(false);
+
+  const handleToggleEmergencyMode = (targetState: boolean) => {
+    setIsEmergencyMode(targetState);
+    try {
+      localStorage.setItem(EMERGENCY_MODE_STORAGE_KEY, String(targetState));
+    } catch {}
+
+    if (targetState) {
+      setErrorMessage('🚨 הופעל מצב חירום רפואי (מלאי משולש X3). כל ספי המינימום שולשו למוכנות שיא!');
+      setTimeout(() => setErrorMessage(null), 6000);
+    } else {
+      setSuccessMessage('🟢 המערכת חזרה לשגרת פעילות רגילה. ספי המינימום הוחזרו לרמתם המקורית.');
+      setTimeout(() => setSuccessMessage(null), 4500);
+    }
+  };
+
+  const emergencyDeficitCount = useMemo(() => {
+    if (!isEmergencyMode) return 0;
+    return Object.values(stock).filter((item: StockItem) => {
+      const routineTh = item.minThreshold || 10;
+      const emergencyTh = routineTh * 3;
+      return (item.currentStock || 0) < emergencyTh;
+    }).length;
+  }, [stock, isEmergencyMode]);
 
   // Auto-refresh timer
   const [autoRefreshSec, setAutoRefreshSec] = useState<number>(30);
@@ -643,6 +681,8 @@ export default function App() {
     return (
       <MobileStockManager
         stock={stock}
+        isEmergencyMode={isEmergencyMode}
+        onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
         onUpdateStockItem={handleUpdateStockItem}
         onSyncWithCloud={handleSyncWithCloud}
         isSyncingCloud={isSyncingCloud}
@@ -660,6 +700,8 @@ export default function App() {
         activeSheetTitle="טבלת הזמנות אספקה"
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        isEmergencyMode={isEmergencyMode}
+        onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
         autoRefreshSec={autoRefreshSec}
         setAutoRefreshSec={setAutoRefreshSec}
         countdown={countdown}
@@ -683,6 +725,16 @@ export default function App() {
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onLogout={handleLogout}
         tenantName={activeTenant?.name}
+      />
+
+      {/* Top Hospital Emergency Mode Banner */}
+      <EmergencyBanner
+        isEmergencyMode={isEmergencyMode}
+        emergencyDeficitCount={emergencyDeficitCount}
+        onOpenEmergencyPrint={() =>
+          printEmergencyReorderListHtml(Object.values(stock), 10, 3, activeTenant?.name)
+        }
+        onRequestDeactivate={() => setIsEmergencyConfirmOpen(true)}
       />
 
       {/* Multi-Tenant Quick Switcher & Info Banner */}
@@ -823,6 +875,8 @@ export default function App() {
             stock={stock}
             departments={departments}
             tenantName={activeTenant?.name}
+            isEmergencyMode={isEmergencyMode}
+            onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
             cloudConfig={cloudConfig}
             onOpenCloudModal={() => setIsCloudModalOpen(true)}
             onSyncWithCloud={handleSyncWithCloud}
@@ -895,6 +949,14 @@ export default function App() {
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+      />
+
+      {/* Hospital Emergency Confirm Modal */}
+      <EmergencyConfirmModal
+        isOpen={isEmergencyConfirmOpen}
+        onClose={() => setIsEmergencyConfirmOpen(false)}
+        isCurrentlyEmergency={isEmergencyMode}
+        onConfirm={handleToggleEmergencyMode}
       />
 
       {/* Floating Scroll-to-Top Button */}

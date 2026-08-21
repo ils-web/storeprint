@@ -12,6 +12,7 @@ import {
   Smartphone,
   LogOut,
   Sparkles,
+  Siren,
 } from 'lucide-react';
 import { AuthSession } from '../types/multiTenant';
 
@@ -20,6 +21,8 @@ interface HeaderProps {
   activeSheetTitle: string;
   activeTab: 'orders' | 'warehouse' | 'order_portal';
   setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal') => void;
+  isEmergencyMode?: boolean;
+  onOpenEmergencyConfirm?: () => void;
   autoRefreshSec: number;
   setAutoRefreshSec: (sec: number) => void;
   countdown: number;
@@ -27,6 +30,8 @@ interface HeaderProps {
   isRefreshing: boolean;
   ordersCount: number;
   departmentsCount: number;
+  lowStockCount: number;
+  lastUpdated: Date | null;
   authSession?: AuthSession | null;
   onOpenSuperadmin?: () => void;
   onOpenLanding?: () => void;
@@ -42,6 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeSheetTitle,
   activeTab,
   setActiveTab,
+  isEmergencyMode = false,
+  onOpenEmergencyConfirm,
   autoRefreshSec,
   setAutoRefreshSec,
   countdown,
@@ -167,6 +174,22 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Smartphone className="w-3.5 h-3.5 animate-bounce" />
                 <span>התקנת אפליקציה 📲</span>
+              </button>
+            )}
+
+            {/* Emergency Mode Quick Toggle */}
+            {onOpenEmergencyConfirm && (
+              <button
+                onClick={onOpenEmergencyConfirm}
+                className={`text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md transition-all cursor-pointer ${
+                  isEmergencyMode
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white animate-pulse ring-2 ring-red-400 shadow-red-600/30'
+                    : 'bg-red-950/70 hover:bg-red-900 text-red-200 border border-red-700/50'
+                }`}
+                title={isEmergencyMode ? 'חזרה לשגרת פעילות (1X)' : 'מעבר לשעת חירום - מלאי X3'}
+              >
+                <Siren className="w-3.5 h-3.5 text-white" />
+                <span>{isEmergencyMode ? 'חירום X3 🚨' : 'מצב חירום'}</span>
               </button>
             )}
 

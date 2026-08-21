@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   QrCode,
   Smartphone,
+  Siren,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -156,6 +157,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
 interface ThresholdAndUnitInputProps {
   item: StockItem;
   globalThreshold: number;
+  isEmergencyMode?: boolean;
   onUpdate: (name: string, currentStock: number, minThreshold: number, unit: string) => void;
   isMobile?: boolean;
 }
@@ -163,11 +165,13 @@ interface ThresholdAndUnitInputProps {
 const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   item,
   globalThreshold,
+  isEmergencyMode = false,
   onUpdate,
   isMobile = false,
 }) => {
   const safeStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
   const safeTh = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (globalThreshold || 10);
+  const emergencyTh = safeTh * 3;
   const currentUnit = item.unit || "יח'";
   const [val, setVal] = useState<string>(String(safeTh));
   const [isFocused, setIsFocused] = useState(false);
@@ -196,13 +200,17 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-2xl px-2 py-1 shadow-2xs ${
-        isMobile ? 'w-full justify-between' : ''
-      }`}
+      className={`inline-flex items-center gap-1.5 border rounded-2xl px-2 py-1 shadow-2xs ${
+        isEmergencyMode
+          ? 'bg-red-50/80 border-red-300 ring-1 ring-red-400'
+          : 'bg-slate-50 border-slate-300'
+      } ${isMobile ? 'w-full justify-between' : ''}`}
     >
       {/* Min threshold number input */}
       <div className="flex items-center gap-1">
-        <span className="text-[11px] font-bold text-slate-600">סף מינימום:</span>
+        <span className="text-[11px] font-bold text-slate-600">
+          {isEmergencyMode ? 'סף שגרה:' : 'סף מינימום:'}
+        </span>
         <input
           type="number"
           inputMode="numeric"
@@ -223,6 +231,11 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
           className="w-12 text-center text-xs font-black py-1 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs"
           title="סף כמות מינימום לדוח חוסרים"
         />
+        {isEmergencyMode && (
+          <span className="text-[10px] font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded border border-red-300">
+            חירום: {emergencyTh}
+          </span>
+        )}
       </div>
 
       {/* Packaging / Unit Dropdown Selector */}
@@ -247,11 +260,14 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
 
 import { DepartmentQRPrintModal } from './portal/DepartmentQRPrintModal';
 import { MobileStockQRModal } from './mobile/MobileStockQRModal';
+import { printEmergencyReorderListHtml } from '../utils/emergencyPdfGenerator';
 
 interface WarehouseViewProps {
   stock: Record<string, StockItem>;
   departments?: string[];
   tenantName?: string;
+  isEmergencyMode?: boolean;
+  onOpenEmergencyConfirm?: () => void;
   cloudConfig: CloudSyncConfig;
   onOpenCloudModal: () => void;
   onSyncWithCloud: () => void;
@@ -265,6 +281,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   stock,
   departments = [],
   tenantName,
+  isEmergencyMode = false,
+  onOpenEmergencyConfirm,
   cloudConfig,
   onOpenCloudModal,
   onSyncWithCloud,
@@ -283,6 +301,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
   const stockList = useMemo(() => Object.values(stock), [stock]);
 
+  // Helper to calculate effective threshold (x3 in emergency mode)
+  const getEffectiveTh = useCallback((item: StockItem) => {
+    const baseTh = item.minThreshold || globalThreshold;
+    return isEmergencyMode ? baseTh * 3 : baseTh;
+  }, [globalThreshold, isEmergencyMode]);
+
   // Statistics
   const stats = useMemo(() => {
     let ok = 0;
@@ -290,11 +314,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     let out = 0;
 
     stockList.forEach((item) => {
-      const th = item.minThreshold || globalThreshold;
-      if (item.currentStock === 0) {
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      if (safeQty === 0) {
         out++;
         low++;
-      } else if (item.currentStock < th) {
+      } else if (safeQty < th) {
         low++;
       } else {
         ok++;
@@ -302,24 +327,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     });
 
     return { total: stockList.length, ok, low, out };
-  }, [stockList, globalThreshold]);
+  }, [stockList, getEffectiveTh]);
 
   // Low stock items list for printing
   const lowStockItems = useMemo(() => {
     return stockList.filter((item) => {
-      const th = item.minThreshold || globalThreshold;
-      return item.currentStock < th;
-    }).sort((a, b) => a.currentStock - b.currentStock);
-  }, [stockList, globalThreshold]);
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      return safeQty < th;
+    }).sort((a, b) => (a.currentStock || 0) - (b.currentStock || 0));
+  }, [stockList, getEffectiveTh]);
 
   // Filtered display list
   const filteredItems = useMemo(() => {
     return stockList.filter((item) => {
-      const th = item.minThreshold || globalThreshold;
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
 
-      if (filterType === 'low' && item.currentStock >= th) return false;
-      if (filterType === 'out' && item.currentStock > 0) return false;
-      if (filterType === 'ok' && item.currentStock < th) return false;
+      if (filterType === 'low' && safeQty >= th) return false;
+      if (filterType === 'out' && safeQty > 0) return false;
+      if (filterType === 'ok' && safeQty < th) return false;
 
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase();
@@ -329,14 +356,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       return true;
     }).sort((a, b) => {
       if (filterType === 'low' || filterType === 'out') {
-        return a.currentStock - b.currentStock;
+        return (a.currentStock || 0) - (b.currentStock || 0);
       }
-      return a.colIndex - b.colIndex;
+      return (a.colIndex || 0) - (b.colIndex || 0);
     });
-  }, [stockList, filterType, searchTerm, globalThreshold]);
+  }, [stockList, filterType, searchTerm, getEffectiveTh]);
 
   const handlePrintReorder = () => {
-    printReorderListHtml(lowStockItems, globalThreshold);
+    if (isEmergencyMode) {
+      printEmergencyReorderListHtml(stockList, globalThreshold, 3, tenantName);
+    } else {
+      printReorderListHtml(lowStockItems, globalThreshold);
+    }
   };
 
   const handleExport = () => {
@@ -545,6 +576,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <QrCode className="w-3.5 h-3.5" />
                 <span>כרטיסיות QR למחלקות 🏷️</span>
               </button>
+              {/* Emergency Mode Toggle Button */}
+              {onOpenEmergencyConfirm && (
+                <button
+                  onClick={onOpenEmergencyConfirm}
+                  className={`text-xs font-black px-3.5 py-1.5 rounded-xl shadow flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isEmergencyMode
+                      ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse ring-2 ring-red-400'
+                      : 'bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-700/60'
+                  }`}
+                  title={isEmergencyMode ? 'לחץ לחזרה לשגרה (1X)' : 'מעבר לשעת חירום והגדלת מלאי פי 3 (3X)'}
+                >
+                  <Siren className="w-3.5 h-3.5 text-white" />
+                  <span>{isEmergencyMode ? '🚨 שעת חירום (X3) • חזרה לשגרה' : 'מצב חירום (X3) 🚨'}</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -552,10 +598,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <button
                 onClick={handlePrintReorder}
                 disabled={lowStockItems.length === 0}
-                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                className={`text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
+                  isEmergencyMode
+                    ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ring-2 ring-red-400'
+                    : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
+                }`}
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>הדפס דוח חוסרים ({lowStockItems.length})</span>
+                <span>
+                  {isEmergencyMode
+                    ? `הדפס דוח רכש חירום X3 (${lowStockItems.length})`
+                    : `הדפס דוח חוסרים (${lowStockItems.length})`}
+                </span>
               </button>
 
               {/* Batch Set Stock */}
@@ -747,6 +801,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <ThresholdAndUnitInput
                           item={item}
                           globalThreshold={globalThreshold}
+                          isEmergencyMode={isEmergencyMode}
                           isMobile={false}
                           onUpdate={(name, currentStock, minTh, unit) =>
                             onUpdateStockItem(name, currentStock, minTh, unit)
@@ -761,8 +816,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             ⚪ אזל ({item.currentStock} {currentUnit})
                           </span>
                         ) : isLow ? (
-                          <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 px-3 py-1 rounded-full text-[11px] font-black animate-pulse">
-                            ⚠️ נמוך ({item.currentStock} {currentUnit} &lt; {th})
+                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black animate-pulse border ${
+                            isEmergencyMode
+                              ? 'bg-red-600 text-white border-red-700 shadow-md shadow-red-500/30'
+                              : 'bg-red-100 text-red-700 border-red-200'
+                          }`}>
+                            {isEmergencyMode ? '🚨 חוסר חירום' : '⚠️ נמוך'} ({item.currentStock} {currentUnit} &lt; {th})
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-[11px] font-bold">
