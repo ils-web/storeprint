@@ -51,177 +51,167 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
       }
       setDeferredPrompt(null);
     } else {
-      alert('להתקנה: פתחו את תפריט הדפדפן (3 נקודות ⋮ או שיתוף ⎋) ולחצו "הוסף למסך הבית".');
+      alert('להתקנה מהירה: פתחו את תפריט הדפדפן (3 נקודות ⋮ באנדרואיד או כפתור שיתוף ⎋ באייפון) ולחצו "הוסף למסך הבית".');
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" dir="rtl">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm" dir="rtl">
+      <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col">
         {/* Header */}
-        <div className="p-5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-              <Smartphone className="w-6 h-6" />
+        <div className="p-6 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-xl shadow-indigo-500/25 shrink-0">
+              <Smartphone className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="font-extrabold text-lg text-white">הורדת אפליקציית הזמנות למחלקה</h3>
-              <p className="text-xs text-slate-400">התקנה מהירה במסך הבית ללא צורך בחנות אפליקציות</p>
+              <h3 className="font-black text-xl sm:text-2xl text-white">הורדת אפליקציית הזמנות למחלקה</h3>
+              <p className="text-sm text-slate-300 font-medium mt-0.5">התקנה ישירה במסך הבית ללא צורך בהורדה מחנות אפליקציות</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Device Switcher Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 p-2 gap-1.5">
+        <div className="flex border-b border-slate-800 bg-slate-950/60 p-2.5 gap-2">
           <button
             onClick={() => setActiveTab('android')}
-            className={`flex-1 py-2 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'android'
                 ? 'bg-sky-600 text-white shadow-md'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Smartphone className="w-3.5 h-3.5" />
+            <Smartphone className="w-4 h-4" />
             <span>אנדרואיד (Android)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('ios')}
-            className={`flex-1 py-2 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'ios'
                 ? 'bg-indigo-600 text-white shadow-md'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Smartphone className="w-3.5 h-3.5" />
+            <Share2 className="w-4 h-4" />
             <span>אייפון (iPhone / iPad)</span>
           </button>
 
           <button
             onClick={() => setActiveTab('desktop')}
-            className={`flex-1 py-2 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'desktop'
                 ? 'bg-purple-600 text-white shadow-md'
                 : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>מחשב (PC / Mac)</span>
+            <Monitor className="w-4 h-4" />
+            <span>מחשב (Desktop)</span>
           </button>
         </div>
 
-        {/* Tab Contents */}
-        <div className="p-6 space-y-4 text-sm text-slate-300">
-          {deferredPrompt && (
-            <div className="bg-gradient-to-r from-sky-600 to-indigo-600 p-4 rounded-2xl text-white text-center shadow-lg mb-4">
-              <h4 className="font-extrabold text-base mb-1">הדפדפן שלך תומך בהתקנה ישירה בלחיצה אחת!</h4>
-              <p className="text-xs text-sky-100 mb-3">לחץ על הכפתור למטה כדי להוסיף את האפליקציה למכשיר</p>
-              <button
-                onClick={handleTriggerNativeInstall}
-                className="w-full py-2.5 bg-white hover:bg-slate-100 text-indigo-700 font-black rounded-xl text-sm shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>התקן אפליקציה עכשיו 🚀</span>
-              </button>
+        {/* Body Guide */}
+        <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-200">
+          {isInstalled ? (
+            <div className="bg-emerald-950/50 border-2 border-emerald-500/50 rounded-2xl p-5 text-center space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+              <h4 className="font-black text-lg text-emerald-300">האפליקציה כבר מותקנת במכשיר זה!</h4>
+              <p className="text-sm text-slate-300">ניתן לפתוח אותה ישירות ממסך הבית של הטלפון או המחשב.</p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Android Tab */}
+              {activeTab === 'android' && (
+                <div className="space-y-4">
+                  {deferredPrompt ? (
+                    <div className="bg-sky-950/50 border-2 border-sky-500/50 rounded-2xl p-5 text-center space-y-3">
+                      <p className="font-bold text-base text-sky-200">המכשיר שלך תומך בהתקנה מיידית בלחיצה אחת:</p>
+                      <button
+                        onClick={handleTriggerNativeInstall}
+                        className="w-full py-3.5 px-6 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-base rounded-xl shadow-xl shadow-sky-500/30 flex items-center justify-center gap-2.5 transition-transform active:scale-95 cursor-pointer"
+                      >
+                        <Download className="w-5 h-5 animate-bounce" />
+                        <span>התקן אפליקציה עכשיו 📲</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3.5 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                        <div className="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 font-black text-base flex items-center justify-center shrink-0">1</div>
+                        <div>
+                          <p className="font-bold text-white text-base">פתחו את תפריט הדפדפן (Chrome / Samsung)</p>
+                          <p className="text-sm text-slate-300 mt-1">לחצו על שלוש הנקודות <strong>(⋮)</strong> בפינה העליונה של המסך.</p>
+                        </div>
+                      </div>
 
-          {/* Android Guide */}
-          {activeTab === 'android' && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-white flex items-center gap-2">
-                <span>🤖 הוראות התקנה במכשירי אנדרואיד (Chrome / Samsung):</span>
-              </h4>
-              <div className="space-y-2.5 bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center shrink-0">1</div>
-                  <p>פתחו את הדפדפן (Chrome או Samsung Internet) בקישור המערכת.</p>
+                      <div className="flex items-start gap-3.5 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                        <div className="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 font-black text-base flex items-center justify-center shrink-0">2</div>
+                        <div>
+                          <p className="font-bold text-white text-base">בחרו "הוספה למסך הבית" או "התקן אפליקציה"</p>
+                          <p className="text-sm text-slate-300 mt-1">סמל האפליקציה יתווסף ישירות למסך הבית לצד שאר האפליקציות.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center shrink-0">2</div>
-                  <p>לחצו על <strong>3 הנקודות (⋮)</strong> בפינה העליונה של המסך.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center shrink-0">3</div>
-                  <p>בחרו <strong>"התקנת אפליקציה"</strong> או <strong>"הוספה למסך הבית" (Add to Home Screen)</strong>.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center shrink-0">4</div>
-                  <p>איקון <strong>StorePrint</strong> יתווסף למסך הראשי של הטלפון וייפתח כאפליקציה מלאה ללא שורת כתובת!</p>
-                </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* iOS Guide */}
-          {activeTab === 'ios' && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-white flex items-center gap-2">
-                <span>🍏 הוראות התקנה באייפון / אייפד (Safari):</span>
-              </h4>
-              <div className="space-y-2.5 bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center shrink-0">1</div>
-                  <p>פתחו את האתר בדפדפן <strong>Safari</strong> של אפל.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center shrink-0">2</div>
-                  <p>לחצו על כפתור ה-<strong>שיתוף (⎋ Share)</strong> בתחתית המסך (ריבוע עם חץ עולה).</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center shrink-0">3</div>
-                  <p>גללו מעט למטה ולחצו על <strong>"הוסף למסך הבית" (Add to Home Screen) ➕</strong>.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center shrink-0">4</div>
-                  <p>לחצו <strong>"הוסף" (Add)</strong> בפינה העליונה. האפליקציה תופיע במסך הבית של האייפון!</p>
-                </div>
-              </div>
-            </div>
-          )}
+              {/* iOS Tab */}
+              {activeTab === 'ios' && (
+                <div className="space-y-3.5">
+                  <div className="flex items-start gap-3.5 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 font-black text-base flex items-center justify-center shrink-0">1</div>
+                    <div>
+                      <p className="font-bold text-white text-base">פתחו בדפדפן Safari ולחצו "שיתוף"</p>
+                      <p className="text-sm text-slate-300 mt-1">לחצו על כפתור השיתוף בתחתית המסך <strong>(⎋ עם חץ למעלה)</strong>.</p>
+                    </div>
+                  </div>
 
-          {/* Desktop Guide */}
-          {activeTab === 'desktop' && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-white flex items-center gap-2">
-                <span>💻 התקנה במחשב (Windows / Mac / Chrome):</span>
-              </h4>
-              <div className="space-y-2.5 bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 font-bold flex items-center justify-center shrink-0">1</div>
-                  <p>בדפדפן Chrome או Edge, חפשו את סמל ההתקנה <strong>(⊕ או מחשב קטן עם חץ)</strong> בצד שורת הכתובת למעלה.</p>
+                  <div className="flex items-start gap-3.5 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 font-black text-base flex items-center justify-center shrink-0">2</div>
+                    <div>
+                      <p className="font-bold text-white text-base">גללו ובחרו "הוסף למסך הבית" ➕</p>
+                      <p className="text-sm text-slate-300 mt-1">לחצו על "הוסף" בפינה השמאלית העליונה, והאפליקציה תותקן מיד!</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 font-bold flex items-center justify-center shrink-0">2</div>
-                  <p>לחצו על <strong>"התקן" (Install)</strong> לאפליקציה שולחנית עצמאית ומהירה.</p>
-                </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Advantages */}
-          <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-2xl p-3.5 text-xs text-emerald-300 flex items-center gap-2.5">
-            <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div>
-              <strong>יתרונות האפליקציה המותקנת:</strong> עובדת במסך מלא, טעינה מיידית, תמיכה בעבודה גם בחיבור איטי, ושמירת שם המחלקה שלכם לפעם הבאה!
-            </div>
-          </div>
+              {/* Desktop Tab */}
+              {activeTab === 'desktop' && (
+                <div className="space-y-3.5">
+                  <div className="flex items-start gap-3.5 bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                    <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 font-black text-base flex items-center justify-center shrink-0">1</div>
+                    <div>
+                      <p className="font-bold text-white text-base">התקנה בדפדפן Chrome / Edge במחשב</p>
+                      <p className="text-sm text-slate-300 mt-1">לחצו על סמל ההתקנה <strong>(⊕)</strong> בשורת הכתובת של הדפדפן מימין.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-end">
+        <div className="p-5 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+          <span className="text-xs sm:text-sm text-slate-400 flex items-center gap-1.5 font-medium">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>פועל במהירות מלאה ללא תלות ברשת חיצונית</span>
+          </span>
+
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition-colors cursor-pointer"
           >
-            הבנתי, תודה!
+            סגור
           </button>
         </div>
       </div>

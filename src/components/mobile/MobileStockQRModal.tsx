@@ -68,69 +68,59 @@ export function MobileStockQRModal({ isOpen, onClose }: MobileStockQRModalProps)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" dir="rtl">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm" dir="rtl">
+      <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="p-5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
-              <Smartphone className="w-5 h-5" />
+        <div className="p-6 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-sky-500/25 shrink-0">
+              <Smartphone className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-white">ספירת מלאי מהטלפון</h3>
-              <p className="text-xs text-slate-400">סריקה וספירה מהירה בין המדפים</p>
+              <h3 className="font-black text-xl text-white">ספירת מלאי מהטלפון</h3>
+              <p className="text-sm text-slate-300 font-medium mt-0.5">סריקה מהירה ועדכון כמויות בין מדפי המחסן</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* QR Body */}
-        <div className="p-6 text-center space-y-4">
-          <div className="bg-white p-4 rounded-2xl inline-block shadow-md">
-            <img src={qrImageUrl} alt="Mobile Stock QR" className="w-48 h-48 object-contain" />
+        <div className="p-6 sm:p-7 text-center space-y-5">
+          <div className="bg-white p-5 rounded-3xl inline-block shadow-xl border-2 border-slate-200">
+            <img src={qrImageUrl} alt="Mobile Stock QR" className="w-56 h-56 object-contain" />
           </div>
 
-          <div className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-3.5 text-xs text-slate-300 text-right space-y-1">
-            <strong className="text-white block font-bold">📱 איך זה עובד:</strong>
-            <p className="text-[11px] text-slate-400">1. סרקו את הקוד במצלמת הטלפון.</p>
-            <p className="text-[11px] text-slate-400">2. עברו בין המדפים ועדכנו כמויות בקלות עם כפתורי מגע גדולים.</p>
-            <p className="text-[11px] text-slate-400">3. המלאי מתעדכן אוטומטית במערכת הראשית.</p>
+          <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 text-right space-y-2">
+            <strong className="text-white block font-black text-base">📱 איך זה עובד:</strong>
+            <p className="text-sm text-slate-300">1. פותחים את מצלמת הטלפון וסורקים את הקוד.</p>
+            <p className="text-sm text-slate-300">2. נפתח ממשק מותאם מובייל עם כפתורי מגע גדולים (+10, +1, -1, -10).</p>
+            <p className="text-sm text-slate-300">3. כל שינוי נשמר מיידית ומסונכרן עם המחשב הראשי!</p>
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               onClick={handlePrint}
-              className="py-2.5 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+              className="flex-1 py-3.5 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-600/30"
             >
-              <Printer className="w-4 h-4" />
-              <span>הדפס שלט למחסן</span>
+              <Printer className="w-5 h-5" />
+              <span>הדפס שלט QR למחסן</span>
             </button>
 
             <button
               onClick={handleCopy}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
+              className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer border border-slate-700"
             >
-              {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
               <span>{copied ? 'הועתק!' : 'העתק קישור'}</span>
             </button>
           </div>
-
-          <a
-            href={mobileStockUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] text-sky-400 hover:underline inline-flex items-center gap-1 mt-2"
-          >
-            <span>פתח מסך מובייל בדפדפן</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
       </div>
     </div>

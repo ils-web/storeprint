@@ -29,6 +29,7 @@ export interface StockItem {
   currentStock: number;
   minThreshold: number;   // default 10
   unit?: string;
+  isActive?: boolean;     // true = in active use (default), false = paused / not in use
   lastDeducted?: string;
   lastUpdated?: string;
 }

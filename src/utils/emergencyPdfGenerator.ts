@@ -37,8 +37,9 @@ export function printEmergencyReorderListHtml(
   const now = new Date();
   const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  // Filter items in emergency deficit
+  // Filter items in emergency deficit (strictly excluding inactive/paused items)
   const emergencyDeficitItems = items
+    .filter((item) => item.isActive !== false)
     .map((item) => {
       const routineTh = item.minThreshold || globalRoutineThreshold;
       const emergencyTh = routineTh * emergencyMultiplier;

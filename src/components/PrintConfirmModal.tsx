@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, PackageMinus, Copy, AlertTriangle, CheckCircle, Package, ArrowLeft } from 'lucide-react';
+import { X, Printer, PackageMinus, Copy, AlertTriangle, CheckCircle, Package } from 'lucide-react';
 import { Order, StockItem } from '../types';
 
 interface PrintConfirmModalProps {
@@ -66,46 +66,46 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xs z-50 flex items-center justify-center p-4 overflow-y-auto animate-fadeIn" dir="rtl">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto" dir="rtl">
+      <div className="bg-white rounded-3xl shadow-2xl border-2 border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col">
         
         {/* Header */}
-        <div className="p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center space-x-reverse space-x-3">
-            <div className={`p-2.5 rounded-xl border ${allAlreadyPrinted ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-sky-500/20 text-sky-400 border-sky-500/30'}`}>
-              <Printer className="w-6 h-6" />
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+          <div className="flex items-center gap-3.5">
+            <div className={`p-3 rounded-2xl border shrink-0 ${allAlreadyPrinted ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-sky-500/20 text-sky-400 border-sky-500/30'}`}>
+              <Printer className="w-7 h-7" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight">
+              <h2 className="text-xl font-black tracking-tight">
                 אישור הדפסה ובקרת מלאי
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-sm text-slate-300 font-medium mt-0.5">
                 {isSingle
                   ? `הזמנה עבור מחלקת ${singleOrder?.department}`
-                  : `הדפסה מרוכזת של ${ordersToPrint.length} הזמנות`}
+                  : `הדפסה מרוכזת של ${ordersToPrint.length} הזמנות מחלקות`}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="w-10 h-10 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-4 text-xs text-slate-700">
+        <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-800">
           
           {/* Status Alert Banner */}
           {isSingle && singleOrder?.printed && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-amber-900">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <div className="font-extrabold text-xs text-amber-950">
+            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-xs">
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-black text-base text-amber-950">
                   הזמנה זו כבר הודפסה בעבר!
                 </div>
-                <div className="text-[11px] text-amber-800">
+                <div className="text-sm text-amber-900 leading-normal">
                   האם להדפיס עותק נוסף ללא קיזוז מהמלאי, או לקזז מהמחסן פעם נוספת?
                 </div>
               </div>
@@ -113,30 +113,30 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
           )}
 
           {!isSingle && alreadyPrintedCount > 0 && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-amber-900">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <div className="font-extrabold text-xs text-amber-950">
+            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-xs">
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-black text-base text-amber-950">
                   שים לב: מתוך {ordersToPrint.length} הזמנות שנבחרו, {alreadyPrintedCount} כבר הודפסו בעבר.
                 </div>
-                <div className="text-[11px] text-amber-800">
-                  {newOrdersCount} הזמנות חדשות, {alreadyPrintedCount} כבר הודפסו בעבר.
+                <div className="text-sm text-amber-900 leading-normal">
+                  {newOrdersCount} הזמנות חדשות יקוזזו, ו-{alreadyPrintedCount} הזמנות שהודפסו יודפסו כהעתק.
                 </div>
               </div>
             </div>
           )}
 
           {/* Mode Selection Options */}
-          <div className="space-y-2.5">
-            <label className="font-bold text-slate-900 block text-xs">
-              בחר פעולת הדפסה ומלאי:
+          <div className="space-y-3">
+            <label className="font-black text-slate-900 block text-base">
+              בחר פעולת הדפסה וקיזוז מלאי:
             </label>
 
             {/* Option 1: Copy (NO Stock Deduction) */}
             <label
-              className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+              className={`p-4 rounded-2xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
                 selectedMode === 'copy'
-                  ? 'border-sky-600 bg-sky-50/70 shadow-xs'
+                  ? 'border-sky-600 bg-sky-50/90 shadow-sm ring-2 ring-sky-500/20'
                   : 'border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -145,25 +145,25 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
                 name="printMode"
                 checked={selectedMode === 'copy'}
                 onChange={() => setSelectedMode('copy')}
-                className="mt-1 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                className="mt-1 w-5 h-5 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
               />
-              <div className="space-y-0.5 flex-1">
-                <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                  <Copy className="w-4 h-4 text-sky-600" />
-                  <span>הדפסת העתק — ללא קיזוז מהמלאי (מומלץ אם כבר נופק)</span>
+              <div className="space-y-1 flex-1">
+                <div className="font-black text-slate-900 text-base flex items-center gap-2">
+                  <Copy className="w-5 h-5 text-sky-600 shrink-0" />
+                  <span>הדפסת העתק — ללא קיזוז מהמלאי</span>
                 </div>
-                <div className="text-[11px] text-slate-500 leading-relaxed">
-                  המסמך יודפס (עם סימון "העתק"), ו<strong>יתרות המלאי במחסן לא ישתנו כלל</strong>.
+                <div className="text-sm text-slate-600 leading-relaxed">
+                  המסמך יודפס (עם חותמת "העתק"), ו<strong>יתרות המלאי במחסן לא ישתנו כלל</strong>.
                 </div>
               </div>
             </label>
 
-            {/* Option 2: Smart Hybrid (only for mass print with mixed status) */}
+            {/* Option 2: Smart Hybrid */}
             {!isSingle && alreadyPrintedCount > 0 && newOrdersCount > 0 && (
               <label
-                className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+                className={`p-4 rounded-2xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
                   selectedMode === 'smart'
-                    ? 'border-sky-600 bg-sky-50/70 shadow-xs'
+                    ? 'border-sky-600 bg-sky-50/90 shadow-sm ring-2 ring-sky-500/20'
                     : 'border-slate-200 hover:bg-slate-50'
                 }`}
               >
@@ -172,15 +172,15 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
                   name="printMode"
                   checked={selectedMode === 'smart'}
                   onChange={() => setSelectedMode('smart')}
-                  className="mt-1 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  className="mt-1 w-5 h-5 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
                 />
-                <div className="space-y-0.5 flex-1">
-                  <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                <div className="space-y-1 flex-1">
+                  <div className="font-black text-slate-900 text-base flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                     <span>קיזוז חכם — קזז רק הזמנות חדשות ({newOrdersCount})</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 leading-relaxed">
-                    ההזמנות החדשות יקוזזו מהמלאי, ואילו {alreadyPrintedCount} שכבר הודפסו יודפסו כהעתק ללא קיזוז כפול.
+                  <div className="text-sm text-slate-600 leading-relaxed">
+                    ההזמנות החדשות יקוזזו, וההזמנות שהודפסו יודפסו כהעתק ללא קיזוז כפול.
                   </div>
                 </div>
               </label>
@@ -188,9 +188,9 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
 
             {/* Option 3: Full Deduction */}
             <label
-              className={`p-3.5 rounded-2xl border-2 flex items-start gap-3 cursor-pointer transition-all ${
+              className={`p-4 rounded-2xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
                 selectedMode === 'deduct'
-                  ? 'border-sky-600 bg-sky-50/70 shadow-xs'
+                  ? 'border-sky-600 bg-sky-50/90 shadow-sm ring-2 ring-sky-500/20'
                   : 'border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -199,18 +199,18 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
                 name="printMode"
                 checked={selectedMode === 'deduct'}
                 onChange={() => setSelectedMode('deduct')}
-                className="mt-1 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                className="mt-1 w-5 h-5 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
               />
-              <div className="space-y-0.5 flex-1">
-                <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5">
-                  <PackageMinus className="w-4 h-4 text-amber-600" />
+              <div className="space-y-1 flex-1">
+                <div className="font-black text-slate-900 text-base flex items-center gap-2">
+                  <PackageMinus className="w-5 h-5 text-amber-600 shrink-0" />
                   <span>
                     {isSingle && singleOrder?.printed
                       ? 'הדפס ובצע קיזוז נוסף מהמלאי (ניפוק חוזר)'
                       : 'הדפס ובצע קיזוז מהמלאי (ניפוק רגיל)'}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 leading-relaxed">
+                <div className="text-sm text-slate-600 leading-relaxed">
                   הכמויות שבהזמנה יקוזזו באופן מלא מהיתרות בטבלת המחסן.
                 </div>
               </div>
@@ -219,15 +219,15 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
           </div>
 
           {/* Final Impact Summary Badge */}
-          <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-[11px] flex items-center justify-between">
-            <div className="text-slate-600 font-medium">השפעה על המחסן:</div>
-            <div className="font-black">
+          <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 text-sm flex items-center justify-between font-bold">
+            <div className="text-slate-700">השפעה על המחסן:</div>
+            <div>
               {selectedMode === 'copy' ? (
-                <span className="text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-md">
+                <span className="text-sky-800 bg-sky-100 border border-sky-200 px-3 py-1 rounded-lg">
                   ⚪ 0 פריטים יקוזזו (העתק בלבד)
                 </span>
               ) : (
-                <span className="text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-md">
+                <span className="text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg">
                   📦 {totalItemsCount} פריטים יקוזזו מהמלאי
                 </span>
               )}
@@ -237,23 +237,23 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <div className="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-2xl text-xs transition-colors cursor-pointer"
+            className="px-5 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-2xl text-sm transition-colors cursor-pointer"
           >
             ביטול
           </button>
           <button
             onClick={handleConfirm}
-            className={`px-7 py-2.5 text-white font-black rounded-2xl text-xs shadow-md flex items-center gap-2 transition-all transform active:scale-95 cursor-pointer ${
+            className={`px-8 py-3 text-white font-black rounded-2xl text-base shadow-lg flex items-center gap-2.5 transition-all transform active:scale-95 cursor-pointer ${
               selectedMode === 'copy'
-                ? 'bg-sky-600 hover:bg-sky-700 shadow-sky-600/20'
-                : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                ? 'bg-sky-600 hover:bg-sky-700 shadow-sky-600/30'
+                : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
             }`}
           >
-            <Printer className="w-4 h-4" />
-            <span>{selectedMode === 'copy' ? 'הדפס העתק (ללא קיזוז)' : 'אשר והדפס'}</span>
+            <Printer className="w-5 h-5" />
+            <span>{selectedMode === 'copy' ? 'הדפס העתק (ללא קיזוז)' : 'אשר והדפס עכשיו'}</span>
           </button>
         </div>
 

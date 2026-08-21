@@ -176,6 +176,7 @@ export default function App() {
   const emergencyDeficitCount = useMemo(() => {
     if (!isEmergencyMode) return 0;
     return Object.values(stock).filter((item: StockItem) => {
+      if (item.isActive === false) return false;
       const routineTh = item.minThreshold || 10;
       const emergencyTh = routineTh * 3;
       return (item.currentStock || 0) < emergencyTh;
@@ -208,7 +209,7 @@ export default function App() {
     const warehouses = getWarehouses(activeTenant.id);
     const primaryWhId = warehouses[0]?.id || 'wh-main-01';
 
-    // Build Inventory Products with preserved packaging units
+    // Build Inventory Products with preserved packaging units and active status
     const items: InventoryProduct[] = prods.map((name, idx) => {
       const existing = currentStockMap[name] || Object.values(currentStockMap).find((v) => v.name === name);
       const detectedUnit = detectPackagingUnitFromProductName(name);
@@ -223,6 +224,7 @@ export default function App() {
         currentStock: safeQty,
         minThreshold: safeMin,
         unit: existing?.unit || detectedUnit,
+        isActive: existing?.isActive !== undefined ? existing.isActive : true,
         updatedAt: new Date().toISOString(),
       };
     });
@@ -425,7 +427,8 @@ export default function App() {
     itemIdOrName: string,
     newStock: number,
     minThreshold?: number,
-    unit?: string
+    unit?: string,
+    isActive?: boolean
   ) => {
     setStock((prev) => {
       // Direct lookup by key, name, or ID
@@ -439,6 +442,7 @@ export default function App() {
       const cleanStock = typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0;
       const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
       const cleanUnit = unit || existing?.unit || "יח'";
+      const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
       const nowIso = new Date().toISOString();
 
       const updated = {
@@ -452,6 +456,7 @@ export default function App() {
           currentStock: cleanStock,
           minThreshold: cleanMin,
           unit: cleanUnit,
+          isActive: cleanIsActive,
           lastDeducted: nowIso,
           lastUpdated: nowIso,
         },

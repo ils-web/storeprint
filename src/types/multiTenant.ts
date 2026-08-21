@@ -83,6 +83,7 @@ export interface InventoryProduct {
   unitRatio?: number;
   category?: string;
   barcode?: string;
+  isActive?: boolean;       // true = active, false = paused / not in use
   lastDeducted?: string;
   updatedAt: string;
 }

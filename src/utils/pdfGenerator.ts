@@ -423,6 +423,7 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
         </thead>
         <tbody>
           ${lowStockItems
+            .filter((item) => item.isActive !== false)
             .map((item, i) => {
               const th = item.minThreshold || minThreshold;
               const neededQty = Math.max(1, th - item.currentStock);

@@ -10,13 +10,15 @@ import {
   RefreshCw,
   Siren,
   CheckCircle2,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
-  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string) => void;
+  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string, isActive?: boolean) => void;
   onSyncWithCloud?: () => void;
   isSyncingCloud?: boolean;
   onBackToMain?: () => void;
@@ -32,7 +34,7 @@ export function MobileStockManager({
   onBackToMain,
 }: MobileStockManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
   const [globalThreshold] = useState<number>(10);
 
   const stockList = useMemo(() => Object.values(stock), [stock]);
@@ -48,8 +50,13 @@ export function MobileStockManager({
     let ok = 0;
     let low = 0;
     let out = 0;
+    let inactive = 0;
 
     stockList.forEach((item) => {
+      if (item.isActive === false) {
+        inactive++;
+        return;
+      }
       const th = getEffectiveTh(item);
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       if (safeQty === 0) {
@@ -62,18 +69,27 @@ export function MobileStockManager({
       }
     });
 
-    return { total: stockList.length, ok, low, out };
+    return { total: stockList.length, ok, low, out, inactive };
   }, [stockList, isEmergencyMode, globalThreshold]);
 
   // Filtered Items
   const filteredItems = useMemo(() => {
     return stockList.filter((item) => {
-      const th = getEffectiveTh(item);
-      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      const isInactive = item.isActive === false;
 
-      if (filterType === 'low' && safeQty >= th) return false;
-      if (filterType === 'out' && safeQty > 0) return false;
-      if (filterType === 'ok' && safeQty < th) return false;
+      if (filterType === 'inactive') {
+        if (!isInactive) return false;
+      } else if (filterType === 'all') {
+        // Show all
+      } else {
+        // Exclude inactive from active tabs
+        if (isInactive) return false;
+        const th = getEffectiveTh(item);
+        const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+        if (filterType === 'low' && safeQty >= th) return false;
+        if (filterType === 'out' && safeQty > 0) return false;
+        if (filterType === 'ok' && safeQty < th) return false;
+      }
 
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
@@ -90,7 +106,7 @@ export function MobileStockManager({
   }, [stockList, filterType, searchQuery, isEmergencyMode, globalThreshold]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-28" dir="rtl">
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-28 text-sm" dir="rtl">
       {/* Sticky Mobile Header */}
       <header className="bg-slate-950 border-b border-slate-800 sticky top-0 z-30 px-4 py-3 shadow-md">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -111,7 +127,7 @@ export function MobileStockManager({
                   מובייל
                 </span>
               </div>
-              <p className="text-xs text-slate-400">עדכון כמויות ואריזות בזמן אמת</p>
+              <p className="text-xs text-slate-400">עדכון כמויות, אריזות והשהיית פריטים</p>
             </div>
           </div>
 
@@ -171,7 +187,7 @@ export function MobileStockManager({
           </div>
 
           {/* Quick Filter Tabs */}
-          <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+          <div className="grid grid-cols-5 gap-1 text-[11px] font-bold">
             <button
               onClick={() => setFilterType('all')}
               className={`py-2 rounded-xl transition-all cursor-pointer ${
@@ -214,6 +230,17 @@ export function MobileStockManager({
             >
               תקין ({stats.ok})
             </button>
+            <button
+              onClick={() => setFilterType('inactive')}
+              className={`py-2 rounded-xl transition-all cursor-pointer ${
+                filterType === 'inactive'
+                  ? 'bg-slate-700 text-white shadow'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+              title="פריטים מושהים שלא בשימוש כרגע"
+            >
+              מושהה ({stats.inactive})
+            </button>
           </div>
         </div>
 
@@ -226,18 +253,21 @@ export function MobileStockManager({
             </div>
           ) : (
             filteredItems.map((item, idx) => {
+              const th = getEffectiveTh(item);
+              const isInactive = item.isActive === false;
               const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
               const routineTh = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-              const safeTh = isEmergencyMode ? routineTh * 3 : routineTh;
               const currentUnit = item.unit || "יח'";
-              const isLow = safeQty < safeTh;
-              const isOut = safeQty === 0;
+              const isLow = !isInactive && safeQty < th;
+              const isOut = !isInactive && safeQty === 0;
 
               return (
                 <div
                   key={item.id || idx}
                   className={`p-4 rounded-2xl border transition-all shadow-md ${
-                    isOut
+                    isInactive
+                      ? 'bg-slate-900/60 border-slate-800 opacity-75'
+                      : isOut
                       ? 'bg-slate-800/60 border-slate-700'
                       : isLow
                       ? isEmergencyMode
@@ -255,19 +285,50 @@ export function MobileStockManager({
                       </div>
                     </div>
 
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border shrink-0 ${
-                        isOut
-                          ? 'bg-slate-800 text-slate-400 border-slate-600'
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                          isInactive
+                            ? 'bg-slate-800 text-slate-400 border-slate-700'
+                            : isOut
+                            ? 'bg-slate-800 text-slate-400 border-slate-600'
+                            : isLow
+                            ? isEmergencyMode
+                              ? 'bg-red-600 text-white border-red-500 animate-pulse font-black'
+                              : 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                            : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        }`}
+                      >
+                        {isInactive
+                          ? '⏸️ מושהה'
+                          : isOut
+                          ? 'אזל'
                           : isLow
-                          ? isEmergencyMode
-                            ? 'bg-red-600 text-white border-red-500 animate-pulse font-black'
-                            : 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
-                          : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      }`}
-                    >
-                      {isOut ? 'אזל' : isLow ? `${isEmergencyMode ? '🚨 חוסר חירום' : 'חוסר'} (${safeQty} < ${safeTh})` : 'תקין'}
-                    </span>
+                          ? `${isEmergencyMode ? '🚨 חירום' : 'חוסר'} (${safeQty} < ${th})`
+                          : 'תקין'}
+                      </span>
+
+                      {/* Quick Pause/Play Toggle Button */}
+                      <button
+                        onClick={() =>
+                          onUpdateStockItem(
+                            item.name,
+                            safeQty,
+                            routineTh,
+                            currentUnit,
+                            isInactive // toggle!
+                          )
+                        }
+                        className={`p-1 rounded-lg border text-xs transition-colors cursor-pointer ${
+                          isInactive
+                            ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700/70 hover:bg-emerald-900'
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                        }`}
+                        title={isInactive ? 'החזר לשימוש פעיל' : 'סמן כלא בשימוש'}
+                      >
+                        {isInactive ? <PlayCircle className="w-4 h-4 text-emerald-400" /> : <PauseCircle className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Main Adjuster Controls (Large Touch Buttons) */}
@@ -276,7 +337,7 @@ export function MobileStockManager({
                     <button
                       type="button"
                       onClick={() =>
-                        onUpdateStockItem(item.name, Math.max(0, safeQty - 10), routineTh, currentUnit)
+                        onUpdateStockItem(item.name, Math.max(0, safeQty - 10), routineTh, currentUnit, item.isActive !== false)
                       }
                       className="w-12 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                     >
@@ -287,7 +348,7 @@ export function MobileStockManager({
                     <button
                       type="button"
                       onClick={() =>
-                        onUpdateStockItem(item.name, Math.max(0, safeQty - 1), routineTh, currentUnit)
+                        onUpdateStockItem(item.name, Math.max(0, safeQty - 1), routineTh, currentUnit, item.isActive !== false)
                       }
                       className="w-11 h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                     >
@@ -303,7 +364,7 @@ export function MobileStockManager({
                       value={safeQty}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
-                        onUpdateStockItem(item.name, isNaN(val) ? 0 : Math.max(0, val), routineTh, currentUnit);
+                        onUpdateStockItem(item.name, isNaN(val) ? 0 : Math.max(0, val), routineTh, currentUnit, item.isActive !== false);
                       }}
                       className="w-20 h-11 text-center font-mono font-black text-lg bg-white text-slate-950 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-inner"
                     />
@@ -312,7 +373,7 @@ export function MobileStockManager({
                     <button
                       type="button"
                       onClick={() =>
-                        onUpdateStockItem(item.name, safeQty + 1, routineTh, currentUnit)
+                        onUpdateStockItem(item.name, safeQty + 1, routineTh, currentUnit, item.isActive !== false)
                       }
                       className="w-11 h-11 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                     >
@@ -323,7 +384,7 @@ export function MobileStockManager({
                     <button
                       type="button"
                       onClick={() =>
-                        onUpdateStockItem(item.name, safeQty + 10, routineTh, currentUnit)
+                        onUpdateStockItem(item.name, safeQty + 10, routineTh, currentUnit, item.isActive !== false)
                       }
                       className="w-12 h-11 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                     >
@@ -346,14 +407,14 @@ export function MobileStockManager({
                         onChange={(e) => {
                           const val = parseInt(e.target.value, 10);
                           if (!isNaN(val) && val > 0) {
-                            onUpdateStockItem(item.name, safeQty, val, currentUnit);
+                            onUpdateStockItem(item.name, safeQty, val, currentUnit, item.isActive !== false);
                           }
                         }}
                         className="w-12 text-center font-bold bg-slate-900 text-white border border-slate-700 rounded-lg py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-500"
                       />
                       {isEmergencyMode && (
                         <span className="text-[10px] font-black text-red-400 bg-red-950/80 px-1.5 py-0.5 rounded border border-red-600">
-                          {safeTh} {currentUnit}
+                          {th} {currentUnit}
                         </span>
                       )}
                     </div>
@@ -361,7 +422,7 @@ export function MobileStockManager({
                     {/* Packaging Unit Selector */}
                     <select
                       value={currentUnit}
-                      onChange={(e) => onUpdateStockItem(item.name, safeQty, routineTh, e.target.value)}
+                      onChange={(e) => onUpdateStockItem(item.name, safeQty, routineTh, e.target.value, item.isActive !== false)}
                       className="bg-slate-900 border border-slate-700 text-slate-200 font-bold py-1 px-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer text-[11px]"
                     >
                       {PACKAGING_UNITS.map((u) => (

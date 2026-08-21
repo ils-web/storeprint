@@ -104,7 +104,9 @@ export function syncStockWithProductHeaders(
         currentStock: typeof existing.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0,
         minThreshold: typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : DEFAULT_MIN_THRESHOLD,
         unit: existing.unit || detectedUnit,
+        isActive: existing.isActive !== undefined ? existing.isActive : true,
         lastDeducted: existing.lastDeducted,
+        lastUpdated: existing.lastUpdated,
       };
     } else {
       result[cleanName] = {
@@ -114,6 +116,7 @@ export function syncStockWithProductHeaders(
         currentStock: 0,
         minThreshold: DEFAULT_MIN_THRESHOLD,
         unit: detectedUnit,
+        isActive: true,
       };
     }
   });
@@ -150,7 +153,7 @@ export function deductOrdersFromStock(
 
           totalDeductedCount += qtyToDeduct;
 
-          if (newStock < (stockEntry.minThreshold || DEFAULT_MIN_THRESHOLD) && oldStock >= (stockEntry.minThreshold || DEFAULT_MIN_THRESHOLD)) {
+          if (stockEntry.isActive !== false && newStock < (stockEntry.minThreshold || DEFAULT_MIN_THRESHOLD) && oldStock >= (stockEntry.minThreshold || DEFAULT_MIN_THRESHOLD)) {
             newLowStockItems.push(stockEntry);
           }
         } else {
@@ -162,6 +165,7 @@ export function deductOrdersFromStock(
             currentStock: 0,
             minThreshold: DEFAULT_MIN_THRESHOLD,
             unit: detectPackagingUnitFromProductName(item.name),
+            isActive: true,
             lastDeducted: new Date().toISOString(),
           };
           totalDeductedCount += qtyToDeduct;
@@ -187,9 +191,10 @@ export function getLowStockItems(
   customThreshold?: number
 ): StockItem[] {
   return Object.values(stock).filter((item) => {
+    if (item.isActive === false) return false;
     const threshold = customThreshold !== undefined ? customThreshold : (item.minThreshold || DEFAULT_MIN_THRESHOLD);
-    return item.currentStock < threshold;
-  }).sort((a, b) => a.currentStock - b.currentStock); // Lowest stock first
+    return (item.currentStock || 0) < threshold;
+  }).sort((a, b) => (a.currentStock || 0) - (b.currentStock || 0)); // Lowest stock first
 }
 
 /**

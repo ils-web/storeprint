@@ -20,6 +20,10 @@ import {
   QrCode,
   Smartphone,
   Siren,
+  PauseCircle,
+  PlayCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -272,7 +276,7 @@ interface WarehouseViewProps {
   onOpenCloudModal: () => void;
   onSyncWithCloud: () => void;
   isSyncingCloud: boolean;
-  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string) => void;
+  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string, isActive?: boolean) => void;
   onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
   onSetAllStock: (qty: number) => void;
 }
@@ -292,7 +296,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onSetAllStock,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
   const [globalThreshold, setGlobalThreshold] = useState<number>(10);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchQtyInput, setBatchQtyInput] = useState<string>('50');
@@ -307,13 +311,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return isEmergencyMode ? baseTh * 3 : baseTh;
   }, [globalThreshold, isEmergencyMode]);
 
-  // Statistics
+  // Statistics (excluding inactive items from shortage counts)
   const stats = useMemo(() => {
     let ok = 0;
     let low = 0;
     let out = 0;
+    let inactive = 0;
 
     stockList.forEach((item) => {
+      if (item.isActive === false) {
+        inactive++;
+        return;
+      }
       const th = getEffectiveTh(item);
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       if (safeQty === 0) {
@@ -326,12 +335,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       }
     });
 
-    return { total: stockList.length, ok, low, out };
+    return { total: stockList.length, ok, low, out, inactive };
   }, [stockList, getEffectiveTh]);
 
-  // Low stock items list for printing
+  // Low stock items list for printing (strictly excluding inactive items)
   const lowStockItems = useMemo(() => {
     return stockList.filter((item) => {
+      if (item.isActive === false) return false;
       const th = getEffectiveTh(item);
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       return safeQty < th;
@@ -341,12 +351,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Filtered display list
   const filteredItems = useMemo(() => {
     return stockList.filter((item) => {
-      const th = getEffectiveTh(item);
-      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      const isItemInactive = item.isActive === false;
 
-      if (filterType === 'low' && safeQty >= th) return false;
-      if (filterType === 'out' && safeQty > 0) return false;
-      if (filterType === 'ok' && safeQty < th) return false;
+      if (filterType === 'inactive') {
+        if (!isItemInactive) return false;
+      } else if (filterType === 'all') {
+        // Show all
+      } else {
+        // For 'low', 'out', 'ok': exclude inactive items
+        if (isItemInactive) return false;
+        const th = getEffectiveTh(item);
+        const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+        if (filterType === 'low' && safeQty >= th) return false;
+        if (filterType === 'out' && safeQty > 0) return false;
+        if (filterType === 'ok' && safeQty < th) return false;
+      }
 
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase();
@@ -521,6 +540,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 }`}
               >
                 תקין ({stats.ok})
+              </button>
+              <button
+                onClick={() => setFilterType('inactive')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  filterType === 'inactive'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="פריטים המסומנים כלא בשימוש כרגע (מוחרגים מדוחות חוסרים ורכש)"
+              >
+                ⏸️ לא בשימוש ({stats.inactive})
               </button>
             </div>
 
@@ -736,15 +766,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
                 <th className="py-3.5 px-4 w-14 text-center">מס'</th>
                 <th className="py-3.5 px-4">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
-                <th className="py-3.5 px-4 w-56 text-center">יתרת מלאי נוכחית</th>
+                <th className="py-3.5 px-4 w-52 text-center">יתרת מלאי נוכחית</th>
                 <th className="py-3.5 px-4 w-56 text-center">סף מינימום וסוג אריזה</th>
-                <th className="py-3.5 px-4 w-48 text-center">סטטוס מלאי</th>
+                <th className="py-3.5 px-4 w-44 text-center">סטטוס מלאי</th>
+                <th className="py-3.5 px-4 w-32 text-center">פעילות / השהייה</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-slate-500">
+                  <td colSpan={6} className="py-16 text-center text-slate-500">
                     <div className="max-w-md mx-auto space-y-2">
                       <Package className="w-10 h-10 text-slate-300 mx-auto" />
                       <div className="font-bold text-slate-700 text-sm">לא נמצאו פריטים</div>
@@ -756,16 +787,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </tr>
               ) : (
                 filteredItems.map((item, idx) => {
-                  const th = item.minThreshold || globalThreshold;
-                  const isLow = item.currentStock < th;
-                  const isOut = item.currentStock === 0;
+                  const th = getEffectiveTh(item);
+                  const isInactive = item.isActive === false;
+                  const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+                  const isLow = !isInactive && safeQty < th;
+                  const isOut = !isInactive && safeQty === 0;
                   const currentUnit = item.unit || "יח'";
 
                   return (
                     <tr
                       key={item.id}
                       className={`transition-colors ${
-                        isOut
+                        isInactive
+                          ? 'bg-slate-100/70 opacity-70'
+                          : isOut
                           ? 'bg-slate-50/80'
                           : isLow
                           ? 'bg-red-50/40 hover:bg-red-50/70'
@@ -779,8 +814,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                       {/* Product Name */}
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 text-sm">
-                          {item.name}
+                        <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                          <span>{item.name}</span>
+                          {isInactive && (
+                            <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">
+                              בהשהייה
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -791,7 +831,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           globalThreshold={globalThreshold}
                           isMobile={false}
                           onUpdate={(name, newQty) =>
-                            onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit)
+                            onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit, item.isActive !== false)
                           }
                         />
                       </td>
@@ -804,14 +844,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           isEmergencyMode={isEmergencyMode}
                           isMobile={false}
                           onUpdate={(name, currentStock, minTh, unit) =>
-                            onUpdateStockItem(name, currentStock, minTh, unit)
+                            onUpdateStockItem(name, currentStock, minTh, unit, item.isActive !== false)
                           }
                         />
                       </td>
 
                       {/* Status Badge with Custom Packaging Unit */}
                       <td className="py-3.5 px-4 text-center">
-                        {isOut ? (
+                        {isInactive ? (
+                          <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[11px] font-bold">
+                            ⏸️ מושהה (לא בדוחות)
+                          </span>
+                        ) : isOut ? (
                           <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-[11px] font-bold">
                             ⚪ אזל ({item.currentStock} {currentUnit})
                           </span>
@@ -828,6 +872,43 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             🟢 תקין ({item.currentStock} {currentUnit})
                           </span>
                         )}
+                      </td>
+
+                      {/* Active / Inactive Quick Toggle */}
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() =>
+                            onUpdateStockItem(
+                              item.name,
+                              item.currentStock,
+                              item.minThreshold || globalThreshold,
+                              currentUnit,
+                              isInactive // toggle!
+                            )
+                          }
+                          className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer border mx-auto ${
+                            isInactive
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 shadow-2xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-300'
+                          }`}
+                          title={
+                            isInactive
+                              ? 'החזר פריט זה לשימוש פעיל ולדוחות חוסרים'
+                              : 'סמן פריט זה כלא בשימוש כרגע (יוחרג מדוחות חוסרים ורכש)'
+                          }
+                        >
+                          {isInactive ? (
+                            <>
+                              <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>הפעל</span>
+                            </>
+                          ) : (
+                            <>
+                              <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
+                              <span>השהה</span>
+                            </>
+                          )}
+                        </button>
                       </td>
                     </tr>
                   );
