@@ -30,6 +30,7 @@ export interface StockItem {
   minThreshold: number;   // default 10
   unit?: string;
   lastDeducted?: string;
+  lastUpdated?: string;
 }
 
 export interface CloudSyncConfig {

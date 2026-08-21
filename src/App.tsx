@@ -240,48 +240,13 @@ export default function App() {
         localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
         localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
 
-        // Sync and initialize warehouse stock without losing user custom units
+        // Sync and initialize warehouse stock without losing user custom units or quantities
         setStock((prevStock) => {
           const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
           saveStoredStock(updatedStock);
           syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
           return updatedStock;
         });
-
-        // Pull accurate stock from Apps Script cloud endpoint if empty
-        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-          fetchStockFromCloud(cloudConfig).then((cloudStock) => {
-            if (cloudStock && Object.keys(cloudStock).length > 0) {
-              setStock((prev) => {
-                const merged = { ...prev };
-                Object.values(cloudStock).forEach((item) => {
-                  if (item && item.name) {
-                    const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-                    const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-                    if (merged[item.name]) {
-                      merged[item.name] = {
-                        ...merged[item.name],
-                        currentStock: cleanStock,
-                        minThreshold: cleanMin,
-                        unit: item.unit || merged[item.name].unit || "יח'",
-                      };
-                    } else {
-                      merged[item.name] = {
-                        ...item,
-                        currentStock: cleanStock,
-                        minThreshold: cleanMin,
-                        unit: item.unit || "יח'",
-                      };
-                    }
-                  }
-                });
-                saveStoredStock(merged);
-                syncToMultiTenantDb(result.productHeaders, result.departments, merged);
-                return merged;
-              });
-            }
-          }).catch(console.warn);
-        }
 
         if (isManualRefresh) {
           setSuccessMessage('הנתונים נטענו בהצלחה!');
@@ -383,36 +348,34 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  // Hydrate stock from Firebase Firestore on startup if available
+  // Hydrate stock from Firebase Firestore on startup only if local stock is empty
   useEffect(() => {
     if (activeTenantId) {
       fetchInventoryFromFirestore(activeTenantId).then((items) => {
         if (items && items.length > 0) {
           setStock((prev) => {
+            // If local stock is already populated with custom edits, preserve it
+            const hasLocalItems = Object.keys(prev).length > 0;
+            if (hasLocalItems) return prev;
+
             const updated = { ...prev };
-            let changed = false;
             items.forEach((item) => {
               if (item.name && item.currentStock !== undefined) {
                 const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
                 const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-                if (!updated[item.name] || updated[item.name].currentStock !== cleanStock) {
-                  updated[item.name] = {
-                    id: item.id,
-                    name: item.name,
-                    colIndex: item.colIndex || 0,
-                    currentStock: cleanStock,
-                    minThreshold: cleanMin,
-                    unit: item.unit || "יח'",
-                  };
-                  changed = true;
-                }
+                updated[item.name] = {
+                  id: item.id,
+                  name: item.name,
+                  colIndex: item.colIndex || 0,
+                  currentStock: cleanStock,
+                  minThreshold: cleanMin,
+                  unit: item.unit || "יח'",
+                  lastUpdated: item.updatedAt || new Date().toISOString(),
+                };
               }
             });
-            if (changed) {
-              saveStoredStock(updated);
-              return updated;
-            }
-            return prev;
+            saveStoredStock(updated);
+            return updated;
           });
         }
       });
@@ -438,6 +401,7 @@ export default function App() {
       const cleanStock = typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0;
       const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
       const cleanUnit = unit || existing?.unit || "יח'";
+      const nowIso = new Date().toISOString();
 
       const updated = {
         ...prev,
@@ -450,7 +414,8 @@ export default function App() {
           currentStock: cleanStock,
           minThreshold: cleanMin,
           unit: cleanUnit,
-          lastDeducted: new Date().toISOString(),
+          lastDeducted: nowIso,
+          lastUpdated: nowIso,
         },
       };
 
