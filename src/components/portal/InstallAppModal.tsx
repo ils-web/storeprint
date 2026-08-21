@@ -1,15 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Download, Share2, PlusSquare, CheckCircle2, X, Globe, Sparkles, Monitor } from 'lucide-react';
+import {
+  Smartphone,
+  Download,
+  Share2,
+  CheckCircle2,
+  X,
+  Sparkles,
+  Monitor,
+  Printer,
+  QrCode,
+  Copy,
+} from 'lucide-react';
 
 interface InstallAppModalProps {
   isOpen: boolean;
   onClose: () => void;
+  tenantName?: string;
 }
 
-export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
+export function InstallAppModal({
+  isOpen,
+  onClose,
+  tenantName = 'מרכז רפואי (סניף ראשי)',
+}: InstallAppModalProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [activeTab, setActiveTab] = useState<'auto' | 'android' | 'ios' | 'desktop'>('auto');
+  const [activeTab, setActiveTab] = useState<'qr' | 'android' | 'ios' | 'desktop'>('qr');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const portalUrl = `${origin}/?view=portal_pwa`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
 
   useEffect(() => {
     // Detect standalone mode
@@ -20,15 +41,8 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
       setIsInstalled(true);
     }
 
-    // Detect device
-    const ua = navigator.userAgent.toLowerCase();
-    if (/iphone|ipad|ipod/.test(ua)) {
-      setActiveTab('ios');
-    } else if (/android/.test(ua)) {
-      setActiveTab('android');
-    } else {
-      setActiveTab('desktop');
-    }
+    // Default to QR tab so the user can immediately scan or print
+    setActiveTab('qr');
 
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
@@ -37,7 +51,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -55,9 +69,154 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
     }
   };
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(portalUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handlePrintPoster = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('נא לאפשר חלונות קופצים (Pop-ups) בדפדפן כדי להדפיס.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="he">
+      <head>
+        <meta charset="utf-8">
+        <title>שלט התקנת אפליקציית הזמנות למחלקה - StorePrint</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800;900&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Assistant', Arial, sans-serif; }
+          body { background: #fff; color: #0f172a; padding: 25px; text-align: center; }
+          
+          .poster {
+            max-width: 620px;
+            margin: 0 auto;
+            border: 4px solid #0284c7;
+            border-radius: 28px;
+            padding: 28px;
+            background: #ffffff;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+          }
+
+          .header {
+            margin-bottom: 20px;
+            border-bottom: 3px solid #e2e8f0;
+            padding-bottom: 14px;
+          }
+          .logo { font-size: 20pt; font-weight: 900; color: #0284c7; }
+          .title { font-size: 19pt; font-weight: 900; color: #0f172a; margin-top: 6px; }
+          .subtitle { font-size: 13pt; color: #475569; font-weight: 700; margin-top: 3px; }
+          .tenant { font-size: 11pt; color: #64748b; font-weight: 600; margin-top: 2px; }
+
+          .qr-frame {
+            background: #f8fafc;
+            border: 3px solid #cbd5e1;
+            border-radius: 24px;
+            padding: 20px;
+            display: inline-block;
+            margin: 16px auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+          }
+          .qr-img { width: 250px; height: 250px; display: block; margin: 0 auto; }
+          .qr-caption { font-size: 13pt; font-weight: 800; color: #0369a1; margin-top: 10px; }
+
+          .instructions-box {
+            background: #f0fdf4;
+            border: 2px dashed #16a34a;
+            border-radius: 20px;
+            padding: 18px 24px;
+            text-align: right;
+            margin-top: 16px;
+          }
+          .instructions-title { font-size: 14pt; font-weight: 900; color: #166534; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+          .instructions-list { font-size: 12pt; color: #1e293b; padding-right: 22px; line-height: 1.7; }
+          .instructions-list li { margin-bottom: 6px; }
+
+          .devices-hint {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px dashed #cbd5e1;
+            font-size: 11pt;
+            font-weight: 700;
+            color: #334155;
+          }
+
+          .footer {
+            margin-top: 20px;
+            font-size: 10pt;
+            color: #64748b;
+            border-top: 2px solid #e2e8f0;
+            padding-top: 12px;
+          }
+          .url-hint { font-family: monospace; font-size: 9pt; color: #94a3b8; margin-top: 4px; word-break: break-all; }
+
+          @media print {
+            body { padding: 0; }
+            .poster { border: 3px solid #000; box-shadow: none; max-width: 100%; border-radius: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="poster">
+          <div class="header">
+            <div class="logo">StorePrint 📦</div>
+            <div class="title">התקנת אפליקציית הזמנות למחלקה</div>
+            <div class="subtitle">עבור צוות רפואי, אחיות ומזכירות מחלקה</div>
+            <div class="tenant">${tenantName}</div>
+          </div>
+
+          <div class="qr-frame">
+            <img src="${qrImageUrl}" alt="QR Installation Code" class="qr-img" />
+            <div class="qr-caption">📲 סרקו במצלמת הטלפון להתקנה מיידית</div>
+          </div>
+
+          <div class="instructions-box">
+            <div class="instructions-title">📋 כיצד להתקין ולהזמין מהסמארטפון:</div>
+            <ol class="instructions-list">
+              <li><strong>סרקו את קוד ה-QR</strong> באמצעות מצלמת הסמארטפון (או פתחו את הקישור).</li>
+              <li><strong>הוסיפו למסך הבית:</strong>
+                <br>• באנדרואיד: 3 נקודות (⋮) &gt; "הוספה למסך הבית".
+                <br>• באייפון (Safari): כפתור שיתוף (⎋) &gt; "הוסף למסך הבית".
+              </li>
+              <li><strong>בוחרים מחלקה ומזמינים ציוד</strong> בכל שעה ישירות מהנייד!</li>
+            </ol>
+          </div>
+
+          <div class="devices-hint">
+            <span>📱 מתאים לאנדרואיד (Samsung / Xiaomi ועוד)</span>
+            <span>🍏 מתאים לאייפון (iPhone / iPad)</span>
+          </div>
+
+          <div class="footer">
+            <div>💡 שלט זה מיועד להדבקה בעמדת האחיות, בחדר הרופאים ובמזכירות המחלקה</div>
+            <div class="url-hint">${portalUrl}</div>
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 400);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm" dir="rtl">
-      <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+      <div className="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-6 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -66,7 +225,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
             </div>
             <div>
               <h3 className="font-black text-xl sm:text-2xl text-white">הורדת אפליקציית הזמנות למחלקה</h3>
-              <p className="text-sm text-slate-300 font-medium mt-0.5">התקנה ישירה במסך הבית ללא צורך בהורדה מחנות אפליקציות</p>
+              <p className="text-sm text-slate-300 font-medium mt-0.5">סריקה מהירה והדפסת שלט QR לצוות הרפואי</p>
             </div>
           </div>
 
@@ -81,6 +240,18 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
         {/* Device Switcher Tabs */}
         <div className="flex border-b border-slate-800 bg-slate-950/60 p-2.5 gap-2">
           <button
+            onClick={() => setActiveTab('qr')}
+            className={`flex-1 py-2.5 px-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'qr'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            <span>סריקה והדפסת QR</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('android')}
             className={`flex-1 py-2.5 px-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
               activeTab === 'android'
@@ -89,7 +260,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
             }`}
           >
             <Smartphone className="w-4 h-4" />
-            <span>אנדרואיד (Android)</span>
+            <span>אנדרואיד</span>
           </button>
 
           <button
@@ -101,7 +272,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
             }`}
           >
             <Share2 className="w-4 h-4" />
-            <span>אייפון (iPhone / iPad)</span>
+            <span>אייפון</span>
           </button>
 
           <button
@@ -113,12 +284,12 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
             }`}
           >
             <Monitor className="w-4 h-4" />
-            <span>מחשב (Desktop)</span>
+            <span>מחשב</span>
           </button>
         </div>
 
         {/* Body Guide */}
-        <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-200">
+        <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-200 overflow-y-auto flex-1">
           {isInstalled ? (
             <div className="bg-emerald-950/50 border-2 border-emerald-500/50 rounded-2xl p-5 text-center space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
@@ -127,6 +298,44 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
             </div>
           ) : (
             <>
+              {/* QR Code Tab (Default) */}
+              {activeTab === 'qr' && (
+                <div className="space-y-4 text-center">
+                  <div className="bg-white p-4 rounded-3xl inline-block shadow-xl border-2 border-slate-200">
+                    <img src={qrImageUrl} alt="App Install QR" className="w-48 h-48 sm:w-52 sm:h-52 object-contain" />
+                    <p className="text-xs font-black text-slate-800 mt-2">סרקו במצלמת הטלפון להתקנה</p>
+                  </div>
+
+                  <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 text-right space-y-2">
+                    <div className="font-bold text-white text-base flex items-center gap-2">
+                      <span>💡 שלט לתלייה בעמדות האחיות והרופאים:</span>
+                    </div>
+                    <p className="text-sm text-slate-300">
+                      ניתן להדפיס שלט מהודר לתלייה במחלקה. הצוות הרפואי יוכל לסרוק ולהזמין ציוד ישירות ממסך הבית.
+                    </p>
+                  </div>
+
+                  {/* Print & Copy Actions */}
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button
+                      onClick={handlePrintPoster}
+                      className="flex-1 py-3.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-sm sm:text-base rounded-xl shadow-lg shadow-sky-500/30 flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <Printer className="w-5 h-5" />
+                      <span>הדפס שלט QR לתלייה במחלקה 🖨️</span>
+                    </button>
+
+                    <button
+                      onClick={handleCopyLink}
+                      className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer border border-slate-700"
+                    >
+                      {copiedLink ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+                      <span>{copiedLink ? 'הועתק!' : 'העתק קישור'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Android Tab */}
               {activeTab === 'android' && (
                 <div className="space-y-4">
@@ -204,7 +413,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
         <div className="p-5 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
           <span className="text-xs sm:text-sm text-slate-400 flex items-center gap-1.5 font-medium">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>פועל במהירות מלאה ללא תלות ברשת חיצונית</span>
+            <span>פועל במהירות מלאה ללא תלות בחנות אפליקציות</span>
           </span>
 
           <button

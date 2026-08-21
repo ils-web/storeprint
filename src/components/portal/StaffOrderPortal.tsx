@@ -70,10 +70,10 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [orderSuccessNumber, setOrderSuccessNumber] = useState<string | null>(null);
 
-  // Available Products from Warehouse
+  // Available Products from Warehouse (strictly excluding inactive/paused products)
   const inventoryItems = useMemo(() => {
     if (!activeTenant || !activeWarehouse) return [];
-    return getInventory(activeTenant.id, activeWarehouse.id);
+    return getInventory(activeTenant.id, activeWarehouse.id).filter((p) => p.isActive !== false);
   }, [activeTenant, activeWarehouse]);
 
   // Filtered Products
@@ -570,6 +570,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+        tenantName={activeTenant?.name}
       />
     </div>
   );

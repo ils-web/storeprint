@@ -107,9 +107,15 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     return cartItemsList.reduce((sum, item) => sum + item.qty, 0);
   }, [cartItemsList]);
 
-  // Filtered Catalog
+  // Filtered Catalog (strictly excluding inactive/paused items)
   const filteredProducts = useMemo(() => {
-    let list = productHeaders.filter((h) => h.trim().length > 0);
+    let list = productHeaders.filter((h) => {
+      const clean = h.trim();
+      if (!clean) return false;
+      const stockEntry = stock[clean] || Object.values(stock).find((s) => s.name === clean);
+      if (stockEntry && stockEntry.isActive === false) return false;
+      return true;
+    });
 
     if (showOnlyInCart) {
       list = list.filter((name) => (cart[name]?.qty || 0) > 0);
@@ -121,7 +127,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     }
 
     return list;
-  }, [productHeaders, searchTerm, showOnlyInCart, cart]);
+  }, [productHeaders, stock, searchTerm, showOnlyInCart, cart]);
 
   // Add / Update item in cart
   const setItemQty = (name: string, newQty: number, unit?: string) => {

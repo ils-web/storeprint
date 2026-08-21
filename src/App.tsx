@@ -954,6 +954,7 @@ export default function App() {
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+        tenantName={activeTenant?.name}
       />
 
       {/* Hospital Emergency Confirm Modal */}
