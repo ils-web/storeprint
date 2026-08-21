@@ -177,12 +177,36 @@ export async function pushStockToCloud(
         timestamp: formatIsraelDateTime(),
       }),
     });
-
     return true;
   } catch (err) {
     console.warn('Cloud stock push error:', err);
     throw err;
   }
+}
+
+let pushDebounceTimer: any = null;
+
+/**
+ * Debounced push of stock data to prevent network flooding and UI jumping
+ */
+export function debouncedPushStockToCloud(
+  stock: Record<string, StockItem>,
+  config: CloudSyncConfig,
+  delayMs: number = 1500
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (pushDebounceTimer) {
+      clearTimeout(pushDebounceTimer);
+    }
+    pushDebounceTimer = setTimeout(async () => {
+      try {
+        const ok = await pushStockToCloud(stock, config);
+        resolve(ok);
+      } catch {
+        resolve(false);
+      }
+    }, delayMs);
+  });
 }
 
 /**

@@ -27,13 +27,12 @@ interface HeaderProps {
   isRefreshing: boolean;
   ordersCount: number;
   departmentsCount: number;
-  lowStockCount: number;
-  lastUpdated: Date | null;
   authSession?: AuthSession | null;
   onOpenSuperadmin?: () => void;
   onOpenLanding?: () => void;
   onOpenPortalPwa?: () => void;
   onOpenMobileStock?: () => void;
+  onOpenInstallModal?: () => void;
   onLogout?: () => void;
   tenantName?: string;
 }
@@ -57,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLanding,
   onOpenPortalPwa,
   onOpenMobileStock,
+  onOpenInstallModal,
   onLogout,
   tenantName,
 }) => {
@@ -155,6 +155,18 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Smartphone className="w-3.5 h-3.5 text-indigo-200" />
                 <span className="hidden md:inline">פורטל מובייל PWA</span>
+              </button>
+            )}
+
+            {/* Install PWA App Button */}
+            {onOpenInstallModal && (
+              <button
+                onClick={onOpenInstallModal}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                title="הורדה והתקנת אפליקציית ההזמנות למכשיר"
+              >
+                <Smartphone className="w-3.5 h-3.5 animate-bounce" />
+                <span>התקנת אפליקציה 📲</span>
               </button>
             )}
 

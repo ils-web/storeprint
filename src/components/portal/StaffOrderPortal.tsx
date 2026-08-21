@@ -16,6 +16,7 @@ import {
   getTenantOrders,
   createTenantOrder,
 } from '../../services/multiTenantDb';
+import { InstallAppModal } from './InstallAppModal';
 import {
   ShoppingBag,
   Search,
@@ -33,6 +34,8 @@ import {
   AlertCircle,
   Sparkles,
   ClipboardList,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -42,6 +45,7 @@ interface StaffOrderPortalProps {
 }
 
 export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToMain }: StaffOrderPortalProps) {
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const tenants = getTenants();
   const [selectedTenantId, setSelectedTenantId] = useState<string>(
     initialTenantId || (tenants.length > 0 ? tenants[0].id : '')
@@ -197,6 +201,16 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsInstallModalOpen(true)}
+              className="px-3 py-2 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              title="הורדת והתקנת האפליקציה למסך הבית"
+            >
+              <Smartphone className="w-3.5 h-3.5 animate-bounce" />
+              <span className="hidden sm:inline">התקנת אפליקציה</span>
+              <span className="sm:hidden">התקן</span>
+            </button>
+
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
@@ -551,6 +565,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
           </div>
         </div>
       )}
+
+      {/* Install App Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+      />
     </div>
   );
 }

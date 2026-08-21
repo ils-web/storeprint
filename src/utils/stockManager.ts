@@ -69,21 +69,44 @@ export function saveStoredStock(stock: Record<string, StockItem>): void {
 
 /**
  * Synchronizes stock items with the product headers from the Google Sheet (E..FM).
- * Existing stock values and units are preserved.
+ * Existing stock values, custom packaging units, and thresholds are strictly preserved.
  */
 export function syncStockWithProductHeaders(
   productHeaders: string[],
-  existingStock: Record<string, StockItem>
+  existingStock: Record<string, StockItem> = {}
 ): Record<string, StockItem> {
-  const result: Record<string, StockItem> = { ...existingStock };
+  const result: Record<string, StockItem> = {};
+
+  // Build index by name and id for 100% reliable matching
+  const existingByName: Record<string, StockItem> = {};
+  Object.values(existingStock || {}).forEach((item) => {
+    if (item && item.name) {
+      existingByName[item.name.trim()] = item;
+    }
+    if (item && item.id) {
+      existingByName[item.id] = item;
+    }
+  });
 
   productHeaders.forEach((header, idx) => {
     const cleanName = header.trim();
     if (!cleanName) return;
 
+    const existing = existingStock[cleanName] || existingByName[cleanName] || existingByName[`stock-${idx + 4}`];
     const detectedUnit = detectPackagingUnitFromProductName(cleanName);
 
-    if (!result[cleanName]) {
+    if (existing) {
+      // PRESERVE user custom values without overwriting with default
+      result[cleanName] = {
+        id: existing.id || `stock-${idx + 4}`,
+        name: cleanName,
+        colIndex: idx + 4,
+        currentStock: typeof existing.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0,
+        minThreshold: typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : DEFAULT_MIN_THRESHOLD,
+        unit: existing.unit || detectedUnit,
+        lastDeducted: existing.lastDeducted,
+      };
+    } else {
       result[cleanName] = {
         id: `stock-${idx + 4}`,
         name: cleanName,
@@ -91,14 +114,6 @@ export function syncStockWithProductHeaders(
         currentStock: 0,
         minThreshold: DEFAULT_MIN_THRESHOLD,
         unit: detectedUnit,
-      };
-    } else {
-      // Update colIndex in case headers shifted, preserving existing unit and minThreshold
-      result[cleanName] = {
-        ...result[cleanName],
-        colIndex: idx + 4,
-        unit: result[cleanName].unit || detectedUnit,
-        minThreshold: result[cleanName].minThreshold || DEFAULT_MIN_THRESHOLD,
       };
     }
   });

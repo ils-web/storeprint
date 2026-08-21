@@ -12,6 +12,7 @@ import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard
 import { LandingPage } from './components/landing/LandingPage';
 import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
+import { InstallAppModal } from './components/portal/InstallAppModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import { AuthSession, InventoryProduct, TenantDepartment } from './types/multiTenant';
@@ -35,6 +36,7 @@ import {
   loadCloudConfig,
   saveCloudConfig,
   fetchStockFromCloud,
+  debouncedPushStockToCloud,
   pushStockToCloud,
 } from './utils/cloudSync';
 import {
@@ -48,15 +50,18 @@ import {
   fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
-import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download } from 'lucide-react';
 
 const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
+const DEPARTMENTS_CACHE_KEY = 'storeprint_departments_cache_v1';
+const PRODUCTS_CACHE_KEY = 'storeprint_products_cache_v1';
 
 export default function App() {
   // Navigation View ('app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock')
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => getActiveAuthSession());
   const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock'>('app');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [preselectedDept, setPreselectedDept] = useState<string>('');
 
   // Active Tenant
@@ -92,10 +97,24 @@ export default function App() {
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal')
   const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal'>('orders');
 
-  // Orders State
+  // Orders & Fast Cached Departments State
   const [orders, setOrders] = useState<Order[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [productHeaders, setProductHeaders] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(DEPARTMENTS_CACHE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [productHeaders, setProductHeaders] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(PRODUCTS_CACHE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -217,7 +236,11 @@ export default function App() {
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
 
-        // Sync and initialize warehouse stock with packaging units auto-detection
+        // Cache departments and products for instant next startup
+        localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
+
+        // Sync and initialize warehouse stock without losing user custom units
         setStock((prevStock) => {
           const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
           saveStoredStock(updatedStock);
@@ -225,7 +248,7 @@ export default function App() {
           return updatedStock;
         });
 
-        // Pull live accurate stock from Apps Script cloud endpoint
+        // Pull accurate stock from Apps Script cloud endpoint if empty
         if (cloudConfig.enabled && cloudConfig.endpointUrl) {
           fetchStockFromCloud(cloudConfig).then((cloudStock) => {
             if (cloudStock && Object.keys(cloudStock).length > 0) {
@@ -396,7 +419,7 @@ export default function App() {
     }
   }, [activeTenantId]);
 
-  // Robust Stock Updates with Name/Id Lookup & Instant Cloud Sync
+  // Robust, Immediate Stock Updates with Debounced Cloud Sync to prevent UI flicker
   const handleUpdateStockItem = useCallback((
     itemIdOrName: string,
     newStock: number,
@@ -404,7 +427,7 @@ export default function App() {
     unit?: string
   ) => {
     setStock((prev) => {
-      // Find matching item by key, name, or ID
+      // Direct lookup by key, name, or ID
       const targetKey = prev[itemIdOrName]
         ? itemIdOrName
         : Object.keys(prev).find(
@@ -431,12 +454,13 @@ export default function App() {
         },
       };
 
+      // 1. Save locally INSTANTLY (0 ms latency)
       saveStoredStock(updated);
       syncToMultiTenantDb(productHeaders, departments, updated);
-      
-      // Auto-push updated stock and unit to cloud if enabled
+
+      // 2. Debounced background cloud sync (1.5s debounce) to prevent network lag & flickering
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        pushStockToCloud(updated, cloudConfig).catch(console.warn);
+        debouncedPushStockToCloud(updated, cloudConfig, 1500).catch(console.warn);
       }
 
       return updated;
@@ -487,7 +511,7 @@ export default function App() {
       saveStoredStock(next);
       syncToMultiTenantDb(productHeaders, departments, next);
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        pushStockToCloud(next, cloudConfig).catch(console.warn);
+        debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
       }
       return next;
     });
@@ -508,7 +532,7 @@ export default function App() {
       saveStoredStock(next);
       syncToMultiTenantDb(productHeaders, departments, next);
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        pushStockToCloud(next, cloudConfig).catch(console.warn);
+        debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
       }
       return next;
     });
@@ -563,7 +587,7 @@ export default function App() {
         const { updatedStock } = deductOrdersFromStock(ordersToPrint, prevStock);
         saveStoredStock(updatedStock);
         if (cloudConfig.enabled && cloudConfig.autoSyncOnPrint) {
-          pushStockToCloud(updatedStock, cloudConfig).catch(console.error);
+          debouncedPushStockToCloud(updatedStock, cloudConfig, 1000).catch(console.error);
         }
         return updatedStock;
       });
@@ -691,6 +715,7 @@ export default function App() {
         onOpenLanding={() => setCurrentView('landing')}
         onOpenPortalPwa={() => setCurrentView('portal_pwa')}
         onOpenMobileStock={() => setCurrentView('mobile_stock')}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onLogout={handleLogout}
         tenantName={activeTenant?.name}
       />
@@ -719,6 +744,14 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsInstallModalOpen(true)}
+              className="px-2.5 py-1 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>התקנת אפליקציה לנייד</span>
+            </button>
+
             <button
               onClick={() => setCurrentView('mobile_stock')}
               className="px-2.5 py-1 bg-sky-600/80 hover:bg-sky-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
@@ -891,6 +924,12 @@ export default function App() {
           setIsLoginModalOpen(false);
           setCurrentView('portal_pwa');
         }}
+      />
+
+      {/* Install App Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
       />
 
       {/* Floating Scroll-to-Top Button */}
