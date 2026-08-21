@@ -359,6 +359,37 @@ export function getInventory(tenantId: string, warehouseId?: string): InventoryP
 export function saveInventory(tenantId: string, items: InventoryProduct[]): void {
   const key = `${INVENTORY_KEY}${tenantId}`;
   setStoredJson(key, items);
+  syncInventoryToFirestore(tenantId, items).catch(console.warn);
+}
+
+async function syncInventoryToFirestore(tenantId: string, items: InventoryProduct[]): Promise<void> {
+  try {
+    if (!db) return;
+    const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
+    await setDoc(docRef, { items, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (e) {
+    // Offline resilience
+  }
+}
+
+export async function fetchInventoryFromFirestore(tenantId: string): Promise<InventoryProduct[] | null> {
+  try {
+    if (!db) return null;
+    const { getDoc } = await import('firebase/firestore');
+    const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data?.items && Array.isArray(data.items)) {
+        saveInventory(tenantId, data.items);
+        return data.items;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn('Could not fetch remote inventory from Firestore:', e);
+    return null;
+  }
 }
 
 export function updateInventoryStock(

@@ -3,9 +3,9 @@ import { StockItem, CloudSyncConfig } from '../types';
 const CLOUD_CONFIG_STORAGE_KEY = 'storeprint_cloud_config_v1';
 
 export const DEFAULT_CLOUD_CONFIG: CloudSyncConfig = {
-  enabled: false,
+  enabled: true,
   syncType: 'webhook',
-  endpointUrl: '',
+  endpointUrl: 'https://script.google.com/macros/s/AKfycbw9WnCTi0kc-lzRHVGZtNRW6KXgfEhGdBsKK1WW7PQKqPlhOFfAdz1xNSGKzsoSnjO2/exec',
   apiKey: '',
   autoSyncOnPrint: true,
   lastSyncedAt: undefined,

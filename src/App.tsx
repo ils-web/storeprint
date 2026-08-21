@@ -44,6 +44,7 @@ import {
   getWarehouses,
   saveInventory,
   saveTenantDepartments,
+  fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
 import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2 } from 'lucide-react';
@@ -134,14 +135,16 @@ export default function App() {
     const items: InventoryProduct[] = prods.map((name, idx) => {
       const existing = currentStockMap[name];
       const detectedUnit = detectPackagingUnitFromProductName(name);
+      const safeQty = typeof existing?.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0;
+      const safeMin = typeof existing?.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : 10;
       return {
         id: `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
         tenantId: activeTenant.id,
         warehouseId: primaryWhId,
         name,
         colIndex: idx + 4,
-        currentStock: existing ? existing.currentStock : 0,
-        minThreshold: existing?.minThreshold || 10,
+        currentStock: safeQty,
+        minThreshold: safeMin,
         unit: existing?.unit || detectedUnit,
         updatedAt: new Date().toISOString(),
       };
@@ -198,10 +201,45 @@ export default function App() {
         setStock((prevStock) => {
           const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
           saveStoredStock(updatedStock);
-          // Also sync to multi-tenant DB
           syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
           return updatedStock;
         });
+
+        // If cloud sync is configured, pull accurate stock balances from Apps Script endpoint
+        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+          fetchStockFromCloud(cloudConfig).then((cloudStock) => {
+            if (cloudStock && Object.keys(cloudStock).length > 0) {
+              setStock((prev) => {
+                const merged = { ...prev };
+                Object.values(cloudStock).forEach((item) => {
+                  if (item && item.name) {
+                    const targetKey = merged[item.name] ? item.name : item.id;
+                    const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+                    const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
+                    if (merged[item.name]) {
+                      merged[item.name] = {
+                        ...merged[item.name],
+                        currentStock: cleanStock,
+                        minThreshold: cleanMin,
+                        unit: item.unit || merged[item.name].unit || "יח'",
+                      };
+                    } else {
+                      merged[item.name] = {
+                        ...item,
+                        currentStock: cleanStock,
+                        minThreshold: cleanMin,
+                        unit: item.unit || "יח'",
+                      };
+                    }
+                  }
+                });
+                saveStoredStock(merged);
+                syncToMultiTenantDb(result.productHeaders, result.departments, merged);
+                return merged;
+              });
+            }
+          }).catch(console.warn);
+        }
 
         if (isManualRefresh) {
           setSuccessMessage('הנתונים נטענו בהצלחה!');
@@ -233,7 +271,7 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [spreadsheetId, gid, syncToMultiTenantDb]
+    [spreadsheetId, gid, cloudConfig, syncToMultiTenantDb]
   );
 
   // Initial Load
@@ -251,11 +289,36 @@ export default function App() {
     setIsSyncingCloud(true);
     try {
       const fetched = await fetchStockFromCloud(cloudConfig);
-      if (fetched) {
-        setStock(fetched);
-        saveStoredStock(fetched);
-        setSuccessMessage('סנכרון ענן הושלם בהצלחה!');
-        setTimeout(() => setSuccessMessage(null), 3000);
+      if (fetched && Object.keys(fetched).length > 0) {
+        setStock((prev) => {
+          const merged = { ...prev };
+          Object.values(fetched).forEach((item) => {
+            if (item && item.name) {
+              const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+              const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
+              if (merged[item.name]) {
+                merged[item.name] = {
+                  ...merged[item.name],
+                  currentStock: cleanStock,
+                  minThreshold: cleanMin,
+                  unit: item.unit || merged[item.name].unit || "יח'",
+                };
+              } else {
+                merged[item.name] = {
+                  ...item,
+                  currentStock: cleanStock,
+                  minThreshold: cleanMin,
+                  unit: item.unit || "יח'",
+                };
+              }
+            }
+          });
+          saveStoredStock(merged);
+          syncToMultiTenantDb(productHeaders, departments, merged);
+          return merged;
+        });
+        setSuccessMessage('סנכרון ענן הושלם בהצלחה! יתרות המלאי עודכנו.');
+        setTimeout(() => setSuccessMessage(null), 4000);
       } else {
         const ok = await pushStockToCloud(stock, cloudConfig);
         if (ok) {
@@ -268,7 +331,7 @@ export default function App() {
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [cloudConfig, stock]);
+  }, [cloudConfig, stock, productHeaders, departments, syncToMultiTenantDb]);
 
   // Handle Cloud Config Save
   const handleSaveCloudConfig = (newConfig: CloudSyncConfig) => {
@@ -278,39 +341,114 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  // Stock Updates
-  const handleUpdateStockItem = useCallback((itemId: string, newStock: number) => {
+  // Hydrate stock from Firebase Firestore on startup if available
+  useEffect(() => {
+    if (activeTenantId) {
+      fetchInventoryFromFirestore(activeTenantId).then((items) => {
+        if (items && items.length > 0) {
+          setStock((prev) => {
+            const updated = { ...prev };
+            let changed = false;
+            items.forEach((item) => {
+              if (item.name && item.currentStock !== undefined) {
+                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
+                if (!updated[item.name] || updated[item.name].currentStock !== cleanStock) {
+                  updated[item.name] = {
+                    id: item.id,
+                    name: item.name,
+                    colIndex: item.colIndex || 0,
+                    currentStock: cleanStock,
+                    minThreshold: cleanMin,
+                    unit: item.unit || "יח'",
+                  };
+                  changed = true;
+                }
+              }
+            });
+            if (changed) {
+              saveStoredStock(updated);
+              return updated;
+            }
+            return prev;
+          });
+        }
+      });
+    }
+  }, [activeTenantId]);
+
+  // Stock Updates with Firestore synchronization
+  const handleUpdateStockItem = useCallback((
+    itemId: string,
+    newStock: number,
+    minThreshold?: number,
+    unit?: string
+  ) => {
     setStock((prev) => {
       if (!prev[itemId]) return prev;
+      const cleanStock = typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0;
       const updated = {
         ...prev,
         [itemId]: {
           ...prev[itemId],
-          currentStock: Math.max(0, newStock),
+          currentStock: cleanStock,
+          ...(minThreshold !== undefined && !isNaN(minThreshold) ? { minThreshold } : {}),
+          ...(unit ? { unit } : {}),
           lastDeducted: new Date().toISOString(),
         },
       };
       saveStoredStock(updated);
+      syncToMultiTenantDb(productHeaders, departments, updated);
       return updated;
     });
-  }, []);
+  }, [productHeaders, departments, syncToMultiTenantDb]);
 
-  const handleBatchUpdateStock = useCallback((updates: Record<string, number>) => {
+  const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
     setStock((prev) => {
       const next = { ...prev };
-      Object.entries(updates).forEach(([id, qty]) => {
-        if (next[id]) {
-          next[id] = {
-            ...next[id],
-            currentStock: Math.max(0, qty),
-            lastDeducted: new Date().toISOString(),
-          };
+      Object.entries(updates).forEach(([key, val]) => {
+        if (val && typeof val === 'object') {
+          const item = val as StockItem;
+          const targetKey = next[item.name] ? item.name : key;
+          const currentQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+          const currentMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (next[targetKey]?.minThreshold || 10);
+          const currentUnit = item.unit || next[targetKey]?.unit || "יח'";
+
+          if (next[targetKey]) {
+            next[targetKey] = {
+              ...next[targetKey],
+              currentStock: Math.max(0, currentQty),
+              minThreshold: currentMin,
+              unit: currentUnit,
+              lastDeducted: new Date().toISOString(),
+            };
+          } else if (item.name) {
+            next[item.name] = {
+              id: item.id || `stock-${Date.now()}`,
+              name: item.name,
+              colIndex: item.colIndex || 0,
+              currentStock: Math.max(0, currentQty),
+              minThreshold: currentMin,
+              unit: currentUnit,
+              lastDeducted: new Date().toISOString(),
+            };
+          }
+        } else if (typeof val === 'number') {
+          const qty = !isNaN(val) ? val : 0;
+          if (next[key]) {
+            next[key] = {
+              ...next[key],
+              currentStock: Math.max(0, qty),
+              lastDeducted: new Date().toISOString(),
+            };
+          }
         }
       });
       saveStoredStock(next);
+      syncToMultiTenantDb(productHeaders, departments, next);
       return next;
     });
-  }, []);
+  }, [productHeaders, departments, syncToMultiTenantDb]);
 
   const handleSetAllStock = useCallback((defaultVal: number) => {
     setStock((prev) => {
@@ -325,9 +463,10 @@ export default function App() {
         }
       });
       saveStoredStock(next);
+      syncToMultiTenantDb(productHeaders, departments, next);
       return next;
     });
-  }, []);
+  }, [productHeaders, departments, syncToMultiTenantDb]);
 
   // Print Handlers
   const handleToggleSelectOrder = (orderId: string) => {

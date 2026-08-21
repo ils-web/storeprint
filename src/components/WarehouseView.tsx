@@ -46,13 +46,15 @@ interface StockRowInputProps {
 }
 
 const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, onUpdate, isMobile = false }) => {
-  const [val, setVal] = useState<string>(String(item.currentStock));
+  const safeStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+  const [val, setVal] = useState<string>(String(safeStock));
   const [isFocused, setIsFocused] = useState(false);
-  const isLow = item.currentStock < (item.minThreshold || globalThreshold);
+  const isLow = safeStock < (item.minThreshold || globalThreshold);
 
   useEffect(() => {
     if (!isFocused) {
-      setVal(String(item.currentStock));
+      const current = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      setVal(String(current));
     }
   }, [item.currentStock, isFocused]);
 
@@ -60,7 +62,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
     const parsed = parseInt(val, 10);
     const finalQty = isNaN(parsed) ? 0 : Math.max(0, parsed);
     setVal(String(finalQty));
-    if (finalQty !== item.currentStock) {
+    if (finalQty !== safeStock) {
       onUpdate(item.name, finalQty);
     }
   };
@@ -74,8 +76,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* -10 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 10))}
-        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-700 font-black transition-colors cursor-pointer ${
+        onClick={() => onUpdate(item.name, Math.max(0, safeStock - 10))}
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-black transition-colors cursor-pointer ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
         }`}
         title="הורד 10"
@@ -86,8 +88,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* -1 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, Math.max(0, item.currentStock - 1))}
-        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer ${
+        onClick={() => onUpdate(item.name, Math.max(0, safeStock - 1))}
+        className={`flex items-center justify-center rounded-xl bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer ${
           isMobile ? 'w-11 h-10' : 'w-7 h-7'
         }`}
         title="הורד 1"
@@ -119,7 +121,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
           } ${
             isLow
               ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
-              : 'border-slate-200 text-slate-900 focus:ring-sky-500'
+              : 'border-slate-300 text-slate-900 bg-white focus:ring-sky-500'
           }`}
         />
       </div>
@@ -127,7 +129,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* +1 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, item.currentStock + 1)}
+        onClick={() => onUpdate(item.name, safeStock + 1)}
         className={`flex items-center justify-center rounded-xl bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer ${
           isMobile ? 'w-11 h-10' : 'w-7 h-7'
         }`}
@@ -139,7 +141,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* +10 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, item.currentStock + 10)}
+        onClick={() => onUpdate(item.name, safeStock + 10)}
         className={`flex items-center justify-center rounded-xl bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7 h-7 text-[10px]'
         }`}
@@ -164,30 +166,32 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   onUpdate,
   isMobile = false,
 }) => {
-  const currentTh = item.minThreshold || globalThreshold;
+  const safeStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+  const safeTh = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (globalThreshold || 10);
   const currentUnit = item.unit || "יח'";
-  const [val, setVal] = useState<string>(String(currentTh));
+  const [val, setVal] = useState<string>(String(safeTh));
   const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
     if (!isFocused) {
-      setVal(String(currentTh));
+      const current = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (globalThreshold || 10);
+      setVal(String(current));
     }
-  }, [currentTh, isFocused]);
+  }, [item.minThreshold, globalThreshold, isFocused]);
 
   const commitThreshold = () => {
     const parsed = parseInt(val, 10);
     const finalTh = isNaN(parsed) ? 10 : Math.max(1, parsed);
     setVal(String(finalTh));
-    if (finalTh !== currentTh) {
-      onUpdate(item.name, item.currentStock, finalTh, currentUnit);
+    if (finalTh !== safeTh) {
+      onUpdate(item.name, safeStock, finalTh, currentUnit);
     }
   };
 
   const handleUnitChange = (newUnit: string) => {
     const parsed = parseInt(val, 10);
-    const finalTh = isNaN(parsed) ? currentTh : Math.max(1, parsed);
-    onUpdate(item.name, item.currentStock, finalTh, newUnit);
+    const finalTh = isNaN(parsed) ? safeTh : Math.max(1, parsed);
+    onUpdate(item.name, safeStock, finalTh, newUnit);
   };
 
   return (
@@ -198,7 +202,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
     >
       {/* Min threshold number input */}
       <div className="flex items-center gap-1">
-        <span className="text-[11px] font-bold text-slate-500">סף מינימום:</span>
+        <span className="text-[11px] font-bold text-slate-600">סף מינימום:</span>
         <input
           type="number"
           inputMode="numeric"
@@ -216,18 +220,18 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-12 text-center text-xs font-black py-1 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+          className="w-12 text-center text-xs font-black py-1 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs"
           title="סף כמות מינימום לדוח חוסרים"
         />
       </div>
 
       {/* Packaging / Unit Dropdown Selector */}
       <div className="flex items-center gap-1">
-        <span className="text-[11px] font-bold text-slate-500">אריזה:</span>
+        <span className="text-[11px] font-bold text-slate-600">אריזה:</span>
         <select
           value={currentUnit}
           onChange={(e) => handleUnitChange(e.target.value)}
-          className="bg-white border border-slate-300 text-slate-800 text-xs font-bold py-1 px-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+          className="bg-white border border-slate-300 text-slate-900 text-xs font-bold py-1 px-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
           title="בחר סוג אריזה / יחידת מידה"
         >
           {PACKAGING_UNITS.map((u) => (
