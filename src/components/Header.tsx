@@ -33,6 +33,7 @@ interface HeaderProps {
   onOpenSuperadmin?: () => void;
   onOpenLanding?: () => void;
   onOpenPortalPwa?: () => void;
+  onOpenMobileStock?: () => void;
   onLogout?: () => void;
   tenantName?: string;
 }
@@ -55,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSuperadmin,
   onOpenLanding,
   onOpenPortalPwa,
+  onOpenMobileStock,
   onLogout,
   tenantName,
 }) => {

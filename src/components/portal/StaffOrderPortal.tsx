@@ -37,10 +37,11 @@ import {
 
 interface StaffOrderPortalProps {
   initialTenantId?: string;
+  initialDepartment?: string;
   onBackToMain?: () => void;
 }
 
-export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPortalProps) {
+export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToMain }: StaffOrderPortalProps) {
   const tenants = getTenants();
   const [selectedTenantId, setSelectedTenantId] = useState<string>(
     initialTenantId || (tenants.length > 0 ? tenants[0].id : '')
@@ -51,7 +52,9 @@ export function StaffOrderPortal({ initialTenantId, onBackToMain }: StaffOrderPo
   const activeWarehouse = warehouses[0] || null;
 
   const departments = getTenantDepartments(selectedTenantId);
-  const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>('');
+  const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>(
+    initialDepartment || (departments.length > 0 ? departments[0].name : '')
+  );
   const [activeTab, setActiveTab] = useState<'catalog' | 'my_orders'>('catalog');
 
   // Search & Filter

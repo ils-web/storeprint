@@ -11,6 +11,7 @@ import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
+import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { LoginModal } from './components/auth/LoginModal';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import { AuthSession, InventoryProduct, TenantDepartment } from './types/multiTenant';
@@ -52,10 +53,11 @@ import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, Shi
 const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
 
 export default function App() {
-  // Navigation View ('app' | 'landing' | 'superadmin' | 'portal_pwa')
+  // Navigation View ('app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock')
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => getActiveAuthSession());
-  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa'>('app');
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock'>('app');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [preselectedDept, setPreselectedDept] = useState<string>('');
 
   // Active Tenant
   const tenants = getTenants();
@@ -63,6 +65,24 @@ export default function App() {
     authSession?.tenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
   );
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
+
+  // Deep Link Routing (URL params ?view=... &dept=...)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const deptParam = params.get('dept');
+      if (deptParam) setPreselectedDept(deptParam);
+
+      if (viewParam === 'portal_pwa') {
+        setCurrentView('portal_pwa');
+      } else if (viewParam === 'mobile_stock') {
+        setCurrentView('mobile_stock');
+      } else if (viewParam === 'superadmin') {
+        setCurrentView('superadmin');
+      }
+    }
+  }, []);
 
   // Spreadsheet state
   const [spreadsheetId, setSpreadsheetId] = useState<string>(activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID);
@@ -133,7 +153,7 @@ export default function App() {
 
     // Build Inventory Products with preserved packaging units
     const items: InventoryProduct[] = prods.map((name, idx) => {
-      const existing = currentStockMap[name];
+      const existing = currentStockMap[name] || Object.values(currentStockMap).find((v) => v.name === name);
       const detectedUnit = detectPackagingUnitFromProductName(name);
       const safeQty = typeof existing?.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0;
       const safeMin = typeof existing?.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : 10;
@@ -205,7 +225,7 @@ export default function App() {
           return updatedStock;
         });
 
-        // If cloud sync is configured, pull accurate stock balances from Apps Script endpoint
+        // Pull live accurate stock from Apps Script cloud endpoint
         if (cloudConfig.enabled && cloudConfig.endpointUrl) {
           fetchStockFromCloud(cloudConfig).then((cloudStock) => {
             if (cloudStock && Object.keys(cloudStock).length > 0) {
@@ -213,7 +233,6 @@ export default function App() {
                 const merged = { ...prev };
                 Object.values(cloudStock).forEach((item) => {
                   if (item && item.name) {
-                    const targetKey = merged[item.name] ? item.name : item.id;
                     const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
                     const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
                     if (merged[item.name]) {
@@ -377,31 +396,52 @@ export default function App() {
     }
   }, [activeTenantId]);
 
-  // Stock Updates with Firestore synchronization
+  // Robust Stock Updates with Name/Id Lookup & Instant Cloud Sync
   const handleUpdateStockItem = useCallback((
-    itemId: string,
+    itemIdOrName: string,
     newStock: number,
     minThreshold?: number,
     unit?: string
   ) => {
     setStock((prev) => {
-      if (!prev[itemId]) return prev;
+      // Find matching item by key, name, or ID
+      const targetKey = prev[itemIdOrName]
+        ? itemIdOrName
+        : Object.keys(prev).find(
+            (k) => prev[k]?.name === itemIdOrName || prev[k]?.id === itemIdOrName
+          ) || itemIdOrName;
+
+      const existing = prev[targetKey];
       const cleanStock = typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0;
+      const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
+      const cleanUnit = unit || existing?.unit || "יח'";
+
       const updated = {
         ...prev,
-        [itemId]: {
-          ...prev[itemId],
+        [targetKey]: {
+          ...(existing || {
+            id: `stock-${Date.now()}`,
+            name: itemIdOrName,
+            colIndex: 0,
+          }),
           currentStock: cleanStock,
-          ...(minThreshold !== undefined && !isNaN(minThreshold) ? { minThreshold } : {}),
-          ...(unit ? { unit } : {}),
+          minThreshold: cleanMin,
+          unit: cleanUnit,
           lastDeducted: new Date().toISOString(),
         },
       };
+
       saveStoredStock(updated);
       syncToMultiTenantDb(productHeaders, departments, updated);
+      
+      // Auto-push updated stock and unit to cloud if enabled
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        pushStockToCloud(updated, cloudConfig).catch(console.warn);
+      }
+
       return updated;
     });
-  }, [productHeaders, departments, syncToMultiTenantDb]);
+  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
     setStock((prev) => {
@@ -446,9 +486,12 @@ export default function App() {
       });
       saveStoredStock(next);
       syncToMultiTenantDb(productHeaders, departments, next);
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        pushStockToCloud(next, cloudConfig).catch(console.warn);
+      }
       return next;
     });
-  }, [productHeaders, departments, syncToMultiTenantDb]);
+  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   const handleSetAllStock = useCallback((defaultVal: number) => {
     setStock((prev) => {
@@ -464,9 +507,12 @@ export default function App() {
       });
       saveStoredStock(next);
       syncToMultiTenantDb(productHeaders, departments, next);
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        pushStockToCloud(next, cloudConfig).catch(console.warn);
+      }
       return next;
     });
-  }, [productHeaders, departments, syncToMultiTenantDb]);
+  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   // Print Handlers
   const handleToggleSelectOrder = (orderId: string) => {
@@ -597,12 +643,26 @@ export default function App() {
     return (
       <StaffOrderPortal
         initialTenantId={activeTenantId}
+        initialDepartment={preselectedDept}
         onBackToMain={() => setCurrentView('app')}
       />
     );
   }
 
-  // 4. Main Tenant Warehouse & Orders Workspace View
+  // 4. Dedicated Mobile Stock Adjuster View
+  if (currentView === 'mobile_stock') {
+    return (
+      <MobileStockManager
+        stock={stock}
+        onUpdateStockItem={handleUpdateStockItem}
+        onSyncWithCloud={handleSyncWithCloud}
+        isSyncingCloud={isSyncingCloud}
+        onBackToMain={() => setCurrentView('app')}
+      />
+    );
+  }
+
+  // 5. Main Tenant Warehouse & Orders Workspace View
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white" dir="rtl">
       {/* Header */}
@@ -630,6 +690,7 @@ export default function App() {
         }}
         onOpenLanding={() => setCurrentView('landing')}
         onOpenPortalPwa={() => setCurrentView('portal_pwa')}
+        onOpenMobileStock={() => setCurrentView('mobile_stock')}
         onLogout={handleLogout}
         tenantName={activeTenant?.name}
       />
@@ -659,6 +720,14 @@ export default function App() {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setCurrentView('mobile_stock')}
+              className="px-2.5 py-1 bg-sky-600/80 hover:bg-sky-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>ספירת מלאי במובייל</span>
+            </button>
+
+            <button
               onClick={() => setCurrentView('portal_pwa')}
               className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
             >
@@ -684,7 +753,7 @@ export default function App() {
               onClick={() => setCurrentView('landing')}
               className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
             >
-              דף ראשי / תוכניות
+              דף ראשי
             </button>
           </div>
         </div>
@@ -754,6 +823,8 @@ export default function App() {
         {activeTab === 'warehouse' && (
           <WarehouseView
             stock={stock}
+            departments={departments}
+            tenantName={activeTenant?.name}
             cloudConfig={cloudConfig}
             onOpenCloudModal={() => setIsCloudModalOpen(true)}
             onSyncWithCloud={handleSyncWithCloud}

@@ -245,19 +245,26 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   );
 };
 
+import { DepartmentQRPrintModal } from './portal/DepartmentQRPrintModal';
+import { MobileStockQRModal } from './mobile/MobileStockQRModal';
+
 interface WarehouseViewProps {
   stock: Record<string, StockItem>;
+  departments?: string[];
+  tenantName?: string;
   cloudConfig: CloudSyncConfig;
   onOpenCloudModal: () => void;
   onSyncWithCloud: () => void;
   isSyncingCloud: boolean;
   onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string) => void;
-  onBatchUpdateStock: (updatedStock: Record<string, StockItem>) => void;
+  onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
   onSetAllStock: (qty: number) => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
   stock,
+  departments = [],
+  tenantName,
   cloudConfig,
   onOpenCloudModal,
   onSyncWithCloud,
@@ -271,7 +278,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [globalThreshold, setGlobalThreshold] = useState<number>(10);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchQtyInput, setBatchQtyInput] = useState<string>('50');
-  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
+  const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
 
   const stockList = useMemo(() => Object.values(stock), [stock]);
 
@@ -518,14 +526,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </button>
               )}
 
-              {/* Phone QR Connect Button */}
+              {/* Mobile Stock Scanner QR */}
               <button
-                onClick={() => setIsQRModalOpen(true)}
-                className="bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                title="הצג קוד QR לחיבור הטלפון למחסן"
+                onClick={() => setIsMobileStockQRModalOpen(true)}
+                className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="סריקת קוד QR לספירת מלאי מהטלפון בין המדפים"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>QR ספירת מלאי במובייל 📱</span>
+              </button>
+
+              {/* Department QR Cards Generator & Print */}
+              <button
+                onClick={() => setIsDeptQRModalOpen(true)}
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="הפקת כרטיסיות QR עם הוראות להדפסה ותלייה בכל מחלקה"
               >
                 <QrCode className="w-3.5 h-3.5" />
-                <span>חיבור טלפון (קוד QR) 📱</span>
+                <span>כרטיסיות QR למחלקות 🏷️</span>
               </button>
             </div>
 
@@ -842,12 +860,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
       )}
 
-      {/* Phone QR Modal */}
-      <PhoneQRModal
-        isOpen={isQRModalOpen}
-        onClose={() => setIsQRModalOpen(false)}
-        cloudConfig={cloudConfig}
-        onOpenCloudConfig={onOpenCloudModal}
+      {/* Department QR Cards Print Modal */}
+      <DepartmentQRPrintModal
+        isOpen={isDeptQRModalOpen}
+        onClose={() => setIsDeptQRModalOpen(false)}
+        departments={departments}
+        tenantName={tenantName}
+      />
+
+      {/* Mobile Stock Scanner QR Modal */}
+      <MobileStockQRModal
+        isOpen={isMobileStockQRModalOpen}
+        onClose={() => setIsMobileStockQRModalOpen(false)}
       />
 
     </div>
