@@ -860,20 +860,46 @@ export default function App() {
   };
 
   const handleTogglePrintedStatus = (orderId: string) => {
+    let newStatus = false;
     setPrintedOrderIds((prev) => {
       const next = new Set(prev);
       if (next.has(orderId)) {
         next.delete(orderId);
+        newStatus = false;
       } else {
         next.add(orderId);
+        newStatus = true;
       }
-      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      try {
+        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {}
+
+      // Also update multiTenantDb so PWA orders stay in sync
+      try {
+        const tenantOrders = getTenantOrders(activeTenantId);
+        const updated = tenantOrders.map((tOrder) => {
+          if (tOrder.id === orderId || orderId.includes(tOrder.orderNumber)) {
+            return {
+              ...tOrder,
+              printed: newStatus,
+              status: newStatus ? ('PRINTED' as const) : ('NEW' as const),
+              printedAt: newStatus ? new Date().toISOString() : undefined,
+            };
+          }
+          return tOrder;
+        });
+        saveTenantOrders(activeTenantId, updated);
+      } catch {}
+
       return next;
     });
 
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, printed: !o.printed } : o))
     );
+
+    setSuccessMessage(newStatus ? 'סטטוס ההזמנה שונה ל-"הודפס" ✓' : 'סטטוס ההזמנה הוחזר ל-"ממתין" ⏱');
+    setTimeout(() => setSuccessMessage(null), 2500);
   };
 
   // Auth & View Handlers
