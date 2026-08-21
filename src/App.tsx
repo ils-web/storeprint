@@ -18,7 +18,7 @@ import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmMo
 import { EmergencyBanner } from './components/emergency/EmergencyBanner';
 import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
-import { AuthSession, InventoryProduct, TenantDepartment } from './types/multiTenant';
+import { AuthSession, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
 import {
   DEFAULT_SPREADSHEET_ID,
   DEFAULT_GID,
@@ -48,6 +48,7 @@ import {
   logout as logoutDb,
   getTenants,
   getWarehouses,
+  getTenantOrders,
   saveInventory,
   saveTenantDepartments,
   fetchInventoryFromFirestore,
@@ -240,13 +241,58 @@ export default function App() {
     saveTenantDepartments(activeTenant.id, deptItems);
   }, [activeTenant]);
 
-  // Load and Process Google Sheet Orders
+  // Helper to convert a PWA MultiTenantOrder into a printable Order object
+  const convertTenantOrderToAppOrder = useCallback((to: MultiTenantOrder, idx: number): Order => {
+    const dateObj = to.createdAt ? new Date(to.createdAt) : new Date();
+    const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
+    const timeStr = `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}:${String(dateObj.getSeconds()).padStart(2, '0')}`;
+    const fullTimestamp = `${dateStr} ${timeStr}`;
+
+    return {
+      id: to.id || `pwa-order-${idx}-${to.orderNumber}`,
+      rowNumber: to.rawGoogleSheetRow || (9000 + idx),
+      timestamp: fullTimestamp,
+      rawDate: dateStr,
+      parsedDate: dateObj,
+      department: to.departmentName,
+      patientsCount: to.patientsCount || '',
+      items: to.items.map((item, itemIdx) => ({
+        id: item.id || `item-${itemIdx}-${item.productId}`,
+        name: item.name,
+        qty: item.orderedUnit && item.orderedUnit !== "יח'"
+          ? `${item.orderedQty} ${item.orderedUnit}`
+          : String(item.orderedQty),
+        numericQty: item.orderedQty,
+        colIndex: 0,
+        checked: item.checked,
+      })),
+      totalItemsCount: to.totalItemsCount || to.items.length,
+      printed: Boolean(to.printed),
+      printedAt: to.printedAt,
+      rawRow: {},
+    };
+  }, []);
+
+  // Load and Process Google Sheet Orders + PWA Multi-Tenant Orders
   const loadOrders = useCallback(
     async (isManualRefresh = false) => {
       if (isManualRefresh) {
         setIsLoading(true);
         setErrorMessage(null);
       }
+
+      // Load local PWA orders for current active tenant
+      const tenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
+      const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
+
+      const currentPrinted = new Set<string>();
+      try {
+        const raw = localStorage.getItem(PRINTED_ORDERS_STORAGE_KEY);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          arr.forEach((id: string) => currentPrinted.add(id));
+        }
+      } catch {}
 
       try {
         const rows = await fetchPublicCsvValues(spreadsheetId, gid);
@@ -257,21 +303,28 @@ export default function App() {
 
         const result = processRawRowsToOrders(rows);
 
-        const currentPrinted = new Set<string>();
-        try {
-          const raw = localStorage.getItem(PRINTED_ORDERS_STORAGE_KEY);
-          if (raw) {
-            const arr = JSON.parse(raw);
-            arr.forEach((id: string) => currentPrinted.add(id));
-          }
-        } catch {}
-
         const syncedOrders = result.orders.map((o) => ({
           ...o,
           printed: currentPrinted.has(o.id),
         }));
 
-        setOrders(syncedOrders);
+        // Merge PWA orders with Sheet orders (PWA orders first so latest submitted orders appear at the very top!)
+        const allOrdersMap = new Map<string, Order>();
+        convertedTenantOrders.forEach((o) => {
+          allOrdersMap.set(o.id, {
+            ...o,
+            printed: currentPrinted.has(o.id) || o.printed,
+          });
+        });
+        syncedOrders.forEach((o) => {
+          if (!allOrdersMap.has(o.id)) {
+            allOrdersMap.set(o.id, o);
+          }
+        });
+
+        const mergedOrders = Array.from(allOrdersMap.values());
+
+        setOrders(mergedOrders);
         setDepartments(result.departments);
         setProductHeaders(result.productHeaders);
         setLastUpdated(new Date());
@@ -293,12 +346,27 @@ export default function App() {
           setTimeout(() => setSuccessMessage(null), 3500);
         }
       } catch (err: any) {
-        console.warn('Live fetch error, falling back to mock data:', err);
+        console.warn('Live fetch error, falling back to mock data + PWA orders:', err);
         const mockOrders = getMockCurrentWeekOrders();
         const mockProductNames = Array.from(new Set(mockOrders.flatMap((o) => o.items.map((i) => i.name))));
         const mockDeptNames = Array.from(new Set(mockOrders.map((o) => o.department)));
 
-        setOrders(mockOrders);
+        const allOrdersMap = new Map<string, Order>();
+        convertedTenantOrders.forEach((o) => {
+          allOrdersMap.set(o.id, {
+            ...o,
+            printed: currentPrinted.has(o.id) || o.printed,
+          });
+        });
+        mockOrders.forEach((o) => {
+          if (!allOrdersMap.has(o.id)) {
+            allOrdersMap.set(o.id, o);
+          }
+        });
+
+        const mergedOrders = Array.from(allOrdersMap.values());
+
+        setOrders(mergedOrders);
         setDepartments(mockDeptNames);
         setProductHeaders(mockProductNames);
         setLastUpdated(new Date());
@@ -318,8 +386,21 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [spreadsheetId, gid, cloudConfig, syncToMultiTenantDb]
+    [spreadsheetId, gid, activeTenantId, convertTenantOrderToAppOrder, syncToMultiTenantDb]
   );
+
+  // Auto-reload on order creation events across windows/tabs
+  useEffect(() => {
+    const handleOrderCreated = () => {
+      loadOrders(false);
+    };
+    window.addEventListener('storeprint_order_created', handleOrderCreated);
+    window.addEventListener('storage', handleOrderCreated);
+    return () => {
+      window.removeEventListener('storeprint_order_created', handleOrderCreated);
+      window.removeEventListener('storage', handleOrderCreated);
+    };
+  }, [loadOrders]);
 
   // Initial Load
   useEffect(() => {

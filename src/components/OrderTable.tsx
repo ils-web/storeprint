@@ -408,7 +408,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       {/* Department with Printed Indicator */}
                       <td className="py-3.5 px-4">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <div
                               className={`p-1.5 rounded-xl shrink-0 ${
                                 order.printed
@@ -421,6 +421,11 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                             <span className="font-extrabold text-slate-900 text-sm">
                               {order.department}
                             </span>
+                            {(order.id.startsWith('pwa-') || order.id.startsWith('order-')) && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 shrink-0">
+                                📲 אפליקציה
+                              </span>
+                            )}
                           </div>
                           {order.printed && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.2 rounded-md">

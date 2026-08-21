@@ -165,6 +165,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
       setCart({});
       setNotes('');
       setIsCartOpen(false);
+
+      // Notify main app in real-time
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('storeprint_order_created'));
+      }
     } catch (err: any) {
       alert(err.message || 'שגיאה בשליחת ההזמנה');
     }
