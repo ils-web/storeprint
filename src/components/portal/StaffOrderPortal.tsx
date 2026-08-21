@@ -195,9 +195,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     }
   };
 
+  const [refreshPastOrdersKey, setRefreshPastOrdersKey] = useState<number>(0);
+
   const pastOrders = useMemo(() => {
     return getTenantOrders(selectedTenantId);
-  }, [selectedTenantId, orderSuccessNumber]);
+  }, [selectedTenantId, orderSuccessNumber, refreshPastOrdersKey]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24" dir="rtl">
@@ -505,7 +507,14 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
                           ) {
                             const updated = pastOrders.filter((o) => o.id !== ord.id);
                             saveTenantOrders(selectedTenantId, updated);
-                            setPastOrders(updated);
+                            try {
+                              const raw = localStorage.getItem('storeprint_deleted_orders_v2');
+                              const set = raw ? new Set(JSON.parse(raw)) : new Set();
+                              set.add(ord.id);
+                              if (ord.orderNumber) set.add(ord.orderNumber);
+                              localStorage.setItem('storeprint_deleted_orders_v2', JSON.stringify(Array.from(set)));
+                            } catch {}
+                            setRefreshPastOrdersKey((k) => k + 1);
                             window.dispatchEvent(new Event('storeprint_order_created'));
                           }
                         }}
