@@ -18,6 +18,7 @@ import {
   Filter,
   RotateCcw,
   Copy,
+  Trash2,
 } from 'lucide-react';
 import { Order, StockItem } from '../types';
 import {
@@ -44,6 +45,7 @@ interface OrderTableProps {
   onPreviewOrder: (order: Order) => void;
   onMassPrint: () => void;
   onTogglePrintedStatus: (orderId: string) => void;
+  onDeleteOrder?: (orderId: string) => void;
   isSheetLoaded: boolean;
 }
 
@@ -59,6 +61,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   onPreviewOrder,
   onMassPrint,
   onTogglePrintedStatus,
+  onDeleteOrder,
   isSheetLoaded,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -141,6 +144,41 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const isAllSelected =
     filteredOrders.length > 0 &&
     filteredOrders.every((o) => selectedOrderIds.includes(o.id));
+
+  // Determine currently selected department
+  const selectedOrders = useMemo(() => {
+    return orders.filter((o) => selectedOrderIds.includes(o.id));
+  }, [orders, selectedOrderIds]);
+
+  const activeSelectedDept = useMemo(() => {
+    return selectedOrders.length > 0 ? selectedOrders[0].department : null;
+  }, [selectedOrders]);
+
+  const handleToggleSelectSingleDept = (order: Order) => {
+    if (activeSelectedDept && activeSelectedDept !== order.department && !selectedOrderIds.includes(order.id)) {
+      // Clear previous department selection and select new department
+      onSelectAllOrders(false);
+      setTimeout(() => onToggleSelectOrder(order.id), 0);
+      return;
+    }
+    onToggleSelectOrder(order.id);
+  };
+
+  const handleSelectAllSingleDept = (select: boolean) => {
+    if (!select) {
+      onSelectAllOrders(false);
+      return;
+    }
+    if (selectedDept === 'ALL') {
+      const firstDept = filteredOrders[0]?.department;
+      if (!firstDept) return;
+      const deptOrderIds = filteredOrders.filter((o) => o.department === firstDept).map((o) => o.id);
+      onSelectAllOrders(false);
+      deptOrderIds.forEach((id) => onToggleSelectOrder(id));
+    } else {
+      onSelectAllOrders(true);
+    }
+  };
 
   // Count printed and pending for filtered set
   const counts = useMemo(() => {
@@ -290,14 +328,18 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               </span>
             </span>
 
-            {/* Mass Print Button */}
+            {/* Mass Print Button (Strictly for single selected department) */}
             {selectedOrderIds.length > 0 && (
               <button
                 onClick={onMassPrint}
                 className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black px-4 py-1.5 rounded-2xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>הדפס נבחרים ({selectedOrderIds.length})</span>
+                <span>
+                  {activeSelectedDept
+                    ? `הדפס הזמנות מחלקת ${activeSelectedDept} (${selectedOrderIds.length})`
+                    : `הדפס נבחרים (${selectedOrderIds.length})`}
+                </span>
               </button>
             )}
           </div>
@@ -313,9 +355,9 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
               <th className="py-3.5 px-4 w-12 text-center">
                 <button
-                  onClick={() => onSelectAllOrders(!isAllSelected)}
+                  onClick={() => handleSelectAllSingleDept(!isAllSelected)}
                   className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
-                  title={isAllSelected ? 'בטל בחירה' : 'בחר הכל'}
+                  title={isAllSelected ? 'בטל בחירה' : 'בחר כל הזמנות המחלקה'}
                 >
                   {isAllSelected ? (
                     <CheckSquare className="w-4 h-4 text-sky-600" />
@@ -325,45 +367,23 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 </button>
               </th>
               <th className="py-3.5 px-4 w-32">תאריך ושעה</th>
-              <th className="py-3.5 px-4 w-52">מחלקה / סקטור</th>
-              <th className="py-3.5 px-4">פירוט פריטים להספקה (עמודות E..FM)</th>
+              <th className="py-3.5 px-4 w-48">מחלקה / סקטור</th>
+              <th className="py-3.5 px-4">פריטים שהוזמנו</th>
               <th className="py-3.5 px-4 w-28 text-center">כמות פריטים</th>
-              <th className="py-3.5 px-4 w-32 text-center">סטטוס הדפסה</th>
-              <th className="py-3.5 px-4 w-44 text-center">פעולות הדפסה</th>
+              <th className="py-3.5 px-4 w-28 text-center">סטטוס</th>
+              <th className="py-3.5 px-4 w-36 text-center">פעולות</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-14 text-center text-slate-500">
-                  <div className="max-w-md mx-auto space-y-3">
-                    <Calendar className="w-10 h-10 text-slate-300 mx-auto" />
-                    <div className="font-extrabold text-slate-800 text-sm">
-                      {periodFilter === 'week'
-                        ? 'אין הזמנות לתקופת השבוע הנוכחי'
-                        : 'לא נמצאו הזמנות לפי הסינון שנבחר'}
-                    </div>
+                <td colSpan={7} className="py-16 text-center text-slate-500">
+                  <div className="max-w-md mx-auto space-y-2">
+                    <Package className="w-10 h-10 text-slate-300 mx-auto" />
+                    <div className="font-bold text-slate-700 text-sm">לא נמצאו הזמנות</div>
                     <p className="text-xs text-slate-400">
-                      {orders.length > 0
-                        ? `בטבלה קיימות ${orders.length} הזמנות מתקופות אחרות.`
-                        : 'אין כרגע נתונים בטבלה.'}
+                      נסו לשנות את מונח החיפוש, לבחור תקופה אחרת או לסנן לפי מחלקה.
                     </p>
-                    {orders.length > 0 && periodFilter !== 'all' && (
-                      <div className="flex items-center justify-center gap-2 pt-1">
-                        <button
-                          onClick={() => setPeriodFilter('last30')}
-                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-xl text-xs border border-sky-200 transition-colors cursor-pointer"
-                        >
-                          הצג 30 ימים אחרונים
-                        </button>
-                        <button
-                          onClick={() => setPeriodFilter('all')}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs border border-slate-300 transition-colors cursor-pointer"
-                        >
-                          הצג את כל ההזמנות ({orders.length})
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </td>
               </tr>
@@ -383,10 +403,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           : ''
                       }`}
                     >
-                      {/* Selection Checkbox */}
+                      {/* Selection Checkbox (Single Department Locked) */}
                       <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => onToggleSelectOrder(order.id)}
+                          onClick={() => handleToggleSelectSingleDept(order)}
                           className="text-slate-400 hover:text-sky-600 transition-colors cursor-pointer"
                         >
                           {isSelected ? (
@@ -454,18 +474,14 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                                     key={item.id}
                                     className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] border transition-colors font-medium ${
                                       isOut
-                                        ? 'bg-slate-100 text-slate-500 border-slate-300 line-through'
+                                        ? 'bg-slate-100 text-slate-600 border-slate-300 line-through'
                                         : isLow
-                                        ? 'bg-red-50 text-red-800 border-red-200'
-                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
+                                        : 'bg-slate-50 text-slate-800 border-slate-200'
                                     }`}
-                                    title={stockItem ? `יתרת מלאי: ${stockItem.currentStock} יח'` : ''}
                                   >
-                                    {isLow && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-ping" />
-                                    )}
                                     <span>{item.name}</span>
-                                    <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded-md font-bold text-[10px]">
+                                    <span className="font-mono font-bold bg-white px-1.5 py-0.2 rounded-md text-[10px] border border-slate-200">
                                       {item.qty}
                                     </span>
                                   </span>
@@ -529,7 +545,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                         </button>
                       </td>
 
-                      {/* Action Buttons: Print, Copy Print (No deduction), Preview */}
+                      {/* Action Buttons: Print, Copy Print, Preview, Delete */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           
@@ -559,6 +575,25 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+
+                          {/* Delete Order (Safe Deletion) */}
+                          {onDeleteOrder && (
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `האם אתה בטוח שברצונך למחוק את הזמנת מחלקת ${order.department} (${order.timestamp})?`
+                                  )
+                                ) {
+                                  onDeleteOrder(order.id);
+                                }
+                              }}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 p-2 rounded-xl transition-colors cursor-pointer"
+                              title="מחק הזמנה זו מהמאגר"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
 
                         </div>
                       </td>

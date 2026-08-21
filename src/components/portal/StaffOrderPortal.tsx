@@ -36,6 +36,8 @@ import {
   ClipboardList,
   Smartphone,
   Download,
+  Trash2,
+  Users,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -59,6 +61,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
   const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>(
     initialDepartment || (departments.length > 0 ? departments[0].name : '')
   );
+  const [patientsCount, setPatientsCount] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'catalog' | 'my_orders'>('catalog');
 
   // Search & Filter
@@ -96,6 +99,23 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
 
   // Handlers for cart
   const handleUpdateQty = (product: InventoryProduct, unit: PackagingUnit, delta: number) => {
+    if (product.limitByPatients && delta > 0) {
+      const maxAllowed = parseInt(patientsCount, 10);
+      if (isNaN(maxAllowed) || maxAllowed <= 0) {
+        alert(
+          `הפריט "${product.name}" מוגבל לפי כמות המטופלים במחלקה.\nנא להזין תחילה את מספר המטופלים במחלקה בראש הטופס.`
+        );
+        return;
+      }
+      const currentQty = cart[product.id]?.orderedQty || 0;
+      if (currentQty + delta > maxAllowed) {
+        alert(
+          `הכמות המרבית להזמנה עבור "${product.name}" היא ${maxAllowed} יח' (לפי מספר המטופלים הרשום במחלקה).`
+        );
+        return;
+      }
+    }
+
     setCart((prev) => {
       const existing = prev[product.id] || {
         id: `item-${product.id}`,
@@ -258,48 +278,55 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
           </div>
         )}
 
-        {/* Department Selection Bar */}
+        {/* Department Selection & Patient Count Bar */}
         <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Building2 className="w-4 h-4 text-indigo-400" />
-              מחלקה / אגף מזמין
+              מחלקה מזמינה וכמות מטופלים
             </label>
-            <span className="text-[11px] text-slate-400">בחר את המחלקה שלך</span>
+            <span className="text-[11px] text-slate-400">בחר מחלקה והזן כמות מטופלים</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <select
-              value={selectedDepartmentName}
-              onChange={(e) => setSelectedDepartmentName(e.target.value)}
-              className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
-            >
-              <option value="">-- בחר מחלקה מהרשימה --</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-              <option value="custom">+ הקלד מחלקה אחרת...</option>
-            </select>
-
-            {selectedDepartmentName === 'custom' ? (
-              <input
-                type="text"
-                placeholder="הקלד את שם המחלקה"
-                onChange={(e) => setSelectedDepartmentName(e.target.value)}
-                className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
-              />
-            ) : (
-              <input
-                type="text"
-                placeholder="או הקלד ידנית (לדוגמה: ג' 2 סיעוד)"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <select
                 value={selectedDepartmentName}
                 onChange={(e) => setSelectedDepartmentName(e.target.value)}
-                className="px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="">-- בחר מחלקה מהרשימה --</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.name}>
+                    {d.name}
+                  </option>
+                ))}
+                <option value="custom">+ הקלד מחלקה אחרת...</option>
+              </select>
+            </div>
+
+            <div className="relative">
+              <Users className="w-4 h-4 text-indigo-400 absolute right-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="number"
+                min="0"
+                placeholder="מס' מטופלים (לדוג' 24)"
+                value={patientsCount}
+                onChange={(e) => setPatientsCount(e.target.value)}
+                className="w-full pr-9 pl-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                title="מספר המטופלים במחלקה לצורך הגבלת פריטים ייעודיים"
               />
-            )}
+            </div>
           </div>
+
+          {selectedDepartmentName === 'custom' && (
+            <input
+              type="text"
+              placeholder="הקלד את שם המחלקה"
+              onChange={(e) => setSelectedDepartmentName(e.target.value)}
+              className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+            />
+          )}
         </div>
 
         {/* Tabs: Catalog vs My Orders */}
@@ -325,13 +352,13 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
             }`}
           >
             <ClipboardList className="w-3.5 h-3.5" />
-            <span>מעקב הזמנות ({pastOrders.length})</span>
+            <span>ההזמנות שלי ({pastOrders.length})</span>
           </button>
         </div>
 
         {/* TAB 1: CATALOG */}
         {activeTab === 'catalog' && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {/* Search Bar */}
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
@@ -357,7 +384,18 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
                     className="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md hover:border-slate-600 transition-all"
                   >
                     <div className="flex-1">
-                      <h4 className="font-bold text-sm text-white">{prod.name}</h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm text-white">{prod.name}</h4>
+                        {prod.limitByPatients && (
+                          <span
+                            className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 px-2 py-0.5 rounded-md font-bold flex items-center gap-1"
+                            title="הזמנה מוגבלת למספר המטופלים במחלקה"
+                          >
+                            <Users className="w-3 h-3" />
+                            <span>מוגבל למטופלים {patientsCount ? `(עד ${patientsCount})` : ''}</span>
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[11px] text-slate-400 font-mono">
                           יתרה במחסן: <strong className="text-slate-200">{prod.currentStock} {prod.unit || "יח'"}</strong>
@@ -424,19 +462,18 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
         {activeTab === 'my_orders' && (
           <div className="space-y-3">
             {pastOrders.map((ord) => {
-              const statusBg =
-                ord.status === 'PRINTED' || ord.printed
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : ord.status === 'ISSUED'
-                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-
               const statusText =
-                ord.status === 'PRINTED' || ord.printed
-                  ? 'הודפס / הוכן לניפוק'
-                  : ord.status === 'ISSUED'
-                  ? 'נופק ונמסר'
-                  : 'התקבל במחסן (חדש)';
+                ord.status === 'PRINTED'
+                  ? 'הודפס ונמסר לליקוט ✓'
+                  : ord.status === 'FULFILLED'
+                  ? 'סופק במלואו'
+                  : 'ממתין לטיפול ⏱';
+              const statusBg =
+                ord.status === 'PRINTED'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : ord.status === 'FULFILLED'
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30';
 
               return (
                 <div
@@ -454,9 +491,30 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
                       </span>
                     </div>
 
-                    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusBg}`}>
-                      {statusText}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusBg}`}>
+                        {statusText}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `האם אתה בטוח שברצונך למחוק את הזמנה ${ord.orderNumber} של מחלקת ${ord.departmentName}?`
+                            )
+                          ) {
+                            const updated = pastOrders.filter((o) => o.id !== ord.id);
+                            saveTenantOrders(selectedTenantId, updated);
+                            setPastOrders(updated);
+                            window.dispatchEvent(new Event('storeprint_order_created'));
+                          }
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 transition-colors cursor-pointer"
+                        title="מחק הזמנה זו"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800/80 text-xs space-y-1.5">

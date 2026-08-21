@@ -16,6 +16,7 @@ import { InstallAppModal } from './components/portal/InstallAppModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmModal';
 import { EmergencyBanner } from './components/emergency/EmergencyBanner';
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import { AuthSession, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
@@ -98,8 +99,8 @@ export default function App() {
   const [gid, setGid] = useState<string>(activeTenant?.spreadsheetGid || DEFAULT_GID);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
-  // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal')
-  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal'>('orders');
+  // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
+  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal' | 'analytics'>('orders');
 
   // Orders & Fast Cached Departments State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -226,6 +227,7 @@ export default function App() {
         minThreshold: safeMin,
         unit: existing?.unit || detectedUnit,
         isActive: existing?.isActive !== undefined ? existing.isActive : true,
+        limitByPatients: Boolean(existing?.limitByPatients),
         updatedAt: new Date().toISOString(),
       };
     });
@@ -509,7 +511,8 @@ export default function App() {
     newStock: number,
     minThreshold?: number,
     unit?: string,
-    isActive?: boolean
+    isActive?: boolean,
+    limitByPatients?: boolean
   ) => {
     setStock((prev) => {
       // Direct lookup by key, name, or ID
@@ -524,6 +527,7 @@ export default function App() {
       const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
       const cleanUnit = unit || existing?.unit || "יח'";
       const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
+      const cleanLimitByPatients = limitByPatients !== undefined ? limitByPatients : Boolean(existing?.limitByPatients);
       const nowIso = new Date().toISOString();
 
       const updated = {
@@ -538,6 +542,7 @@ export default function App() {
           minThreshold: cleanMin,
           unit: cleanUnit,
           isActive: cleanIsActive,
+          limitByPatients: cleanLimitByPatients,
           lastDeducted: nowIso,
           lastUpdated: nowIso,
         },
@@ -646,8 +651,36 @@ export default function App() {
   const handleMassPrint = (selectedIds: string[]) => {
     const toPrint = orders.filter((o) => selectedIds.includes(o.id));
     if (toPrint.length === 0) return;
+    const depts = new Set(toPrint.map((o) => o.department));
+    if (depts.size > 1) {
+      alert('איסור הדפסה מעורבת: ניתן להדפיס הזמנות עבור מחלקה אחת בלבד בכל סשן.');
+      return;
+    }
     setOrdersForConfirm(toPrint);
     setIsPrintConfirmOpen(true);
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    setSelectedOrderIds((prev) => prev.filter((id) => id !== orderId));
+
+    try {
+      const tenantOrders = getTenantOrders(activeTenantId);
+      const updated = tenantOrders.filter(
+        (tOrder) => tOrder.id !== orderId && !orderId.includes(tOrder.orderNumber)
+      );
+      saveTenantOrders(activeTenantId, updated);
+    } catch {}
+
+    setPrintedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.delete(orderId);
+      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+
+    setSuccessMessage('ההזמנה נמחקה בהצלחה מהמערכת 🗑️');
+    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   const handlePreviewOrder = (order: Order) => {
@@ -656,11 +689,11 @@ export default function App() {
   };
 
   const handleDirectCopyPrint = (order: Order) => {
-    printOrdersHtml([order], printSettings, false);
+    printOrdersHtml([order], printSettings, true);
   };
 
-  const handleExecutePrint = (ordersToPrint: Order[], deductStock: boolean) => {
-    printOrdersHtml(ordersToPrint, printSettings, deductStock);
+  const handleExecutePrint = (ordersToPrint: Order[], deductStock: boolean, isCopy: boolean = false) => {
+    printOrdersHtml(ordersToPrint, printSettings, isCopy);
 
     const newPrinted = new Set(printedOrderIds);
     ordersToPrint.forEach((o) => newPrinted.add(o.id));
@@ -670,6 +703,24 @@ export default function App() {
     setOrders((prev) =>
       prev.map((o) => (newPrinted.has(o.id) ? { ...o, printed: true } : o))
     );
+
+    // Also update multiTenantDb printed status
+    try {
+      const tenantOrders = getTenantOrders(activeTenantId);
+      const updatedTenantOrders = tenantOrders.map((tOrder) => {
+        const match = ordersToPrint.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
+        if (match) {
+          return {
+            ...tOrder,
+            printed: true,
+            printedAt: new Date().toISOString(),
+            status: 'PRINTED' as const,
+          };
+        }
+        return tOrder;
+      });
+      saveTenantOrders(activeTenantId, updatedTenantOrders);
+    } catch {}
 
     if (deductStock) {
       setStock((prevStock) => {
@@ -950,8 +1001,9 @@ export default function App() {
             onSinglePrint={handleSinglePrint}
             onDirectCopyPrint={handleDirectCopyPrint}
             onPreviewOrder={handlePreviewOrder}
-            onMassPrint={handleMassPrint}
+            onMassPrint={() => handleMassPrint(selectedOrderIds)}
             onTogglePrintedStatus={handleTogglePrintedStatus}
+            onDeleteOrder={handleDeleteOrder}
             isSheetLoaded={!isLoading}
           />
         )}
@@ -985,6 +1037,15 @@ export default function App() {
               setSuccessMessage('ההזמנה נקלטה בהצלחה ותופיע בטבלת ההזמנות! 🎉');
               setTimeout(() => setSuccessMessage(null), 5000);
             }}
+          />
+        )}
+
+        {activeTab === 'analytics' && (
+          <AnalyticsDashboard
+            orders={orders}
+            stock={stock}
+            departments={departments}
+            tenantName={activeTenant?.name}
           />
         )}
       </main>

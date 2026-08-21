@@ -276,7 +276,14 @@ interface WarehouseViewProps {
   onOpenCloudModal: () => void;
   onSyncWithCloud: () => void;
   isSyncingCloud: boolean;
-  onUpdateStockItem: (name: string, newQty: number, minThreshold?: number, unit?: string, isActive?: boolean) => void;
+  onUpdateStockItem: (
+    name: string,
+    newQty: number,
+    minThreshold?: number,
+    unit?: string,
+    isActive?: boolean,
+    limitByPatients?: boolean
+  ) => void;
   onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
   onSetAllStock: (qty: number) => void;
 }
@@ -815,13 +822,46 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                       {/* Product Name */}
                       <td className="py-2 px-3">
-                        <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                          <span>{item.name}</span>
-                          {isInactive && (
-                            <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">
-                              בהשהייה
-                            </span>
-                          )}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                            <span>{item.name}</span>
+                            {isInactive && (
+                              <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">
+                                בהשהייה
+                              </span>
+                            )}
+                            {item.limitByPatients && (
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5" title="הזמנה מוגבלת למספר המטופלים במחלקה">
+                                👥 מוגבל למטופלים
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Quick Toggle: Limit by patients */}
+                          <button
+                            onClick={() =>
+                              onUpdateStockItem(
+                                item.name,
+                                safeQty,
+                                item.minThreshold || globalThreshold,
+                                currentUnit,
+                                item.isActive !== false,
+                                !item.limitByPatients
+                              )
+                            }
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer shrink-0 ${
+                              item.limitByPatients
+                                ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border-slate-300'
+                            }`}
+                            title={
+                              item.limitByPatients
+                                ? 'לחץ לביטול ההגבלה לפי מספר מטופלים'
+                                : 'לחץ להגבלת כמות ההזמנה של פריט זה לפי מספר המטופלים במחלקה'
+                            }
+                          >
+                            👥 {item.limitByPatients ? 'מוגבל למטופלים ✓' : 'הגבל למטופלים'}
+                          </button>
                         </div>
                       </td>
 
@@ -832,7 +872,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           globalThreshold={globalThreshold}
                           isMobile={false}
                           onUpdate={(name, newQty) =>
-                            onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit, item.isActive !== false)
+                            onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit, item.isActive !== false, item.limitByPatients)
                           }
                         />
                       </td>
@@ -845,7 +885,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           isEmergencyMode={isEmergencyMode}
                           isMobile={false}
                           onUpdate={(name, currentStock, minTh, unit) =>
-                            onUpdateStockItem(name, currentStock, minTh, unit, item.isActive !== false)
+                            onUpdateStockItem(name, currentStock, minTh, unit, item.isActive !== false, item.limitByPatients)
                           }
                         />
                       </td>

@@ -105,6 +105,7 @@ export function syncStockWithProductHeaders(
         minThreshold: typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : DEFAULT_MIN_THRESHOLD,
         unit: existing.unit || detectedUnit,
         isActive: existing.isActive !== undefined ? existing.isActive : true,
+        limitByPatients: Boolean(existing.limitByPatients),
         lastDeducted: existing.lastDeducted,
         lastUpdated: existing.lastUpdated,
       };

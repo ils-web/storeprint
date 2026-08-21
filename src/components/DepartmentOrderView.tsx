@@ -132,6 +132,24 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
   // Add / Update item in cart
   const setItemQty = (name: string, newQty: number, unit?: string) => {
     const defaultUnit = stock[name]?.unit || "יח'";
+    const stockItem = stock[name];
+
+    if (stockItem?.limitByPatients && newQty > 0) {
+      const maxAllowed = parseInt(patientsCount, 10);
+      if (isNaN(maxAllowed) || maxAllowed <= 0) {
+        alert(
+          `הפריט "${name}" מוגבל לפי כמות המטופלים במחלקה.\nנא להזין תחילה את מספר המטופלים במחלקה.`
+        );
+        return;
+      }
+      if (newQty > maxAllowed) {
+        alert(
+          `הכמות המרבית להזמנה עבור "${name}" היא ${maxAllowed} יח' (לפי מספר המטופלים הרשום במחלקה).`
+        );
+        newQty = maxAllowed;
+      }
+    }
+
     setCart((prev) => {
       if (newQty <= 0) {
         const next = { ...prev };

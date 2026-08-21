@@ -13,14 +13,15 @@ import {
   LogOut,
   Sparkles,
   Siren,
+  BarChart3,
 } from 'lucide-react';
 import { AuthSession } from '../types/multiTenant';
 
 interface HeaderProps {
   sheetUrl: string;
   activeSheetTitle: string;
-  activeTab: 'orders' | 'warehouse' | 'order_portal';
-  setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal') => void;
+  activeTab: 'orders' | 'warehouse' | 'order_portal' | 'analytics';
+  setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => void;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
   autoRefreshSec: number;
@@ -144,6 +145,19 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span>📝 פורטל הזמנות</span>
+              </button>
+
+              {/* Tab 4: Analytics & Reports */}
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'analytics'
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>דוחות וסטטיסטיקה 📊</span>
               </button>
 
             </div>

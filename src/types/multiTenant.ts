@@ -84,6 +84,7 @@ export interface InventoryProduct {
   category?: string;
   barcode?: string;
   isActive?: boolean;       // true = active, false = paused / not in use
+  limitByPatients?: boolean; // true = order limit locked to department patient count
   lastDeducted?: string;
   updatedAt: string;
 }
