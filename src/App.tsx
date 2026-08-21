@@ -442,6 +442,49 @@ export default function App() {
     loadOrders();
   }, [loadOrders]);
 
+  // Auto-fetch stock from Google Apps Script cloud on startup
+  useEffect(() => {
+    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+      fetchStockFromCloud(cloudConfig)
+        .then((fetched) => {
+          if (fetched && Object.keys(fetched).length > 0) {
+            setStock((prev) => {
+              const merged = { ...prev };
+              Object.values(fetched).forEach((item) => {
+                if (item && item.name) {
+                  const cleanStock =
+                    typeof item.currentStock === 'number' && !isNaN(item.currentStock)
+                      ? item.currentStock
+                      : 0;
+                  const cleanMin =
+                    typeof item.minThreshold === 'number' && !isNaN(item.minThreshold)
+                      ? item.minThreshold
+                      : 10;
+                  merged[item.name] = {
+                    ...(merged[item.name] || item),
+                    currentStock: cleanStock,
+                    minThreshold: cleanMin,
+                    unit: item.unit || merged[item.name]?.unit || "יח'",
+                    isActive:
+                      item.isActive !== undefined
+                        ? item.isActive
+                        : merged[item.name]?.isActive !== false,
+                    limitByPatients: Boolean(
+                      item.limitByPatients || merged[item.name]?.limitByPatients
+                    ),
+                  };
+                }
+              });
+              saveStoredStock(merged);
+              syncToMultiTenantDb(productHeaders, departments, merged);
+              return merged;
+            });
+          }
+        })
+        .catch(console.warn);
+    }
+  }, [cloudConfig.enabled, cloudConfig.endpointUrl, productHeaders, departments, syncToMultiTenantDb]);
+
   // Handle Cloud Sync
   const handleSyncWithCloud = useCallback(async () => {
     if (!cloudConfig.enabled || !cloudConfig.endpointUrl) {
