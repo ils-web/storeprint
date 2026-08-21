@@ -141,26 +141,24 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     searchTerm,
   ]);
 
+  const safeSelectedOrderIds = useMemo(() => {
+    return Array.isArray(selectedOrderIds) ? selectedOrderIds : [];
+  }, [selectedOrderIds]);
+
   const isAllSelected =
     filteredOrders.length > 0 &&
-    filteredOrders.every((o) => selectedOrderIds.includes(o.id));
+    filteredOrders.every((o) => safeSelectedOrderIds.includes(o.id));
 
   // Determine currently selected department
   const selectedOrders = useMemo(() => {
-    return orders.filter((o) => selectedOrderIds.includes(o.id));
-  }, [orders, selectedOrderIds]);
+    return orders.filter((o) => safeSelectedOrderIds.includes(o.id));
+  }, [orders, safeSelectedOrderIds]);
 
   const activeSelectedDept = useMemo(() => {
     return selectedOrders.length > 0 ? selectedOrders[0].department : null;
   }, [selectedOrders]);
 
   const handleToggleSelectSingleDept = (order: Order) => {
-    if (activeSelectedDept && activeSelectedDept !== order.department && !selectedOrderIds.includes(order.id)) {
-      // Clear previous department selection and select new department
-      onSelectAllOrders(false);
-      setTimeout(() => onToggleSelectOrder(order.id), 0);
-      return;
-    }
     onToggleSelectOrder(order.id);
   };
 
@@ -169,15 +167,12 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       onSelectAllOrders(false);
       return;
     }
-    if (selectedDept === 'ALL') {
-      const firstDept = filteredOrders[0]?.department;
-      if (!firstDept) return;
-      const deptOrderIds = filteredOrders.filter((o) => o.department === firstDept).map((o) => o.id);
-      onSelectAllOrders(false);
-      deptOrderIds.forEach((id) => onToggleSelectOrder(id));
-    } else {
-      onSelectAllOrders(true);
-    }
+    const targetDept = selectedDept !== 'ALL' ? selectedDept : filteredOrders[0]?.department;
+    if (!targetDept) return;
+    const deptOrderIds = filteredOrders
+      .filter((o) => o.department === targetDept)
+      .map((o) => o.id);
+    onSelectAllOrders(deptOrderIds as any);
   };
 
   // Count printed and pending for filtered set
@@ -329,7 +324,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             </span>
 
             {/* Mass Print Button (Strictly for single selected department) */}
-            {selectedOrderIds.length > 0 && (
+            {safeSelectedOrderIds.length > 0 && (
               <button
                 onClick={onMassPrint}
                 className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white text-xs font-black px-4 py-1.5 rounded-2xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all transform active:scale-95 animate-pulse cursor-pointer"
@@ -337,8 +332,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 <Printer className="w-4 h-4" />
                 <span>
                   {activeSelectedDept
-                    ? `הדפס הזמנות מחלקת ${activeSelectedDept} (${selectedOrderIds.length})`
-                    : `הדפס נבחרים (${selectedOrderIds.length})`}
+                    ? `הדפס הזמנות מחלקת ${activeSelectedDept} (${safeSelectedOrderIds.length})`
+                    : `הדפס נבחרים (${safeSelectedOrderIds.length})`}
                 </span>
               </button>
             )}
@@ -389,7 +384,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               </tr>
             ) : (
               filteredOrders.map((order) => {
-                const isSelected = selectedOrderIds.includes(order.id);
+                const isSelected = safeSelectedOrderIds.includes(order.id);
                 const isExpanded = expandedOrderIds.has(order.id);
 
                 return (

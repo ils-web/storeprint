@@ -137,6 +137,17 @@ export default function App() {
     }
   });
 
+  // Deleted Orders Permanent Blacklist
+  const DELETED_ORDERS_STORAGE_KEY = 'storeprint_deleted_orders_v2';
+  const [deletedOrderIds, setDeletedOrderIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('storeprint_deleted_orders_v2');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   // Warehouse Stock State (Initialized from localStorage)
   const [stock, setStock] = useState<Record<string, StockItem>>(() => loadStoredStock());
 
@@ -324,7 +335,18 @@ export default function App() {
           }
         });
 
-        const mergedOrders = Array.from(allOrdersMap.values());
+        const deletedSet = (() => {
+          try {
+            const raw = localStorage.getItem('storeprint_deleted_orders_v2');
+            return raw ? new Set(JSON.parse(raw)) : new Set();
+          } catch {
+            return new Set();
+          }
+        })();
+
+        const mergedOrders = Array.from(allOrdersMap.values()).filter(
+          (o) => !deletedSet.has(o.id) && !deletedSet.has(String(o.rowNumber))
+        );
 
         setOrders(mergedOrders);
         setDepartments(result.departments);
@@ -366,7 +388,18 @@ export default function App() {
           }
         });
 
-        const mergedOrders = Array.from(allOrdersMap.values());
+        const deletedSet = (() => {
+          try {
+            const raw = localStorage.getItem('storeprint_deleted_orders_v2');
+            return raw ? new Set(JSON.parse(raw)) : new Set();
+          } catch {
+            return new Set();
+          }
+        })();
+
+        const mergedOrders = Array.from(allOrdersMap.values()).filter(
+          (o) => !deletedSet.has(o.id) && !deletedSet.has(String(o.rowNumber))
+        );
 
         setOrders(mergedOrders);
         setDepartments(mockDeptNames);
@@ -634,13 +667,40 @@ export default function App() {
 
   // Print Handlers
   const handleToggleSelectOrder = (orderId: string) => {
-    setSelectedOrderIds((prev) =>
-      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
-    );
+    setSelectedOrderIds((prev) => {
+      const arr = Array.isArray(prev) ? prev : [];
+      const order = orders.find((o) => o.id === orderId);
+      if (!order) return arr;
+
+      if (arr.includes(orderId)) {
+        return arr.filter((id) => id !== orderId);
+      }
+
+      // If already selected orders belong to a different department, reset to new department
+      const currentSelected = orders.filter((o) => arr.includes(o.id));
+      if (currentSelected.length > 0 && currentSelected[0].department !== order.department) {
+        return [orderId];
+      }
+
+      return [...arr, orderId];
+    });
   };
 
-  const handleSelectAllOrders = (orderIds: string[]) => {
-    setSelectedOrderIds(orderIds);
+  const handleSelectAllOrders = (param: string[] | boolean) => {
+    if (typeof param === 'boolean') {
+      if (!param) {
+        setSelectedOrderIds([]);
+      } else {
+        const firstDept = orders[0]?.department;
+        if (firstDept) {
+          setSelectedOrderIds(orders.filter((o) => o.department === firstDept).map((o) => o.id));
+        }
+      }
+      return;
+    }
+    if (Array.isArray(param)) {
+      setSelectedOrderIds(param);
+    }
   };
 
   const handleSinglePrint = (order: Order) => {
@@ -649,7 +709,7 @@ export default function App() {
   };
 
   const handleMassPrint = (selectedIds: string[]) => {
-    const toPrint = orders.filter((o) => selectedIds.includes(o.id));
+    const toPrint = orders.filter((o) => (Array.isArray(selectedIds) ? selectedIds : []).includes(o.id));
     if (toPrint.length === 0) return;
     const depts = new Set(toPrint.map((o) => o.department));
     if (depts.size > 1) {
@@ -661,9 +721,21 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
-    setSelectedOrderIds((prev) => prev.filter((id) => id !== orderId));
+    // 1. Add to permanent blacklist
+    setDeletedOrderIds((prev) => {
+      const next = new Set(prev);
+      next.add(orderId);
+      try {
+        localStorage.setItem('storeprint_deleted_orders_v2', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
 
+    // 2. Remove from React state
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    setSelectedOrderIds((prev) => (Array.isArray(prev) ? prev.filter((id) => id !== orderId) : []));
+
+    // 3. Remove from multiTenantDb if it was a PWA / tenant order
     try {
       const tenantOrders = getTenantOrders(activeTenantId);
       const updated = tenantOrders.filter(
@@ -672,14 +744,20 @@ export default function App() {
       saveTenantOrders(activeTenantId, updated);
     } catch {}
 
+    // 4. Remove from printed set
     setPrintedOrderIds((prev) => {
       const next = new Set(prev);
       next.delete(orderId);
-      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      try {
+        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {}
       return next;
     });
 
-    setSuccessMessage('ההזמנה נמחקה בהצלחה מהמערכת 🗑️');
+    // 5. Notify all components
+    window.dispatchEvent(new Event('storeprint_order_created'));
+
+    setSuccessMessage('ההזמנה נמחקה לצמיתות מהמערכת 🗑️');
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
