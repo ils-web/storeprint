@@ -27,7 +27,6 @@ import {
   isDateInLastDays,
   isDateInCurrentMonth,
   isDateInCustomRange,
-  formatIsraelDate,
 } from '../../utils/dateUtils';
 
 type AnalyticsPeriod = 'week' | 'today' | 'last7' | 'last30' | 'month' | 'custom' | 'all';
@@ -37,6 +36,23 @@ interface AnalyticsDashboardProps {
   stock: Record<string, StockItem>;
   departments: string[];
   tenantName?: string;
+}
+
+/**
+ * Safely extracts a numeric quantity from any cell value (e.g. "12 קרטון" -> 12, 5 -> 5, "0" -> 0)
+ */
+function parseNumericQty(qty: any): number {
+  if (typeof qty === 'number') {
+    return isNaN(qty) ? 0 : qty;
+  }
+  if (!qty) return 0;
+  const str = String(qty).trim();
+  const match = str.match(/(\d+(\.\d+)?)/);
+  if (match && match[1]) {
+    const val = parseFloat(match[1]);
+    return isNaN(val) ? 0 : val;
+  }
+  return 0;
 }
 
 export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
@@ -112,8 +128,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       }
 
       order.items.forEach((item) => {
-        deptMap[d].totalItemsCount += item.qty;
-        deptMap[d].itemsBreakdown[item.name] = (deptMap[d].itemsBreakdown[item.name] || 0) + item.qty;
+        const numQty = parseNumericQty(item.qty);
+        deptMap[d].totalItemsCount += numQty;
+        deptMap[d].itemsBreakdown[item.name] =
+          (deptMap[d].itemsBreakdown[item.name] || 0) + numQty;
       });
     });
 
@@ -134,7 +152,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       }
     > = {};
 
-    // Initialize with all stock products
+    // Initialize with all active stock products
     Object.values(stock).forEach((sItem) => {
       if (sItem && sItem.isActive !== false) {
         pMap[sItem.name] = {
@@ -159,10 +177,11 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
             ordersCount: 0,
             orderingDepts: new Set<string>(),
             currentStock: s?.currentStock || 0,
-            unit: s?.unit || item.unit || "יח'",
+            unit: s?.unit || "יח'",
           };
         }
-        pMap[item.name].totalOrderedQty += item.qty;
+        const numQty = parseNumericQty(item.qty);
+        pMap[item.name].totalOrderedQty += numQty;
         pMap[item.name].ordersCount += 1;
         pMap[item.name].orderingDepts.add(order.department);
       });
@@ -185,7 +204,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
   const totalOrdersCount = periodOrders.length;
   const totalUnitsDelivered = useMemo(() => {
     return periodOrders.reduce(
-      (acc, ord) => acc + ord.items.reduce((iAcc, item) => iAcc + item.qty, 0),
+      (acc, ord) =>
+        acc +
+        ord.items.reduce((iAcc, item) => iAcc + parseNumericQty(item.qty), 0),
       0
     );
   }, [periodOrders]);
@@ -275,7 +296,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           }
           .meta-item { text-align: center; }
           .meta-label { font-size: 10px; color: #64748b; font-weight: bold; }
-          .meta-val { font-size: 16px; font-weight: 900; color: #0f172a; }
+          .meta-val { font-size: 18px; font-weight: 900; color: #0f172a; }
           table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
           th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; font-weight: bold; }
           td { border: 1px solid #e2e8f0; padding: 5px 8px; text-align: right; }
@@ -306,7 +327,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
           <div class="meta-item">
             <div class="meta-label">סה"כ פריטים שסופקו</div>
-            <div class="meta-val">${totalUnitsDelivered}</div>
+            <div class="meta-val">${totalUnitsDelivered.toLocaleString('he-IL')}</div>
           </div>
           <div class="meta-item">
             <div class="meta-label">מחלקות פעילות</div>
@@ -327,7 +348,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               <th style="width: 35px; text-align: center;">#</th>
               <th>שם המחלקה</th>
               <th style="width: 90px; text-align: center;">מספר הזמנות</th>
-              <th style="width: 100px; text-align: center;">סה"כ פריטים שנופקו</th>
+              <th style="width: 110px; text-align: center;">סה"כ פריטים שנופקו</th>
               <th style="width: 130px; text-align: center;">הזמנה אחרונה</th>
             </tr>
           </thead>
@@ -339,7 +360,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
                 <td style="font-weight: bold;">${d.deptName}</td>
                 <td style="text-align: center;">${d.orderCount}</td>
-                <td style="text-align: center; font-weight: bold; color: #0284c7;">${d.totalItemsCount}</td>
+                <td style="text-align: center; font-weight: bold; color: #0284c7;">${d.totalItemsCount.toLocaleString('he-IL')}</td>
                 <td style="text-align: center; font-size: 10px;">${d.lastOrderDate || '—'}</td>
               </tr>
             `
@@ -368,10 +389,10 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
               <tr>
                 <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
                 <td style="font-weight: bold;">${p.productName}</td>
-                <td style="text-align: center; font-weight: bold; color: #16a34a;">${p.totalOrderedQty}</td>
+                <td style="text-align: center; font-weight: bold; color: #16a34a;">${p.totalOrderedQty.toLocaleString('he-IL')}</td>
                 <td style="text-align: center;">${p.unit}</td>
                 <td style="text-align: center;">${p.orderingDepts.size} מחלקות</td>
-                <td style="text-align: center;">${p.currentStock}</td>
+                <td style="text-align: center;">${p.currentStock.toLocaleString('he-IL')}</td>
               </tr>
             `
               )
@@ -487,7 +508,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 <option value="ALL">כל המחלקות ({departmentStats.length})</option>
                 {departmentStats.map((d) => (
                   <option key={d.deptName} value={d.deptName}>
-                    {d.deptName} ({d.totalItemsCount} פריטים)
+                    {d.deptName} ({d.totalItemsCount.toLocaleString('he-IL')} פריטים)
                   </option>
                 ))}
               </select>
@@ -513,49 +534,54 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-3xl p-5 shadow-md flex items-center justify-between">
-          <div>
+        <div className="bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-3xl p-5 shadow-md flex items-center justify-between overflow-hidden">
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-sky-100 uppercase tracking-wider">הזמנות בתקופה</div>
-            <div className="text-2xl sm:text-3xl font-black mt-1 font-mono">{totalOrdersCount}</div>
-            <div className="text-[11px] text-sky-100 mt-1">מתוך {orders.length} בכל הזמנים</div>
+            <div className="text-3xl font-black mt-1 font-mono">{totalOrdersCount}</div>
+            <div className="text-[11px] text-sky-100 mt-1 truncate">מתוך {orders.length} בכל הזמנים</div>
           </div>
-          <div className="p-3 bg-white/15 rounded-2xl">
+          <div className="p-3 bg-white/15 rounded-2xl shrink-0">
             <Calendar className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 text-white rounded-3xl p-5 shadow-md flex items-center justify-between">
-          <div>
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 text-white rounded-3xl p-5 shadow-md flex items-center justify-between overflow-hidden">
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-indigo-100 uppercase tracking-wider">סה"כ פריטים שסופקו</div>
-            <div className="text-2xl sm:text-3xl font-black mt-1 font-mono">{totalUnitsDelivered}</div>
+            <div className="text-3xl font-black mt-1 font-mono">
+              {totalUnitsDelivered.toLocaleString('he-IL')}
+            </div>
             <div className="text-[11px] text-indigo-100 mt-1">יחידות ואריזות</div>
           </div>
-          <div className="p-3 bg-white/15 rounded-2xl">
+          <div className="p-3 bg-white/15 rounded-2xl shrink-0">
             <Package className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-500 to-teal-700 text-white rounded-3xl p-5 shadow-md flex items-center justify-between">
-          <div>
+        <div className="bg-gradient-to-br from-emerald-500 to-teal-700 text-white rounded-3xl p-5 shadow-md flex items-center justify-between overflow-hidden">
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-emerald-100 uppercase tracking-wider">מחלקות פעילות</div>
-            <div className="text-2xl sm:text-3xl font-black mt-1 font-mono">{activeDeptsCount}</div>
-            <div className="text-[11px] text-emerald-100 mt-1">מתוך {departments.length} מחלקות</div>
+            <div className="text-3xl font-black mt-1 font-mono">{activeDeptsCount}</div>
+            <div className="text-[11px] text-emerald-100 mt-1 truncate">מתוך {departments.length} מחלקות</div>
           </div>
-          <div className="p-3 bg-white/15 rounded-2xl">
+          <div className="p-3 bg-white/15 rounded-2xl shrink-0">
             <Building2 className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-3xl p-5 shadow-md flex items-center justify-between">
+        <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-3xl p-5 shadow-md flex items-center justify-between overflow-hidden">
           <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-amber-100 uppercase tracking-wider">פריט מוביל 🔥</div>
-            <div className="text-base sm:text-lg font-black mt-1 truncate">
+            <div
+              className="text-base font-black mt-1 truncate"
+              title={productStats.topOrdered[0]?.productName || 'אין נתונים'}
+            >
               {productStats.topOrdered[0]?.productName || 'אין נתונים'}
             </div>
             <div className="text-[11px] text-amber-100 mt-1">
-              {productStats.topOrdered[0]?.totalOrderedQty || 0} יח' נופקו
+              {productStats.topOrdered[0]?.totalOrderedQty.toLocaleString('he-IL') || 0} יח' נופקו
             </div>
           </div>
           <div className="p-3 bg-white/15 rounded-2xl shrink-0">
@@ -582,7 +608,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
           <div className="space-y-3">
             {filteredDeptStats.map((dept, idx) => {
-              const pct = Math.round((dept.totalItemsCount / maxDeptUnits) * 100);
+              const pct = maxDeptUnits > 0 ? Math.round((dept.totalItemsCount / maxDeptUnits) * 100) : 0;
               const isExpanded = expandedDept === dept.deptName;
 
               return (
@@ -607,7 +633,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
                     <div className="text-left shrink-0">
                       <div className="font-black text-sky-700 text-sm font-mono">
-                        {dept.totalItemsCount} <span className="text-xs font-normal text-slate-500">פריטים</span>
+                        {dept.totalItemsCount.toLocaleString('he-IL')}{' '}
+                        <span className="text-xs font-normal text-slate-500">פריטים</span>
                       </div>
                       <button
                         onClick={() => setExpandedDept(isExpanded ? null : dept.deptName)}
@@ -641,7 +668,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                           >
                             <span className="text-slate-800 font-medium truncate">{itemName}</span>
                             <span className="font-mono font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
-                              {qty}
+                              {qty.toLocaleString('he-IL')}
                             </span>
                           </div>
                         ))}
@@ -684,7 +711,9 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                       {idx + 1}.
                     </span>
                     <div className="min-w-0">
-                      <div className="font-bold text-slate-900 truncate">{p.productName}</div>
+                      <div className="font-bold text-slate-900 truncate" title={p.productName}>
+                        {p.productName}
+                      </div>
                       <div className="text-[10px] text-slate-500">
                         הוזמן ע"י {p.orderingDepts.size} מחלקות
                       </div>
@@ -693,7 +722,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
 
                   <div className="text-left shrink-0">
                     <div className="font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                      {p.totalOrderedQty} {p.unit}
+                      {p.totalOrderedQty.toLocaleString('he-IL')} {p.unit}
                     </div>
                   </div>
                 </div>
@@ -727,13 +756,15 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   key={p.productName}
                   className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 flex items-center justify-between gap-2 text-xs"
                 >
-                  <span className="font-medium text-slate-800 truncate">{p.productName}</span>
+                  <span className="font-medium text-slate-800 truncate" title={p.productName}>
+                    {p.productName}
+                  </span>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[11px] text-slate-500">
-                      מלאי: <strong>{p.currentStock}</strong>
+                      מלאי: <strong>{p.currentStock.toLocaleString('he-IL')}</strong>
                     </span>
                     <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-lg">
-                      {p.totalOrderedQty === 0 ? '0 הזמנות' : `${p.totalOrderedQty} יח'`}
+                      {p.totalOrderedQty === 0 ? '0 הזמנות' : `${p.totalOrderedQty.toLocaleString('he-IL')} יח'`}
                     </span>
                   </div>
                 </div>

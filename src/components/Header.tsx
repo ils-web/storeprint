@@ -97,13 +97,13 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Navigation Tabs (Orders / Warehouse / Department Order) */}
-            <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 border border-slate-700/80">
+            {/* Navigation Tabs (Orders / Warehouse / Department Order / Analytics) */}
+            <div className="bg-slate-800/90 p-1 rounded-2xl flex flex-wrap items-center gap-1 border border-slate-700/80">
               
               {/* Tab 1: Orders */}
               <button
                 onClick={() => setActiveTab('orders')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'orders'
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Tab 2: Warehouse */}
               <button
                 onClick={() => setActiveTab('warehouse')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'warehouse'
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
@@ -138,9 +138,9 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Tab 3: Department Order Portal */}
               <button
                 onClick={() => setActiveTab('order_portal')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'order_portal'
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                     : 'text-emerald-400 hover:text-white hover:bg-slate-700/50'
                 }`}
               >
@@ -150,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Tab 4: Analytics & Reports */}
               <button
                 onClick={() => setActiveTab('analytics')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'analytics'
                     ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
                     : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
