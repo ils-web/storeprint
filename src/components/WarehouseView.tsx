@@ -24,11 +24,14 @@ import {
   PlayCircle,
   Eye,
   EyeOff,
+  Edit,
+  PlusCircle,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { exportStockToJson, importStockFromJson } from '../utils/stockManager';
 import { PhoneQRModal } from './PhoneQRModal';
+import { ItemModal } from './ItemModal';
 
 export const PACKAGING_UNITS = [
   { value: "יח'", label: "יח' (יחידות)" },
@@ -389,6 +392,30 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     });
   }, [stockList, filterType, searchTerm, getEffectiveTh]);
 
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<StockItem | null>(null);
+
+  const handleOpenCreateItem = () => {
+    setItemToEdit(null);
+    setIsItemModalOpen(true);
+  };
+
+  const handleOpenEditItem = (item: StockItem) => {
+    setItemToEdit(item);
+    setIsItemModalOpen(true);
+  };
+
+  const handleSaveItem = (savedItem: StockItem) => {
+    onUpdateStockItem(
+      savedItem.name,
+      savedItem.currentStock,
+      savedItem.minThreshold,
+      savedItem.unit,
+      savedItem.isActive,
+      savedItem.limitByPatients
+    );
+  };
+
   const handlePrintReorder = () => {
     if (isEmergencyMode) {
       printEmergencyReorderListHtml(stockList, globalThreshold, 3, tenantName);
@@ -613,6 +640,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 <QrCode className="w-3.5 h-3.5" />
                 <span>כרטיסיות QR למחלקות 🏷️</span>
+              </button>
+
+              {/* Add New Stock Item Button */}
+              <button
+                onClick={handleOpenCreateItem}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="הוספת פריט חדש למחסן"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>הוסף פריט למחסן 📦</span>
               </button>
               {/* Emergency Mode Toggle Button */}
               {onOpenEmergencyConfirm && (
@@ -915,29 +952,41 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         )}
                       </td>
 
-                      {/* Active / Inactive Toggle Button */}
+                      {/* Active / Inactive Toggle & Edit Buttons */}
                       <td className="py-2 px-2 text-center">
-                        <button
-                          onClick={() => onUpdateStockItem(item.name, safeQty, item.minThreshold || globalThreshold, currentUnit, isInactive)}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 mx-auto cursor-pointer ${
-                            isInactive
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                              : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
-                          }`}
-                          title={isInactive ? 'החזר פריט לפעילות שוטפת' : 'השהה פריט (לא ייכלל בדוחות רכש)'}
-                        >
-                          {isInactive ? (
-                            <>
-                              <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>הפעל</span>
-                            </>
-                          ) : (
-                            <>
-                              <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
-                              <span>השהה</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Edit Item Button */}
+                          <button
+                            onClick={() => handleOpenEditItem(item)}
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-sky-50 hover:border-sky-300 text-slate-700 transition-colors border border-slate-200 cursor-pointer"
+                            title="ערוך פריט זה (שם, כמויות, ספים)"
+                          >
+                            <Edit className="w-3.5 h-3.5 text-sky-600" />
+                          </button>
+
+                          {/* Pause / Resume Button */}
+                          <button
+                            onClick={() => onUpdateStockItem(item.name, safeQty, item.minThreshold || globalThreshold, currentUnit, isInactive, item.limitByPatients)}
+                            className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                              isInactive
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                                : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            }`}
+                            title={isInactive ? 'החזר פריט לפעילות שוטפת' : 'הקפא פריט (לא ייכלל בהזמנות ורכש)'}
+                          >
+                            {isInactive ? (
+                              <>
+                                <PlayCircle className="w-3.5 h-3.5 text-white" />
+                                <span>הפעל</span>
+                              </>
+                            ) : (
+                              <>
+                                <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
+                                <span>הקפא ❄️</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1042,6 +1091,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       <MobileStockQRModal
         isOpen={isMobileStockQRModalOpen}
         onClose={() => setIsMobileStockQRModalOpen(false)}
+      />
+
+      {/* Item Creation & Edit Modal */}
+      <ItemModal
+        isOpen={isItemModalOpen}
+        onClose={() => setIsItemModalOpen(false)}
+        itemToEdit={itemToEdit}
+        onSave={handleSaveItem}
       />
 
     </div>

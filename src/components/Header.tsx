@@ -38,6 +38,7 @@ interface HeaderProps {
   onOpenLanding?: () => void;
   onOpenPortalPwa?: () => void;
   onOpenMobileStock?: () => void;
+  onOpenShortageDrawer?: () => void;
   onOpenInstallModal?: () => void;
   onLogout?: () => void;
   tenantName?: string;
@@ -64,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLanding,
   onOpenPortalPwa,
   onOpenMobileStock,
+  onOpenShortageDrawer,
   onOpenInstallModal,
   onLogout,
   tenantName,
@@ -176,6 +178,18 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Package className="w-3.5 h-3.5" />
                 <span>ספירת מלאי בנייד 📱</span>
+              </button>
+            )}
+
+            {/* Live Shortage Blinking Button */}
+            {lowStockCount > 0 && onOpenShortageDrawer && (
+              <button
+                onClick={onOpenShortageDrawer}
+                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-red-600/30 ring-2 ring-red-400 animate-pulse transition-all cursor-pointer active:scale-95"
+                title="חלונית חוסרים במלאי - לחץ לצפייה והדפסת דוח רכש"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>חוסרים ({lowStockCount}) 🚨</span>
               </button>
             )}
 

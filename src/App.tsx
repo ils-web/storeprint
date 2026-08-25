@@ -13,6 +13,7 @@ import { LandingPage } from './components/landing/LandingPage';
 import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { InstallAppModal } from './components/portal/InstallAppModal';
+import { ShortageDrawerModal } from './components/ShortageDrawerModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmModal';
 import { EmergencyBanner } from './components/emergency/EmergencyBanner';
@@ -167,6 +168,7 @@ export default function App() {
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [isShortageDrawerOpen, setIsShortageDrawerOpen] = useState(false);
 
   // Print Confirm Modal State
   const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
@@ -328,9 +330,20 @@ export default function App() {
 
         const result = processRawRowsToOrders(rows);
 
+        const checkOrderPrinted = (o: Order) => {
+          if (o.printed) return true;
+          const keys = [
+            o.id,
+            String(o.rowNumber),
+            o.timestamp && o.department ? `${o.department}_${o.timestamp}` : '',
+            o.timestamp || '',
+          ].filter(Boolean);
+          return keys.some((k) => currentPrinted.has(k));
+        };
+
         const syncedOrders = result.orders.map((o) => ({
           ...o,
-          printed: currentPrinted.has(o.id),
+          printed: checkOrderPrinted(o),
         }));
 
         // Merge PWA orders with Sheet orders (PWA orders first so latest submitted orders appear at the very top!)
@@ -338,7 +351,7 @@ export default function App() {
         convertedTenantOrders.forEach((o) => {
           allOrdersMap.set(o.id, {
             ...o,
-            printed: currentPrinted.has(o.id) || o.printed,
+            printed: checkOrderPrinted(o) || o.printed,
           });
         });
         syncedOrders.forEach((o) => {
@@ -843,12 +856,17 @@ export default function App() {
     printOrdersHtml(ordersToPrint, printSettings, isCopy);
 
     const newPrinted = new Set(printedOrderIds);
-    ordersToPrint.forEach((o) => newPrinted.add(o.id));
+    ordersToPrint.forEach((o) => {
+      newPrinted.add(o.id);
+      if (o.rowNumber) newPrinted.add(String(o.rowNumber));
+      if (o.timestamp && o.department) newPrinted.add(`${o.department}_${o.timestamp}`);
+      if (o.timestamp) newPrinted.add(o.timestamp);
+    });
     setPrintedOrderIds(newPrinted);
     localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(newPrinted)));
 
     setOrders((prev) =>
-      prev.map((o) => (newPrinted.has(o.id) ? { ...o, printed: true } : o))
+      prev.map((o) => (newPrinted.has(o.id) || (o.timestamp && newPrinted.has(`${o.department}_${o.timestamp}`)) ? { ...o, printed: true } : o))
     );
 
     // Also update multiTenantDb printed status
@@ -886,14 +904,23 @@ export default function App() {
   };
 
   const handleTogglePrintedStatus = (orderId: string) => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    const keys = [
+      orderId,
+      targetOrder?.rowNumber ? String(targetOrder.rowNumber) : '',
+      targetOrder?.timestamp && targetOrder?.department ? `${targetOrder.department}_${targetOrder.timestamp}` : '',
+      targetOrder?.timestamp || '',
+    ].filter(Boolean);
+
     let newStatus = false;
     setPrintedOrderIds((prev) => {
       const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
+      const isCurrentlyPrinted = keys.some((k) => next.has(k));
+      if (isCurrentlyPrinted) {
+        keys.forEach((k) => next.delete(k));
         newStatus = false;
       } else {
-        next.add(orderId);
+        keys.forEach((k) => next.add(k));
         newStatus = true;
       }
       try {
@@ -921,7 +948,7 @@ export default function App() {
     });
 
     setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, printed: !o.printed } : o))
+      prev.map((o) => (o.id === orderId ? { ...o, printed: newStatus } : o))
     );
 
     setSuccessMessage(newStatus ? 'סטטוס ההזמנה שונה ל-"הודפס" ✓' : 'סטטוס ההזמנה הוחזר ל-"ממתין" ⏱');
@@ -1032,6 +1059,7 @@ export default function App() {
         onOpenLanding={() => setCurrentView('landing')}
         onOpenPortalPwa={() => setCurrentView('portal_pwa')}
         onOpenMobileStock={() => setCurrentView('mobile_stock')}
+        onOpenShortageDrawer={() => setIsShortageDrawerOpen(true)}
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onLogout={handleLogout}
         tenantName={activeTenant?.name}
@@ -1264,6 +1292,16 @@ export default function App() {
           setIsLoginModalOpen(false);
           setCurrentView('portal_pwa');
         }}
+      />
+
+      {/* Live Shortage Drawer Modal */}
+      <ShortageDrawerModal
+        isOpen={isShortageDrawerOpen}
+        onClose={() => setIsShortageDrawerOpen(false)}
+        stock={stock}
+        isEmergencyMode={isEmergencyMode}
+        globalThreshold={10}
+        tenantName={activeTenant?.name}
       />
 
       {/* Install App Modal */}
