@@ -68,6 +68,14 @@ export function saveStoredStock(stock: Record<string, StockItem>): void {
 }
 
 /**
+ * Normalizes a product name for reliable matching across CSV unescaping, quotes, and whitespace
+ */
+export function normalizeProductName(s: string): string {
+  if (!s) return '';
+  return s.replace(/^["']+|["']+$/g, '').replace(/[\s"'\-_()״׳\\]+/g, '').toLowerCase();
+}
+
+/**
  * Synchronizes stock items with the product headers from the Google Sheet (E..FM).
  * Existing stock values, custom packaging units, and thresholds are strictly preserved.
  */
@@ -77,11 +85,14 @@ export function syncStockWithProductHeaders(
 ): Record<string, StockItem> {
   const result: Record<string, StockItem> = {};
 
-  // Build index by name and id for 100% reliable matching
+  // Build index by name, id, and normalized name for 100% reliable matching
   const existingByName: Record<string, StockItem> = {};
+  const existingByNorm: Record<string, StockItem> = {};
+
   Object.values(existingStock || {}).forEach((item) => {
     if (item && item.name) {
       existingByName[item.name.trim()] = item;
+      existingByNorm[normalizeProductName(item.name)] = item;
     }
     if (item && item.id) {
       existingByName[item.id] = item;
@@ -89,10 +100,18 @@ export function syncStockWithProductHeaders(
   });
 
   productHeaders.forEach((header, idx) => {
-    const cleanName = header.trim();
+    const cleanName = header.replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
     if (!cleanName) return;
 
-    const existing = existingStock[cleanName] || existingByName[cleanName] || existingByName[`stock-${idx + 4}`];
+    const normKey = normalizeProductName(cleanName);
+    const existing =
+      existingStock[cleanName] ||
+      existingStock[header] ||
+      existingByName[cleanName] ||
+      existingByName[header.trim()] ||
+      existingByNorm[normKey] ||
+      existingByName[`stock-${idx + 4}`];
+
     const detectedUnit = detectPackagingUnitFromProductName(cleanName);
 
     if (existing) {

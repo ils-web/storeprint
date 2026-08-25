@@ -177,9 +177,15 @@ export function processRawRowsToOrders(
   }
 
   const rawHeaders = rows[headerRowIndex] || [];
+
+  const cleanHeaderName = (h: string, fallbackIdx: number) => {
+    if (!h) return `פריט ${fallbackIdx}`;
+    return h.replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim() || `פריט ${fallbackIdx}`;
+  };
+
   const productHeaders: string[] = [];
   for (let c = 4; c < rawHeaders.length; c++) {
-    productHeaders.push(rawHeaders[c] ? rawHeaders[c].trim() : `פריט ${c - 3}`);
+    productHeaders.push(cleanHeaderName(rawHeaders[c], c - 3));
   }
 
   const orders: Order[] = [];
@@ -212,7 +218,7 @@ export function processRawRowsToOrders(
         continue;
       }
 
-      const itemName = rawHeaders[c] ? rawHeaders[c].trim() : `פריט ${c - 3}`;
+      const itemName = cleanHeaderName(rawHeaders[c], c - 3);
       if (!itemName) continue;
 
       orderItems.push({
