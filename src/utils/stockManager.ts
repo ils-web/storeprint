@@ -85,21 +85,34 @@ export function syncStockWithProductHeaders(
 ): Record<string, StockItem> {
   const result: Record<string, StockItem> = {};
 
-  // Build index by name, id, and normalized name for 100% reliable matching
+  // If productHeaders is empty, build from existingStock so stock is never wiped out
+  const effectiveHeaders =
+    productHeaders && productHeaders.length > 0
+      ? productHeaders
+      : Object.values(existingStock || {})
+          .map((it) => it?.name || '')
+          .filter(Boolean);
+
+  // Build index by name, id, normalized name, and colIndex for 100% reliable matching
   const existingByName: Record<string, StockItem> = {};
   const existingByNorm: Record<string, StockItem> = {};
+  const existingByCol: Record<number, StockItem> = {};
 
   Object.values(existingStock || {}).forEach((item) => {
-    if (item && item.name) {
+    if (!item) return;
+    if (item.name) {
       existingByName[item.name.trim()] = item;
       existingByNorm[normalizeProductName(item.name)] = item;
     }
-    if (item && item.id) {
+    if (item.id) {
       existingByName[item.id] = item;
+    }
+    if (typeof item.colIndex === 'number') {
+      existingByCol[item.colIndex] = item;
     }
   });
 
-  productHeaders.forEach((header, idx) => {
+  effectiveHeaders.forEach((header, idx) => {
     const cleanName = header.replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
     if (!cleanName) return;
 
@@ -110,7 +123,8 @@ export function syncStockWithProductHeaders(
       existingByName[cleanName] ||
       existingByName[header.trim()] ||
       existingByNorm[normKey] ||
-      existingByName[`stock-${idx + 4}`];
+      existingByName[`stock-${idx + 4}`] ||
+      existingByCol[idx + 4];
 
     const detectedUnit = detectPackagingUnitFromProductName(cleanName);
 
