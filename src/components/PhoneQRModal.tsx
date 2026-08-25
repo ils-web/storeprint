@@ -19,10 +19,11 @@ export const PhoneQRModal: React.FC<PhoneQRModalProps> = ({
 
   if (!isOpen) return null;
 
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://storeprintgc.netlify.app';
   const hasEndpoint = Boolean(cloudConfig.endpointUrl && cloudConfig.endpointUrl.trim());
   const shareUrl = hasEndpoint
-    ? `https://ils-web.github.io/storeprint/?cloudUrl=${encodeURIComponent(cloudConfig.endpointUrl.trim())}`
-    : 'https://ils-web.github.io/storeprint/';
+    ? `${currentOrigin}/?view=mobile_stock&cloudUrl=${encodeURIComponent(cloudConfig.endpointUrl.trim())}`
+    : `${currentOrigin}/?view=mobile_stock`;
 
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
     shareUrl

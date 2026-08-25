@@ -82,7 +82,19 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get('view');
       const deptParam = params.get('dept');
-      if (deptParam) setPreselectedDept(deptParam);
+      const cloudUrlParam = params.get('cloudUrl');
+      if (cloudUrlParam) {
+        try {
+          const decoded = decodeURIComponent(cloudUrlParam);
+          const updatedConfig: CloudSyncConfig = {
+            ...loadCloudConfig(),
+            enabled: true,
+            endpointUrl: decoded,
+          };
+          saveCloudConfig(updatedConfig);
+          setCloudConfig(updatedConfig);
+        } catch {}
+      }
 
       if (viewParam === 'portal_pwa') {
         setCurrentView('portal_pwa');

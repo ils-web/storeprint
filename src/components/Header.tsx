@@ -167,6 +167,18 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Toolbar: Auto-refresh, Refresh, Multi-tenant Links */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
             
+            {/* Mobile Stock Manager quick button */}
+            {onOpenMobileStock && (
+              <button
+                onClick={onOpenMobileStock}
+                className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-sky-600/25 transition-all cursor-pointer active:scale-95"
+                title="פתח ספירת מלאי ייעודית לסמארטפון"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>ספירת מלאי בנייד 📱</span>
+              </button>
+            )}
+
             {/* PWA Order Portal quick link */}
             {onOpenPortalPwa && (
               <button
