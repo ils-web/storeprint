@@ -394,11 +394,8 @@ export default function App() {
 
         // 2. Sync and initialize warehouse stock with cloud data as the single source of truth
         setStock((prevStock) => {
-          let baseStock = prevStock;
-          if (cloudStock && Object.keys(cloudStock).length > 0) {
-            baseStock = { ...prevStock, ...cloudStock };
-          }
-          const updatedStock = syncStockWithProductHeaders(result.productHeaders, baseStock);
+          const baseSource = (cloudStock && Object.keys(cloudStock).length > 0) ? cloudStock : prevStock;
+          const updatedStock = syncStockWithProductHeaders(result.productHeaders, baseSource);
           saveStoredStock(updatedStock);
           syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
           return updatedStock;
@@ -423,7 +420,10 @@ export default function App() {
         });
         mockOrders.forEach((o) => {
           if (!allOrdersMap.has(o.id)) {
-            allOrdersMap.set(o.id, o);
+            allOrdersMap.set(o.id, {
+              ...o,
+              printed: currentPrinted.has(o.id) || o.printed,
+            });
           }
         });
 
@@ -436,20 +436,16 @@ export default function App() {
           }
         })();
 
-        const mergedOrders = Array.from(allOrdersMap.values()).filter(
-          (o) => !deletedSet.has(o.id) && !deletedSet.has(String(o.rowNumber))
-        );
-
-        setOrders(mergedOrders);
+        setOrders(Array.from(allOrdersMap.values()).filter((o) => !deletedSet.has(o.id)));
         setDepartments(mockDeptNames);
         setProductHeaders(mockProductNames);
         setLastUpdated(new Date());
 
-        setStock((prevStock) => {
-          const updatedStock = syncStockWithProductHeaders(mockProductNames, prevStock);
-          saveStoredStock(updatedStock);
-          syncToMultiTenantDb(mockProductNames, mockDeptNames, updatedStock);
-          return updatedStock;
+        setStock((prev) => {
+          const updated = syncStockWithProductHeaders(mockProductNames, prev);
+          saveStoredStock(updated);
+          syncToMultiTenantDb(mockProductNames, mockDeptNames, updated);
+          return updated;
         });
 
         if (isManualRefresh) {
@@ -483,40 +479,15 @@ export default function App() {
 
   // Auto-fetch stock from Google Apps Script cloud on startup
   useEffect(() => {
-    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+    if (cloudConfig.enabled && cloudConfig.endpointUrl && productHeaders.length > 0) {
       fetchStockFromCloud(cloudConfig)
         .then((fetched) => {
           if (fetched && Object.keys(fetched).length > 0) {
-            setStock((prev) => {
-              const merged = { ...prev };
-              Object.values(fetched).forEach((item) => {
-                if (item && item.name) {
-                  const cleanStock =
-                    typeof item.currentStock === 'number' && !isNaN(item.currentStock)
-                      ? item.currentStock
-                      : 0;
-                  const cleanMin =
-                    typeof item.minThreshold === 'number' && !isNaN(item.minThreshold)
-                      ? item.minThreshold
-                      : 10;
-                  merged[item.name] = {
-                    ...(merged[item.name] || item),
-                    currentStock: cleanStock,
-                    minThreshold: cleanMin,
-                    unit: item.unit || merged[item.name]?.unit || "יח'",
-                    isActive:
-                      item.isActive !== undefined
-                        ? item.isActive
-                        : merged[item.name]?.isActive !== false,
-                    limitByPatients: Boolean(
-                      item.limitByPatients || merged[item.name]?.limitByPatients
-                    ),
-                  };
-                }
-              });
-              saveStoredStock(merged);
-              syncToMultiTenantDb(productHeaders, departments, merged);
-              return merged;
+            setStock(() => {
+              const synced = syncStockWithProductHeaders(productHeaders, fetched);
+              saveStoredStock(synced);
+              syncToMultiTenantDb(productHeaders, departments, synced);
+              return synced;
             });
           }
         })
@@ -535,32 +506,11 @@ export default function App() {
     try {
       const fetched = await fetchStockFromCloud(cloudConfig);
       if (fetched && Object.keys(fetched).length > 0) {
-        setStock((prev) => {
-          const merged = { ...prev };
-          Object.values(fetched).forEach((item) => {
-            if (item && item.name) {
-              const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-              const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-              if (merged[item.name]) {
-                merged[item.name] = {
-                  ...merged[item.name],
-                  currentStock: cleanStock,
-                  minThreshold: cleanMin,
-                  unit: item.unit || merged[item.name].unit || "יח'",
-                };
-              } else {
-                merged[item.name] = {
-                  ...item,
-                  currentStock: cleanStock,
-                  minThreshold: cleanMin,
-                  unit: item.unit || "יח'",
-                };
-              }
-            }
-          });
-          saveStoredStock(merged);
-          syncToMultiTenantDb(productHeaders, departments, merged);
-          return merged;
+        setStock(() => {
+          const synced = syncStockWithProductHeaders(productHeaders, fetched);
+          saveStoredStock(synced);
+          syncToMultiTenantDb(productHeaders, departments, synced);
+          return synced;
         });
         setSuccessMessage('סנכרון ענן הושלם בהצלחה! יתרות המלאי עודכנו.');
         setTimeout(() => setSuccessMessage(null), 4000);
