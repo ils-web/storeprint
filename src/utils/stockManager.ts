@@ -1,7 +1,10 @@
 import { StockItem, Order, OrderItem } from '../types';
+import initialMasterStock from './initialMasterStock.json';
 
 const STOCK_STORAGE_KEY = 'storeprint_warehouse_stock_v1';
 const DEFAULT_MIN_THRESHOLD = 10;
+
+export const INITIAL_STOCK: Record<string, StockItem> = initialMasterStock as Record<string, StockItem>;
 
 /**
  * Extracts a numeric quantity from various sheet quantity formats
@@ -44,14 +47,16 @@ export function detectPackagingUnitFromProductName(name: string): string {
  * Loads stored stock from localStorage
  */
 export function loadStoredStock(): Record<string, StockItem> {
-  if (typeof window === 'undefined') return {};
+  if (typeof window === 'undefined') return INITIAL_STOCK;
   try {
     const raw = localStorage.getItem(STOCK_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
+    if (!raw) return INITIAL_STOCK;
+    const parsed = JSON.parse(raw);
+    if (!parsed || Object.keys(parsed).length === 0) return INITIAL_STOCK;
+    return { ...INITIAL_STOCK, ...parsed };
   } catch (err) {
     console.warn('Failed to load stock from localStorage:', err);
-    return {};
+    return INITIAL_STOCK;
   }
 }
 
