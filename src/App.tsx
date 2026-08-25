@@ -369,9 +369,23 @@ export default function App() {
         localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
         localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
 
-        // Sync and initialize warehouse stock without losing user custom units or quantities
+        // 1. Fetch live cloud stock directly from Google Apps Script if available
+        let cloudStock: Record<string, StockItem> | null = null;
+        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+          try {
+            cloudStock = await fetchStockFromCloud(cloudConfig);
+          } catch (e) {
+            console.warn('Cloud stock fetch error during loadOrders:', e);
+          }
+        }
+
+        // 2. Sync and initialize warehouse stock with cloud data as the single source of truth
         setStock((prevStock) => {
-          const updatedStock = syncStockWithProductHeaders(result.productHeaders, prevStock);
+          let baseStock = prevStock;
+          if (cloudStock && Object.keys(cloudStock).length > 0) {
+            baseStock = { ...prevStock, ...cloudStock };
+          }
+          const updatedStock = syncStockWithProductHeaders(result.productHeaders, baseStock);
           saveStoredStock(updatedStock);
           syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
           return updatedStock;
@@ -433,7 +447,7 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [spreadsheetId, gid, activeTenantId, convertTenantOrderToAppOrder, syncToMultiTenantDb]
+    [spreadsheetId, gid, activeTenantId, convertTenantOrderToAppOrder, syncToMultiTenantDb, cloudConfig]
   );
 
   // Auto-reload on order creation events across windows/tabs

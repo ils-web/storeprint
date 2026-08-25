@@ -16,6 +16,7 @@ import {
   getTenantOrders,
   createTenantOrder,
 } from '../../services/multiTenantDb';
+import { loadCloudConfig, submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../../utils/cloudSync';
 import { InstallAppModal } from './InstallAppModal';
 import {
   ShoppingBag,
@@ -168,6 +169,26 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     }
 
     try {
+      // 1. Submit order directly to Google Sheets via Google Apps Script
+      const cloudConfig = loadCloudConfig();
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        const orderItemsMap: Record<string, { qty: number; unit?: string }> = {};
+        cartItemsList.forEach((it) => {
+          orderItemsMap[it.name] = { qty: it.orderedQty, unit: it.orderedUnit };
+        });
+
+        submitDepartmentOrderToCloud(
+          {
+            department: selectedDepartmentName.trim(),
+            patientsCount: patientsCount.trim() || undefined,
+            notes: notes.trim() || undefined,
+            items: orderItemsMap,
+          },
+          cloudConfig
+        ).catch((err) => console.warn('Cloud order submission error:', err));
+      }
+
+      // 2. Save local tenant order for local tracking & receipt history
       const newOrder = createTenantOrder(selectedTenantId, {
         tenantId: selectedTenantId,
         warehouseId: activeWarehouse?.id || 'wh-default',
