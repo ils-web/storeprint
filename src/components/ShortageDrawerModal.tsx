@@ -11,7 +11,7 @@ import {
   ShoppingBag,
   ExternalLink,
 } from 'lucide-react';
-import { printReorderListHtml } from '../utils/pdfGenerator';
+import { printEmergencyReorderListHtml } from '../utils/emergencyPdfGenerator';
 
 interface ShortageDrawerModalProps {
   isOpen: boolean;
@@ -34,18 +34,18 @@ export const ShortageDrawerModal: React.FC<ShortageDrawerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const stockList = Object.values(stock);
+  const stockList: StockItem[] = Object.values(stock || {}) as StockItem[];
 
   // Filter items below threshold (excluding inactive items)
   const lowStockItems = stockList
-    .filter((item) => {
-      if (item.isActive === false) return false;
+    .filter((item: StockItem) => {
+      if (!item || item.isActive === false) return false;
       const baseTh = item.minThreshold || globalThreshold;
       const effectiveTh = isEmergencyMode ? baseTh * 3 : baseTh;
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       return safeQty < effectiveTh;
     })
-    .map((item) => {
+    .map((item: StockItem) => {
       const baseTh = item.minThreshold || globalThreshold;
       const effectiveTh = isEmergencyMode ? baseTh * 3 : baseTh;
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
@@ -61,7 +61,7 @@ export const ShortageDrawerModal: React.FC<ShortageDrawerModalProps> = ({
 
   // Handle Print Reorder Sheet
   const handlePrint = () => {
-    printReorderListHtml(stockList, globalThreshold, isEmergencyMode ? 3 : 1, tenantName);
+    printEmergencyReorderListHtml(stockList, globalThreshold, isEmergencyMode ? 3 : 1, tenantName);
   };
 
   // Copy WhatsApp format list

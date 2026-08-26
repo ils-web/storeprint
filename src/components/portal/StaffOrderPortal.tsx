@@ -14,6 +14,7 @@ import {
   getInventory,
   getTenantDepartments,
   getTenantOrders,
+  saveTenantOrders,
   createTenantOrder,
 } from '../../services/multiTenantDb';
 import { loadCloudConfig, submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../../utils/cloudSync';

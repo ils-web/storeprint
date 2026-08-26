@@ -112,7 +112,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     let list = productHeaders.filter((h) => {
       const clean = h.trim();
       if (!clean) return false;
-      const stockEntry = stock[clean] || Object.values(stock).find((s) => s.name === clean);
+      const stockEntry = stock[clean] || (Object.values(stock || {}) as StockItem[]).find((s) => s?.name === clean);
       if (stockEntry && stockEntry.isActive === false) return false;
       return true;
     });

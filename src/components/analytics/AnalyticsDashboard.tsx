@@ -153,8 +153,8 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
     > = {};
 
     // Initialize with all active stock products
-    Object.values(stock).forEach((sItem) => {
-      if (sItem && sItem.isActive !== false) {
+    (Object.values(stock || {}) as StockItem[]).forEach((sItem: StockItem) => {
+      if (sItem && sItem.name && sItem.isActive !== false) {
         pMap[sItem.name] = {
           productName: sItem.name,
           totalOrderedQty: 0,
@@ -668,7 +668,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                           >
                             <span className="text-slate-800 font-medium truncate">{itemName}</span>
                             <span className="font-mono font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
-                              {qty.toLocaleString('he-IL')}
+                              {Number(qty).toLocaleString('he-IL')}
                             </span>
                           </div>
                         ))}
