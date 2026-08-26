@@ -300,9 +300,14 @@ export default function App() {
     };
   }, []);
 
+  const isFetchingOrdersRef = useRef<boolean>(false);
+
   // Load and Process Google Sheet Orders + PWA Multi-Tenant Orders
   const loadOrders = useCallback(
     async (isManualRefresh = false) => {
+      if (isFetchingOrdersRef.current) return;
+      isFetchingOrdersRef.current = true;
+
       if (isManualRefresh) {
         setIsLoading(true);
         setErrorMessage(null);
@@ -407,93 +412,46 @@ export default function App() {
         }
       } catch (err: any) {
         console.warn('Live fetch error, falling back to mock data + PWA orders:', err);
-        const mockOrders = getMockCurrentWeekOrders();
-        const mockProductNames = Array.from(new Set(mockOrders.flatMap((o) => o.items.map((i) => i.name))));
-        const mockDeptNames = Array.from(new Set(mockOrders.map((o) => o.department)));
-
-        const allOrdersMap = new Map<string, Order>();
-        convertedTenantOrders.forEach((o) => {
-          allOrdersMap.set(o.id, {
-            ...o,
-            printed: currentPrinted.has(o.id) || o.printed,
-          });
-        });
-        mockOrders.forEach((o) => {
-          if (!allOrdersMap.has(o.id)) {
-            allOrdersMap.set(o.id, {
-              ...o,
-              printed: currentPrinted.has(o.id) || o.printed,
-            });
-          }
-        });
-
-        const deletedSet = (() => {
-          try {
-            const raw = localStorage.getItem('storeprint_deleted_orders_v2');
-            return raw ? new Set(JSON.parse(raw)) : new Set();
-          } catch {
-            return new Set();
-          }
-        })();
-
-        setOrders(Array.from(allOrdersMap.values()).filter((o) => !deletedSet.has(o.id)));
-        setDepartments(mockDeptNames);
-        setProductHeaders(mockProductNames);
-        setLastUpdated(new Date());
-
-        setStock((prev) => {
-          const updated = syncStockWithProductHeaders(mockProductNames, prev);
-          saveStoredStock(updated);
-          syncToMultiTenantDb(mockProductNames, mockDeptNames, updated);
-          return updated;
-        });
-
-        if (isManualRefresh) {
-          setWarningMessage('נטענו נתוני גיבוי (בדוק חיבור ל-Google Sheets)');
-          setTimeout(() => setWarningMessage(null), 5000);
-        }
       } finally {
         setIsLoading(false);
+        isFetchingOrdersRef.current = false;
       }
     },
     [spreadsheetId, gid, activeTenantId, convertTenantOrderToAppOrder, syncToMultiTenantDb, cloudConfig]
   );
 
-  // Auto-reload on order creation events across windows/tabs
+  // Auto-reload only on custom order creation events
   useEffect(() => {
     const handleOrderCreated = () => {
       loadOrders(false);
     };
     window.addEventListener('storeprint_order_created', handleOrderCreated);
-    window.addEventListener('storage', handleOrderCreated);
     return () => {
       window.removeEventListener('storeprint_order_created', handleOrderCreated);
-      window.removeEventListener('storage', handleOrderCreated);
     };
   }, [loadOrders]);
 
-  // Initial Load
+  // Initial Load once on mount or tenant switch
   useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+    loadOrders(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTenantId]);
 
-  // Auto-fetch stock from Google Apps Script cloud on startup
+  // Auto-refresh countdown timer (30s ticker)
   useEffect(() => {
-    if (cloudConfig.enabled && cloudConfig.endpointUrl && productHeaders.length > 0) {
-      fetchStockFromCloud(cloudConfig)
-        .then((fetched) => {
-          if (fetched && Object.keys(fetched).length > 0) {
-            setStock(() => {
-              const synced = syncStockWithProductHeaders(productHeaders, fetched);
-              saveStoredStock(synced);
-              syncToMultiTenantDb(productHeaders, departments, synced);
-              return synced;
-            });
-          }
-        })
-        .catch(console.warn);
-    }
-  }, [cloudConfig.enabled, cloudConfig.endpointUrl, productHeaders, departments, syncToMultiTenantDb]);
+    if (autoRefreshSec <= 0) return;
+    setCountdown(autoRefreshSec);
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          loadOrders(false);
+          return autoRefreshSec;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [autoRefreshSec, loadOrders]);
 
   // Handle Cloud Sync
   const handleSyncWithCloud = useCallback(async () => {
