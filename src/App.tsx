@@ -30,6 +30,14 @@ import {
   getMockCurrentWeekOrders,
 } from './utils/googleSheets';
 import {
+  getDbStock,
+  saveDbStock,
+  updateDbStockItem,
+  deductOrdersFromDbStock,
+  getDbDepartments,
+  ingestGoogleFormsOrders,
+} from './services/unifiedDb';
+import {
   loadStoredStock,
   saveStoredStock,
   syncStockWithProductHeaders,
@@ -162,8 +170,8 @@ export default function App() {
     }
   });
 
-  // Warehouse Stock State (Initialized from localStorage)
-  const [stock, setStock] = useState<Record<string, StockItem>>(() => loadStoredStock());
+  // Warehouse Stock State (Initialized from Unified DB)
+  const [stock, setStock] = useState<Record<string, StockItem>>(() => getDbStock());
 
   // Cloud Sync State
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
@@ -334,7 +342,7 @@ export default function App() {
           throw new Error('קובץ הטבלה ריק או שאין בו מספיק נתונים');
         }
 
-        const result = processRawRowsToOrders(rows);
+        const result = ingestGoogleFormsOrders(rows, currentPrinted);
 
         const checkOrderPrinted = (o: Order) => {
           if (o.printed) return true;
@@ -380,32 +388,15 @@ export default function App() {
         );
 
         setOrders(mergedOrders);
-        setDepartments(result.departments);
-        setProductHeaders(result.productHeaders);
-        setLastUpdated(new Date());
-
-        // Cache departments and products for instant next startup
-        localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
-        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
-
-        // 1. Fetch live cloud stock directly from Google Apps Script if available
-        let cloudStock: Record<string, StockItem> | null = null;
-        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-          try {
-            cloudStock = await fetchStockFromCloud(cloudConfig);
-          } catch (e) {
-            console.warn('Cloud stock fetch error during loadOrders:', e);
-          }
+        if (result.departments.length > 0) {
+          setDepartments(result.departments);
+          localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
         }
-
-        // 2. Sync and initialize warehouse stock with cloud data as the single source of truth
-        setStock((prevStock) => {
-          const baseSource = (cloudStock && Object.keys(cloudStock).length > 0) ? cloudStock : prevStock;
-          const updatedStock = syncStockWithProductHeaders(result.productHeaders, baseSource);
-          saveStoredStock(updatedStock);
-          syncToMultiTenantDb(result.productHeaders, result.departments, updatedStock);
-          return updatedStock;
-        });
+        if (result.productHeaders.length > 0) {
+          setProductHeaders(result.productHeaders);
+          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
+        }
+        setLastUpdated(new Date());
 
         if (isManualRefresh) {
           setSuccessMessage('הנתונים נטענו בהצלחה!');
@@ -538,52 +529,11 @@ export default function App() {
     isActive?: boolean,
     limitByPatients?: boolean
   ) => {
-    setStock((prev) => {
-      // Direct lookup by key, name, or ID
-      const targetKey = prev[itemIdOrName]
-        ? itemIdOrName
-        : Object.keys(prev).find(
-            (k) => prev[k]?.name === itemIdOrName || prev[k]?.id === itemIdOrName
-          ) || itemIdOrName;
-
-      const existing = prev[targetKey];
-      const cleanStock = typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0;
-      const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
-      const cleanUnit = unit || existing?.unit || "יח'";
-      const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
-      const cleanLimitByPatients = limitByPatients !== undefined ? limitByPatients : Boolean(existing?.limitByPatients);
-      const nowIso = new Date().toISOString();
-
-      const updated = {
-        ...prev,
-        [targetKey]: {
-          ...(existing || {
-            id: `stock-${Date.now()}`,
-            name: itemIdOrName,
-            colIndex: 0,
-          }),
-          currentStock: cleanStock,
-          minThreshold: cleanMin,
-          unit: cleanUnit,
-          isActive: cleanIsActive,
-          limitByPatients: cleanLimitByPatients,
-          lastDeducted: nowIso,
-          lastUpdated: nowIso,
-        },
-      };
-
-      // 1. Save locally INSTANTLY (0 ms latency)
-      saveStoredStock(updated);
-      syncToMultiTenantDb(productHeaders, departments, updated);
-
-      // 2. Debounced background cloud sync (1.5s debounce) to prevent network lag & flickering
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        debouncedPushStockToCloud(updated, cloudConfig, 1500).catch(console.warn);
-      }
-
-      return updated;
-    });
-  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
+    const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients);
+    setStock(updated);
+    saveStoredStock(updated);
+    syncToMultiTenantDb(productHeaders, departments, updated);
+  }, [productHeaders, departments, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
     setStock((prev) => {
@@ -797,14 +747,10 @@ export default function App() {
     } catch {}
 
     if (deductStock) {
-      setStock((prevStock) => {
-        const { updatedStock } = deductOrdersFromStock(ordersToPrint, prevStock);
-        saveStoredStock(updatedStock);
-        if (cloudConfig.enabled && cloudConfig.autoSyncOnPrint) {
-          debouncedPushStockToCloud(updatedStock, cloudConfig, 1000).catch(console.error);
-        }
-        return updatedStock;
-      });
+      const { updatedStock } = deductOrdersFromDbStock(ordersToPrint);
+      setStock(updatedStock);
+      saveStoredStock(updatedStock);
+      syncToMultiTenantDb(productHeaders, departments, updatedStock);
     }
 
     setIsPrintConfirmOpen(false);
