@@ -103,21 +103,40 @@ export function saveOrUpdateDbStockItem(
   const current = getDbStock();
   const next: Record<string, StockItem> = { ...current };
 
-  // If renaming an existing item, remove the old key
-  if (oldNameOrId && oldNameOrId.trim() !== '' && oldNameOrId !== savedItem.name) {
-    const oldKey = next[oldNameOrId]
-      ? oldNameOrId
-      : Object.keys(next).find((k) => next[k]?.name === oldNameOrId || next[k]?.id === oldNameOrId);
-    if (oldKey) {
-      delete next[oldKey];
-    }
+  // Collect all keys to remove (matching by ID, old name, normalized name)
+  const keysToRemove = new Set<string>();
+
+  if (oldNameOrId && oldNameOrId.trim() !== '') {
+    const normOld = normalizeProductName(oldNameOrId);
+    Object.keys(next).forEach((k) => {
+      const item = next[k];
+      if (
+        k === oldNameOrId ||
+        item?.id === oldNameOrId ||
+        item?.name === oldNameOrId ||
+        normalizeProductName(k) === normOld ||
+        (item?.name && normalizeProductName(item.name) === normOld)
+      ) {
+        keysToRemove.add(k);
+      }
+    });
   }
 
+  if (savedItem.id) {
+    Object.keys(next).forEach((k) => {
+      if (next[k]?.id === savedItem.id) {
+        keysToRemove.add(k);
+      }
+    });
+  }
+
+  // Remove old matching keys
+  keysToRemove.forEach((k) => delete next[k]);
+
   const targetKey = savedItem.name.trim();
-  const existing = next[targetKey];
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
   const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
-  const cleanUnit = savedItem.unit || existing?.unit || detectPackagingUnitFromProductName(targetKey);
+  const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(targetKey);
   const cleanIsActive = savedItem.isActive !== false;
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -133,6 +152,32 @@ export function saveOrUpdateDbStockItem(
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
   };
+
+  saveDbStock(next);
+  saveDbProducts(next);
+  return next;
+}
+
+/**
+ * Permanently deletes an item from the warehouse stock and product catalog
+ */
+export function deleteDbStockItem(idOrName: string): Record<string, StockItem> {
+  const current = getDbStock();
+  const next: Record<string, StockItem> = { ...current };
+  const normTarget = normalizeProductName(idOrName);
+
+  const keysToDelete = Object.keys(next).filter((k) => {
+    const item = next[k];
+    return (
+      k === idOrName ||
+      item?.id === idOrName ||
+      item?.name === idOrName ||
+      normalizeProductName(k) === normTarget ||
+      (item?.name && normalizeProductName(item.name) === normTarget)
+    );
+  });
+
+  keysToDelete.forEach((k) => delete next[k]);
 
   saveDbStock(next);
   saveDbProducts(next);

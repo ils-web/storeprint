@@ -34,6 +34,7 @@ import {
   saveDbStock,
   updateDbStockItem,
   saveOrUpdateDbStockItem,
+  deleteDbStockItem,
   deductOrdersFromDbStock,
   getDbDepartments,
   ingestGoogleFormsOrders,
@@ -547,6 +548,20 @@ export default function App() {
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
     setSuccessMessage(`הפריט "${savedItem.name}" נשמר בהצלחה במחסן ובקטלוג! 📦✅`);
+    setTimeout(() => setSuccessMessage(null), 3500);
+  }, [departments, syncToMultiTenantDb]);
+
+  const handleDeleteStockItem = useCallback((idOrName: string) => {
+    const updated = deleteDbStockItem(idOrName);
+    setStock(updated);
+    saveStoredStock(updated);
+    const newHeaders = Object.keys(updated);
+    setProductHeaders(newHeaders);
+    try {
+      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+    } catch {}
+    syncToMultiTenantDb(newHeaders, departments, updated);
+    setSuccessMessage(`הפריט נמחק לצמיתות מהמחסן ומהקטלוג 🗑️`);
     setTimeout(() => setSuccessMessage(null), 3500);
   }, [departments, syncToMultiTenantDb]);
 
@@ -1095,6 +1110,7 @@ export default function App() {
             onBatchUpdateStock={handleBatchUpdateStock}
             onSetAllStock={handleSetAllStock}
             onSaveFullItem={handleSaveFullItem}
+            onDeleteItem={handleDeleteStockItem}
           />
         )}
 

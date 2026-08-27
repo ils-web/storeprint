@@ -12,6 +12,7 @@ import {
   PauseCircle,
   PlayCircle,
   Sliders,
+  Trash2,
 } from 'lucide-react';
 
 interface ItemModalProps {
@@ -19,6 +20,7 @@ interface ItemModalProps {
   onClose: () => void;
   itemToEdit?: StockItem | null;
   onSave: (item: StockItem) => void;
+  onDelete?: (itemIdOrName: string) => void;
 }
 
 export const ItemModal: React.FC<ItemModalProps> = ({
@@ -26,6 +28,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   onClose,
   itemToEdit,
   onSave,
+  onDelete,
 }) => {
   const isEdit = Boolean(itemToEdit && itemToEdit.name);
 
@@ -36,6 +39,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [limitByPatients, setLimitByPatients] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
 
   useEffect(() => {
     if (itemToEdit) {
@@ -54,6 +58,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setIsActive(true);
     }
     setError(null);
+    setIsConfirmingDelete(false);
   }, [itemToEdit, isOpen]);
 
   if (!isOpen) return null;
@@ -233,24 +238,82 @@ export const ItemModal: React.FC<ItemModalProps> = ({
 
           </div>
 
-          {/* Submit Button */}
-          <div className="pt-3 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
-            >
-              ביטול
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-sky-600/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isEdit ? 'שמור שינויים ✓' : 'הוסף פריט למחסן 📦'}</span>
-            </button>
+          {/* Action Buttons */}
+          <div className="pt-3 flex items-center justify-between gap-2">
+            {isEdit && onDelete ? (
+              <button
+                type="button"
+                onClick={() => setIsConfirmingDelete(true)}
+                className="px-3.5 py-2.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                <span>מחק פריט מהמלאי</span>
+              </button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                ביטול
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-sky-600/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isEdit ? 'שמור שינויים ✓' : 'הוסף פריט למחסן 📦'}</span>
+              </button>
+            </div>
           </div>
         </form>
+
+        {/* Confirmation Modal for Accidental Deletion Protection */}
+        {isConfirmingDelete && (
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 rounded-3xl animate-fadeIn">
+            <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl border border-slate-200 space-y-4">
+              <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto border-4 border-red-50">
+                <Trash2 className="w-7 h-7 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">מחיקת פריט לצמיתות מהמחסן?</h3>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                  האם אתה בטוח שברצונך למחוק את הפריט <strong className="text-slate-900 underline">"{name || itemToEdit?.name}"</strong> לצמיתות?
+                </p>
+                <p className="text-[11px] text-red-500 font-bold mt-1">
+                  ⚠️ הפריט יוסר לצמיתות ממסד הנתונים ומהקטלוג.
+                </p>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDelete && itemToEdit) {
+                      onDelete(itemToEdit.name || itemToEdit.id);
+                      setIsConfirmingDelete(false);
+                      onClose();
+                    }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>כן, מחק לצמיתות 🗑️</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
