@@ -289,6 +289,7 @@ interface WarehouseViewProps {
   ) => void;
   onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
   onSetAllStock: (qty: number) => void;
+  onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string) => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -305,6 +306,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onUpdateStockItem,
   onBatchUpdateStock,
   onSetAllStock,
+  onSaveFullItem,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
@@ -406,14 +408,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   };
 
   const handleSaveItem = (savedItem: StockItem) => {
-    onUpdateStockItem(
-      savedItem.name,
-      savedItem.currentStock,
-      savedItem.minThreshold,
-      savedItem.unit,
-      savedItem.isActive,
-      savedItem.limitByPatients
-    );
+    if (onSaveFullItem) {
+      onSaveFullItem(savedItem, itemToEdit?.name || itemToEdit?.id);
+    } else {
+      onUpdateStockItem(
+        savedItem.name,
+        savedItem.currentStock,
+        savedItem.minThreshold,
+        savedItem.unit,
+        savedItem.isActive,
+        savedItem.limitByPatients
+      );
+    }
   };
 
   const handlePrintReorder = () => {

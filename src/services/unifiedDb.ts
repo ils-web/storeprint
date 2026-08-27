@@ -2,6 +2,7 @@ import { Order, OrderItem, StockItem } from '../types';
 import initialMasterStock from '../utils/initialMasterStock.json';
 import { normalizeProductName, detectPackagingUnitFromProductName } from '../utils/stockManager';
 import { loadCloudConfig, debouncedPushStockToCloud } from '../utils/cloudSync';
+import { parseSheetDate } from '../utils/dateUtils';
 
 // Database Storage Keys
 const DB_STORAGE_KEYS = {
@@ -93,7 +94,53 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
 }
 
 /**
- * Updates a single stock item
+ * Saves or updates a stock item with support for renaming and creating new items
+ */
+export function saveOrUpdateDbStockItem(
+  savedItem: StockItem,
+  oldNameOrId?: string
+): Record<string, StockItem> {
+  const current = getDbStock();
+  const next: Record<string, StockItem> = { ...current };
+
+  // If renaming an existing item, remove the old key
+  if (oldNameOrId && oldNameOrId.trim() !== '' && oldNameOrId !== savedItem.name) {
+    const oldKey = next[oldNameOrId]
+      ? oldNameOrId
+      : Object.keys(next).find((k) => next[k]?.name === oldNameOrId || next[k]?.id === oldNameOrId);
+    if (oldKey) {
+      delete next[oldKey];
+    }
+  }
+
+  const targetKey = savedItem.name.trim();
+  const existing = next[targetKey];
+  const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
+  const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
+  const cleanUnit = savedItem.unit || existing?.unit || detectPackagingUnitFromProductName(targetKey);
+  const cleanIsActive = savedItem.isActive !== false;
+  const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
+  const nowIso = new Date().toISOString();
+
+  next[targetKey] = {
+    id: savedItem.id || `stock-${Date.now()}`,
+    name: targetKey,
+    colIndex: savedItem.colIndex || Object.keys(next).length + 4,
+    currentStock: cleanStock,
+    minThreshold: cleanMin,
+    unit: cleanUnit,
+    isActive: cleanIsActive,
+    limitByPatients: cleanLimitByPatients,
+    lastUpdated: nowIso,
+  };
+
+  saveDbStock(next);
+  saveDbProducts(next);
+  return next;
+}
+
+/**
+ * Updates a single stock item quantity or fields
  */
 export function updateDbStockItem(
   nameOrId: string,
@@ -308,13 +355,15 @@ export function ingestGoogleFormsOrders(
         existingPrintedSet.has(compositeKey) ||
         existingPrintedSet.has(timestamp);
 
+      const parsedDate = parseSheetDate(timestamp || rawDate) || new Date();
+
       orders.push({
         id: orderId,
         rowNumber: r,
-        timestamp,
+        timestamp: timestamp || rawDate || `שורה ${r}`,
         rawDate,
-        parsedDate: null,
-        department,
+        parsedDate,
+        department: department || 'ללא מחלקה',
         patientsCount,
         items: orderItems,
         totalItemsCount: orderItems.length,
@@ -323,6 +372,9 @@ export function ingestGoogleFormsOrders(
       });
     }
   }
+
+  // Sort newest orders at the top
+  orders.sort((a, b) => b.rowNumber - a.rowNumber);
 
   const deptsList = Array.from(deptSet);
   saveDbDepartments(deptsList);
