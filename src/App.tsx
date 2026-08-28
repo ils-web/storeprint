@@ -931,6 +931,9 @@ export default function App() {
           onUpdateStockItem={handleUpdateStockItem}
           onSyncWithCloud={handleSyncWithCloud}
           isSyncingCloud={isSyncingCloud}
+          onMoveItem={handleMoveStockItem}
+          onSaveFullItem={handleSaveFullItem}
+          onDeleteItem={handleDeleteStockItem}
           onBackToMain={() => setCurrentView('app')}
         />
         <PWAInstallBanner />
