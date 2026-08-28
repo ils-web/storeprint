@@ -20,7 +20,10 @@ import {
   AlertTriangle,
   RotateCcw,
   Sparkles,
+  Smartphone,
+  Download,
 } from 'lucide-react';
+import { InstallAppModal } from '../portal/InstallAppModal';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
@@ -51,6 +54,7 @@ export function MobileStockManager({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
   const [globalThreshold] = useState<number>(10);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [lastSavedInfo, setLastSavedInfo] = useState<{ name: string; qty: number; time: string } | null>(null);
   const toastTimeoutRef = useRef<any>(null);
 
@@ -185,7 +189,17 @@ export function MobileStockManager({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setIsInstallModalOpen(true)}
+              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              title="הורדת והתקנת האפליקציה למסך הבית"
+            >
+              <Smartphone className="w-3.5 h-3.5 animate-bounce" />
+              <span className="hidden sm:inline">התקן אפליקציה</span>
+              <span className="sm:hidden">התקן</span>
+            </button>
+
             {onOpenEmergencyConfirm && (
               <button
                 onClick={onOpenEmergencyConfirm}
@@ -665,6 +679,12 @@ export function MobileStockManager({
           </button>
         </div>
       </div>
+
+      {/* Install App Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+      />
     </div>
   );
 }

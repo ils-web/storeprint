@@ -909,26 +909,32 @@ export default function App() {
   // 3. PWA Staff Order Portal View
   if (currentView === 'portal_pwa') {
     return (
-      <StaffOrderPortal
-        initialTenantId={activeTenantId}
-        initialDepartment={preselectedDept}
-        onBackToMain={() => setCurrentView('app')}
-      />
+      <>
+        <StaffOrderPortal
+          initialTenantId={activeTenantId}
+          initialDepartment={preselectedDept}
+          onBackToMain={() => setCurrentView('app')}
+        />
+        <PWAInstallBanner />
+      </>
     );
   }
 
   // 4. Dedicated Mobile Stock Adjuster View
   if (currentView === 'mobile_stock') {
     return (
-      <MobileStockManager
-        stock={stock}
-        isEmergencyMode={isEmergencyMode}
-        onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
-        onUpdateStockItem={handleUpdateStockItem}
-        onSyncWithCloud={handleSyncWithCloud}
-        isSyncingCloud={isSyncingCloud}
-        onBackToMain={() => setCurrentView('app')}
-      />
+      <>
+        <MobileStockManager
+          stock={stock}
+          isEmergencyMode={isEmergencyMode}
+          onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
+          onUpdateStockItem={handleUpdateStockItem}
+          onSyncWithCloud={handleSyncWithCloud}
+          isSyncingCloud={isSyncingCloud}
+          onBackToMain={() => setCurrentView('app')}
+        />
+        <PWAInstallBanner />
+      </>
     );
   }
 
