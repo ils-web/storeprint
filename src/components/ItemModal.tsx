@@ -19,7 +19,9 @@ interface ItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   itemToEdit?: StockItem | null;
-  onSave: (item: StockItem) => void;
+  totalItemsCount?: number;
+  itemIndex?: number;
+  onSave: (item: StockItem, targetPosition?: number) => void;
   onDelete?: (itemIdOrName: string) => void;
 }
 
@@ -27,6 +29,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   isOpen,
   onClose,
   itemToEdit,
+  totalItemsCount,
+  itemIndex,
   onSave,
   onDelete,
 }) => {
@@ -38,6 +42,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [unit, setUnit] = useState<string>("יח'");
   const [limitByPatients, setLimitByPatients] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [targetPosition, setTargetPosition] = useState<number>(1);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
 
@@ -49,6 +54,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setUnit(itemToEdit.unit || "יח'");
       setLimitByPatients(Boolean(itemToEdit.limitByPatients));
       setIsActive(itemToEdit.isActive !== false);
+      setTargetPosition(itemIndex || (itemToEdit.colIndex ? Math.max(1, itemToEdit.colIndex - 3) : 1));
     } else {
       setName('');
       setCurrentStock(0);
@@ -56,10 +62,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setUnit("יח'");
       setLimitByPatients(false);
       setIsActive(true);
+      setTargetPosition(totalItemsCount ? totalItemsCount + 1 : 1);
     }
     setError(null);
     setIsConfirmingDelete(false);
-  }, [itemToEdit, isOpen]);
+  }, [itemToEdit, isOpen, itemIndex, totalItemsCount]);
 
   if (!isOpen) return null;
 
@@ -82,7 +89,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       lastUpdated: new Date().toISOString(),
     };
 
-    onSave(savedItem);
+    onSave(savedItem, targetPosition);
     onClose();
   };
 
@@ -184,6 +191,30 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Position in Stock List */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5 text-sky-600" />
+                מיקום ברשימה / מס' שורה (סדר תצוגה)
+              </span>
+              <span className="text-[11px] font-normal text-slate-500">
+                (מתוך {totalItemsCount || 'כלל הפריטים'})
+              </span>
+            </label>
+            <input
+              type="number"
+              min="1"
+              max={totalItemsCount ? totalItemsCount + 1 : 500}
+              value={targetPosition}
+              onChange={(e) => setTargetPosition(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+            <p className="text-[11px] text-slate-500">
+              קובע את מספר השורה שבה יוצג הפריט במחסן ובטופס ההזמנות (1 = שורה ראשונה)
+            </p>
           </div>
 
           {/* Options: Limit by Patients & Active Status */}

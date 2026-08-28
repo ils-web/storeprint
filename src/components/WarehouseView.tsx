@@ -27,6 +27,9 @@ import {
   Edit,
   PlusCircle,
   Trash2,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -290,8 +293,9 @@ interface WarehouseViewProps {
   ) => void;
   onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
   onSetAllStock: (qty: number) => void;
-  onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string) => void;
+  onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => void;
   onDeleteItem?: (idOrName: string) => void;
+  onMoveItem?: (idOrName: string, direction: 'up' | 'down') => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -310,6 +314,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onSetAllStock,
   onSaveFullItem,
   onDeleteItem,
+  onMoveItem,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
@@ -418,9 +423,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }
   };
 
-  const handleSaveItem = (savedItem: StockItem) => {
+  const handleSaveItem = (savedItem: StockItem, targetPosition?: number) => {
     if (onSaveFullItem) {
-      onSaveFullItem(savedItem, itemToEdit?.name || itemToEdit?.id);
+      onSaveFullItem(savedItem, itemToEdit?.name || itemToEdit?.id, targetPosition);
     } else {
       onUpdateStockItem(
         savedItem.name,
@@ -869,9 +874,33 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           : 'hover:bg-slate-50/60'
                       }`}
                     >
-                      {/* Index */}
-                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-400">
-                        {idx + 1}
+                      {/* Index & Reorder Buttons */}
+                      <td className="py-2 px-1 text-center font-mono font-bold text-slate-400">
+                        <div className="flex items-center justify-center gap-1">
+                          {onMoveItem && (
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => onMoveItem(item.name || item.id, 'up')}
+                                className="p-0.5 rounded hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                title="הזז פריט שורה אחת למעלה ▲"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === filteredItems.length - 1}
+                                onClick={() => onMoveItem(item.name || item.id, 'down')}
+                                className="p-0.5 rounded hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                title="הזז פריט שורה אחת למטה ▼"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                          <span className="min-w-[20px] text-xs font-bold text-slate-600">{idx + 1}</span>
+                        </div>
                       </td>
 
                       {/* Product Name */}
@@ -1124,6 +1153,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         isOpen={isItemModalOpen}
         onClose={() => setIsItemModalOpen(false)}
         itemToEdit={itemToEdit}
+        totalItemsCount={stockList.length}
+        itemIndex={itemToEdit ? stockList.findIndex((i) => i.name === itemToEdit.name || i.id === itemToEdit.id) + 1 : undefined}
         onSave={handleSaveItem}
         onDelete={onDeleteItem}
       />

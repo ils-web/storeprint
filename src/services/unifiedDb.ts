@@ -191,6 +191,105 @@ export function deleteDbStockItem(idOrName: string): Record<string, StockItem> {
 }
 
 /**
+ * Moves an item up or down in the display ordering
+ */
+export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Record<string, StockItem> {
+  const current = getDbStock();
+  const items = Object.values(current).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+  const normTarget = normalizeProductName(idOrName);
+
+  const index = items.findIndex((item) =>
+    item.id === idOrName ||
+    item.name === idOrName ||
+    normalizeProductName(item.name) === normTarget
+  );
+
+  if (index === -1) return current;
+
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= items.length) return current;
+
+  // Swap elements
+  const temp = items[index];
+  items[index] = items[targetIndex];
+  items[targetIndex] = temp;
+
+  // Re-assign colIndex sequentially
+  const next: Record<string, StockItem> = {};
+  items.forEach((item, idx) => {
+    const updatedItem = {
+      ...item,
+      colIndex: idx + 4,
+    };
+    next[updatedItem.name] = updatedItem;
+  });
+
+  saveDbStock(next);
+  saveDbProducts(next);
+  return next;
+}
+
+/**
+ * Inserts or moves an item to a specific target position (1-indexed)
+ */
+export function insertDbStockItemAtPosition(
+  savedItem: StockItem,
+  targetPosition: number,
+  oldNameOrId?: string
+): Record<string, StockItem> {
+  const current = getDbStock();
+  let items = Object.values(current).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+  const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
+  const normNew = normalizeProductName(savedItem.name);
+
+  // Remove existing occurrences of this item
+  items = items.filter((item) => {
+    if (savedItem.id && item.id === savedItem.id) return false;
+    if (oldNameOrId && (item.name === oldNameOrId || normalizeProductName(item.name) === normOld)) return false;
+    if (item.name === savedItem.name || normalizeProductName(item.name) === normNew) return false;
+    return true;
+  });
+
+  // Calculate 0-based insert index clamped between 0 and items.length
+  const insertIndex = Math.max(0, Math.min(items.length, targetPosition - 1));
+
+  const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
+  const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
+  const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
+  const cleanIsActive = savedItem.isActive !== false;
+  const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
+  const nowIso = new Date().toISOString();
+
+  const itemToInsert: StockItem = {
+    id: savedItem.id || `stock-${Date.now()}`,
+    name: savedItem.name.trim(),
+    colIndex: insertIndex + 4,
+    currentStock: cleanStock,
+    minThreshold: cleanMin,
+    unit: cleanUnit,
+    isActive: cleanIsActive,
+    limitByPatients: cleanLimitByPatients,
+    lastUpdated: nowIso,
+  };
+
+  items.splice(insertIndex, 0, itemToInsert);
+
+  // Re-assign colIndex sequentially for all items
+  const next: Record<string, StockItem> = {};
+  items.forEach((item, idx) => {
+    const updatedItem = {
+      ...item,
+      colIndex: idx + 4,
+    };
+    next[updatedItem.name] = updatedItem;
+  });
+
+  saveDbStock(next);
+  saveDbProducts(next);
+  return next;
+}
+
+/**
  * Updates a single stock item quantity or fields
  */
 export function updateDbStockItem(

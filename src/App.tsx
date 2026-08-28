@@ -35,6 +35,8 @@ import {
   updateDbStockItem,
   saveOrUpdateDbStockItem,
   deleteDbStockItem,
+  moveDbStockItem,
+  insertDbStockItemAtPosition,
   deductOrdersFromDbStock,
   getDbDepartments,
   ingestGoogleFormsOrders,
@@ -537,8 +539,13 @@ export default function App() {
     syncToMultiTenantDb(productHeaders, departments, updated);
   }, [productHeaders, departments, syncToMultiTenantDb]);
 
-  const handleSaveFullItem = useCallback((savedItem: StockItem, oldNameOrId?: string) => {
-    const updated = saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+  const handleSaveFullItem = useCallback((savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => {
+    let updated: Record<string, StockItem>;
+    if (typeof targetPosition === 'number' && targetPosition > 0) {
+      updated = insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
+    } else {
+      updated = saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+    }
     setStock(updated);
     saveStoredStock(updated);
     const newHeaders = Object.keys(updated);
@@ -563,6 +570,18 @@ export default function App() {
     syncToMultiTenantDb(newHeaders, departments, updated);
     setSuccessMessage(`הפריט נמחק לצמיתות מהמחסן ומהקטלוג 🗑️`);
     setTimeout(() => setSuccessMessage(null), 3500);
+  }, [departments, syncToMultiTenantDb]);
+
+  const handleMoveStockItem = useCallback((idOrName: string, direction: 'up' | 'down') => {
+    const updated = moveDbStockItem(idOrName, direction);
+    setStock(updated);
+    saveStoredStock(updated);
+    const newHeaders = Object.keys(updated);
+    setProductHeaders(newHeaders);
+    try {
+      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+    } catch {}
+    syncToMultiTenantDb(newHeaders, departments, updated);
   }, [departments, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
@@ -1111,6 +1130,7 @@ export default function App() {
             onSetAllStock={handleSetAllStock}
             onSaveFullItem={handleSaveFullItem}
             onDeleteItem={handleDeleteStockItem}
+            onMoveItem={handleMoveStockItem}
           />
         )}
 
