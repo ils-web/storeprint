@@ -29,11 +29,11 @@ export function getDbProducts(): Record<string, StockItem> {
       return SEED_STOCK;
     }
     const parsed = JSON.parse(raw);
-    if (!parsed || Object.keys(parsed).length === 0) {
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
       saveDbProducts(SEED_STOCK);
       return SEED_STOCK;
     }
-    return { ...SEED_STOCK, ...parsed };
+    return parsed;
   } catch (err) {
     console.warn('Failed to load products from DB:', err);
     return SEED_STOCK;
@@ -47,6 +47,7 @@ export function saveDbProducts(products: Record<string, StockItem>): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(DB_STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(products)));
   } catch (err) {
     console.warn('Failed to save products to DB:', err);
   }
@@ -58,17 +59,17 @@ export function saveDbProducts(products: Record<string, StockItem>): void {
 export function getDbStock(): Record<string, StockItem> {
   if (typeof window === 'undefined') return SEED_STOCK;
   try {
-    const raw = localStorage.getItem(DB_STORAGE_KEYS.STOCK);
+    const raw = localStorage.getItem(DB_STORAGE_KEYS.STOCK) || localStorage.getItem('storeprint_warehouse_stock_v1');
     if (!raw) {
-      const initial = getDbProducts();
-      saveDbStock(initial);
-      return initial;
+      saveDbStock(SEED_STOCK, false);
+      return SEED_STOCK;
     }
     const parsed = JSON.parse(raw);
-    if (!parsed || Object.keys(parsed).length === 0) {
-      return getDbProducts();
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
+      saveDbStock(SEED_STOCK, false);
+      return SEED_STOCK;
     }
-    return { ...SEED_STOCK, ...parsed };
+    return parsed;
   } catch (err) {
     console.warn('Failed to load stock from DB:', err);
     return SEED_STOCK;
@@ -82,6 +83,8 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(DB_STORAGE_KEYS.STOCK, JSON.stringify(stock));
+    localStorage.setItem('storeprint_warehouse_stock_v1', JSON.stringify(stock));
+    localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(stock)));
     if (syncCloud) {
       const config = loadCloudConfig();
       if (config.enabled && config.endpointUrl) {
@@ -105,6 +108,7 @@ export function saveOrUpdateDbStockItem(
 
   // Collect all keys to remove (matching by ID, old name, normalized name)
   const keysToRemove = new Set<string>();
+  let preservedColIndex = savedItem.colIndex;
 
   if (oldNameOrId && oldNameOrId.trim() !== '') {
     const normOld = normalizeProductName(oldNameOrId);
@@ -118,6 +122,7 @@ export function saveOrUpdateDbStockItem(
         (item?.name && normalizeProductName(item.name) === normOld)
       ) {
         keysToRemove.add(k);
+        if (item?.colIndex) preservedColIndex = item.colIndex;
       }
     });
   }
@@ -126,6 +131,7 @@ export function saveOrUpdateDbStockItem(
     Object.keys(next).forEach((k) => {
       if (next[k]?.id === savedItem.id) {
         keysToRemove.add(k);
+        if (next[k]?.colIndex) preservedColIndex = next[k].colIndex;
       }
     });
   }
@@ -144,7 +150,7 @@ export function saveOrUpdateDbStockItem(
   next[targetKey] = {
     id: savedItem.id || `stock-${Date.now()}`,
     name: targetKey,
-    colIndex: savedItem.colIndex || Object.keys(next).length + 4,
+    colIndex: preservedColIndex || savedItem.colIndex || Object.keys(next).length + 4,
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,

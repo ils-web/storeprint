@@ -49,11 +49,11 @@ export function detectPackagingUnitFromProductName(name: string): string {
 export function loadStoredStock(): Record<string, StockItem> {
   if (typeof window === 'undefined') return INITIAL_STOCK;
   try {
-    const raw = localStorage.getItem(STOCK_STORAGE_KEY);
+    const raw = localStorage.getItem(STOCK_STORAGE_KEY) || localStorage.getItem('storeprint_db_stock_v2');
     if (!raw) return INITIAL_STOCK;
     const parsed = JSON.parse(raw);
-    if (!parsed || Object.keys(parsed).length === 0) return INITIAL_STOCK;
-    return { ...INITIAL_STOCK, ...parsed };
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) return INITIAL_STOCK;
+    return parsed;
   } catch (err) {
     console.warn('Failed to load stock from localStorage:', err);
     return INITIAL_STOCK;
