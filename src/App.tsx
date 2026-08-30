@@ -352,7 +352,8 @@ export default function App() {
           if (o.printed) return true;
           const keys = [
             o.id,
-            String(o.rowNumber),
+            o.rowNumber ? String(o.rowNumber) : '',
+            o.rowNumber ? `הזמנה #${o.rowNumber}` : '',
             o.timestamp && o.department ? `${o.department}_${o.timestamp}` : '',
             o.timestamp || '',
           ].filter(Boolean);
@@ -367,14 +368,26 @@ export default function App() {
         // Merge PWA orders with Sheet orders (PWA orders first so latest submitted orders appear at the very top!)
         const allOrdersMap = new Map<string, Order>();
         convertedTenantOrders.forEach((o) => {
+          const isPrinted = Boolean(o.printed) || checkOrderPrinted(o);
           allOrdersMap.set(o.id, {
             ...o,
-            printed: checkOrderPrinted(o) || o.printed,
+            printed: isPrinted,
           });
         });
         syncedOrders.forEach((o) => {
+          const isPrinted = Boolean(o.printed) || checkOrderPrinted(o);
           if (!allOrdersMap.has(o.id)) {
-            allOrdersMap.set(o.id, o);
+            allOrdersMap.set(o.id, {
+              ...o,
+              printed: isPrinted,
+            });
+          } else {
+            const existing = allOrdersMap.get(o.id)!;
+            allOrdersMap.set(o.id, {
+              ...o,
+              ...existing,
+              printed: isPrinted || existing.printed,
+            });
           }
         });
 
@@ -766,12 +779,19 @@ export default function App() {
     const newPrinted = new Set(printedOrderIds);
     ordersToPrint.forEach((o) => {
       newPrinted.add(o.id);
-      if (o.rowNumber) newPrinted.add(String(o.rowNumber));
+      if (o.rowNumber) {
+        newPrinted.add(String(o.rowNumber));
+        newPrinted.add(`הזמנה #${o.rowNumber}`);
+      }
       if (o.timestamp && o.department) newPrinted.add(`${o.department}_${o.timestamp}`);
       if (o.timestamp) newPrinted.add(o.timestamp);
     });
     setPrintedOrderIds(newPrinted);
-    localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(newPrinted)));
+    try {
+      const serialized = JSON.stringify(Array.from(newPrinted));
+      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, serialized);
+      localStorage.setItem('storeprint_db_printed_orders_v2', serialized);
+    } catch {}
 
     setOrders((prev) =>
       prev.map((o) => (newPrinted.has(o.id) || (o.timestamp && newPrinted.has(`${o.department}_${o.timestamp}`)) ? { ...o, printed: true } : o))
@@ -812,6 +832,7 @@ export default function App() {
     const keys = [
       orderId,
       targetOrder?.rowNumber ? String(targetOrder.rowNumber) : '',
+      targetOrder?.rowNumber ? `הזמנה #${targetOrder.rowNumber}` : '',
       targetOrder?.timestamp && targetOrder?.department ? `${targetOrder.department}_${targetOrder.timestamp}` : '',
       targetOrder?.timestamp || '',
     ].filter(Boolean);
@@ -828,7 +849,9 @@ export default function App() {
         newStatus = true;
       }
       try {
-        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        const serialized = JSON.stringify(Array.from(next));
+        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, serialized);
+        localStorage.setItem('storeprint_db_printed_orders_v2', serialized);
       } catch {}
 
       // Also update multiTenantDb so PWA orders stay in sync
