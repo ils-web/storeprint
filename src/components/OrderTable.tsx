@@ -49,6 +49,12 @@ interface OrderTableProps {
   isSheetLoaded: boolean;
 }
 
+const PERIOD_FILTER_KEY = 'storeprint_orders_period_filter_v1';
+const DEPT_FILTER_KEY = 'storeprint_orders_dept_filter_v1';
+const STATUS_FILTER_KEY = 'storeprint_orders_status_filter_v1';
+const CUSTOM_FROM_KEY = 'storeprint_orders_custom_from_v1';
+const CUSTOM_TO_KEY = 'storeprint_orders_custom_to_v1';
+
 export const OrderTable: React.FC<OrderTableProps> = ({
   orders,
   departments,
@@ -65,11 +71,85 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   isSheetLoaded,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDept, setSelectedDept] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unprinted' | 'printed'>('all');
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>('all');
-  const [customFromDate, setCustomFromDate] = useState<string>('');
-  const [customToDate, setCustomToDate] = useState<string>('');
+  
+  const [selectedDept, setSelectedDept] = useState<string>(() => {
+    try {
+      return localStorage.getItem(DEPT_FILTER_KEY) || 'ALL';
+    } catch {
+      return 'ALL';
+    }
+  });
+
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unprinted' | 'printed'>(() => {
+    try {
+      const saved = localStorage.getItem(STATUS_FILTER_KEY);
+      return saved === 'unprinted' || saved === 'printed' ? saved : 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>(() => {
+    try {
+      const saved = localStorage.getItem(PERIOD_FILTER_KEY);
+      const valid: PeriodFilterType[] = ['all', 'today', 'week', 'last7', 'last30', 'month', 'custom'];
+      return saved && valid.includes(saved as PeriodFilterType) ? (saved as PeriodFilterType) : 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  const [customFromDate, setCustomFromDate] = useState<string>(() => {
+    try {
+      return localStorage.getItem(CUSTOM_FROM_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [customToDate, setCustomToDate] = useState<string>(() => {
+    try {
+      return localStorage.getItem(CUSTOM_TO_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const handlePeriodChange = (val: PeriodFilterType) => {
+    setPeriodFilter(val);
+    try {
+      localStorage.setItem(PERIOD_FILTER_KEY, val);
+    } catch {}
+  };
+
+  const handleDeptChange = (val: string) => {
+    setSelectedDept(val);
+    try {
+      localStorage.setItem(DEPT_FILTER_KEY, val);
+    } catch {}
+  };
+
+  const handleStatusChange = (val: 'all' | 'unprinted' | 'printed') => {
+    setStatusFilter(val);
+    try {
+      localStorage.setItem(STATUS_FILTER_KEY, val);
+    } catch {}
+  };
+
+  const handleCustomFromChange = (val: string) => {
+    setCustomFromDate(val);
+    try {
+      localStorage.setItem(CUSTOM_FROM_KEY, val);
+    } catch {}
+  };
+
+  const handleCustomToChange = (val: string) => {
+    setCustomToDate(val);
+    try {
+      localStorage.setItem(CUSTOM_TO_KEY, val);
+    } catch {}
+  };
+
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
 
   // Current Israel week range
@@ -216,11 +296,11 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               <span className="text-[11px] font-bold text-slate-500">תקופה:</span>
               <select
                 value={periodFilter}
-                onChange={(e) => setPeriodFilter(e.target.value as PeriodFilterType)}
+                onChange={(e) => handlePeriodChange(e.target.value as PeriodFilterType)}
                 className="bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
               >
-                <option value="week">השבוע הנוכחי (ברירת מחדל)</option>
                 <option value="today">היום בלבד</option>
+                <option value="week">השבוע הנוכחי</option>
                 <option value="last7">7 ימים אחרונים</option>
                 <option value="last30">30 ימים אחרונים</option>
                 <option value="month">החודש הנוכחי</option>
@@ -236,14 +316,14 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 <input
                   type="date"
                   value={customFromDate}
-                  onChange={(e) => setCustomFromDate(e.target.value)}
+                  onChange={(e) => handleCustomFromChange(e.target.value)}
                   className="text-xs font-semibold focus:outline-none"
                 />
                 <span className="text-[11px] font-bold text-slate-500">עד:</span>
                 <input
                   type="date"
                   value={customToDate}
-                  onChange={(e) => setCustomToDate(e.target.value)}
+                  onChange={(e) => handleCustomToChange(e.target.value)}
                   className="text-xs font-semibold focus:outline-none"
                 />
               </div>
@@ -253,7 +333,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             <div className="relative">
               <select
                 value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value)}
+                onChange={(e) => handleDeptChange(e.target.value)}
                 className="bg-white border border-slate-300 rounded-2xl px-3.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer shadow-2xs"
               >
                 <option value="ALL">כל המחלקות ({departments.length})</option>
@@ -275,7 +355,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           {/* Status Tabs */}
           <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-xs">
             <button
-              onClick={() => setStatusFilter('all')}
+              onClick={() => handleStatusChange('all')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'all'
                   ? 'bg-white text-slate-900 shadow-xs'
@@ -285,7 +365,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               הכל בתקופה ({counts.all})
             </button>
             <button
-              onClick={() => setStatusFilter('unprinted')}
+              onClick={() => handleStatusChange('unprinted')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'unprinted'
                   ? 'bg-white text-amber-700 shadow-xs'
@@ -295,7 +375,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               ממתינים ({counts.unprinted})
             </button>
             <button
-              onClick={() => setStatusFilter('printed')}
+              onClick={() => handleStatusChange('printed')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'printed'
                   ? 'bg-white text-emerald-700 shadow-xs'
