@@ -19,6 +19,8 @@ import {
 } from '../../services/multiTenantDb';
 import { getDbStock } from '../../services/unifiedDb';
 import { loadCloudConfig, submitDepartmentOrderToCloud } from '../../utils/cloudSync';
+import { pushOrderToFirestore, subscribeToFirestoreStock } from '../../services/firestoreSync';
+import { StockItem } from '../../types';
 import { InstallAppModal } from './InstallAppModal';
 import {
   ShoppingBag,
@@ -78,6 +80,17 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
   const [cart, setCart] = useState<Record<string, MultiTenantOrderItem>>({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [orderSuccessNumber, setOrderSuccessNumber] = useState<string | null>(null);
+  const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getDbStock());
+
+  // Subscribe to real-time warehouse stock from Firestore
+  useEffect(() => {
+    const unsub = subscribeToFirestoreStock((newStock) => {
+      setLiveStock(newStock);
+    }, selectedTenantId);
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [selectedTenantId]);
 
   // Scroll to Top Listener
   useEffect(() => {
@@ -94,8 +107,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
 
   // Available Products: Complete Master Catalog from Warehouse Stock (strictly excluding frozen/inactive items)
   const inventoryItems = useMemo(() => {
-    const dbStock = getDbStock();
-    const stockItems = Object.values(dbStock);
+    const stockItems = (Object.values(liveStock || {}) || []) as StockItem[];
 
     if (stockItems.length > 0) {
       return stockItems
@@ -116,7 +128,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
 
     if (!activeTenant || !activeWarehouse) return [];
     return getInventory(activeTenant.id, activeWarehouse.id).filter((p) => p.isActive !== false);
-  }, [activeTenant, activeWarehouse]);
+  }, [liveStock, activeTenant, activeWarehouse]);
 
   // Filtered Products by Search Query
   const filteredProducts = useMemo(() => {
@@ -240,7 +252,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
         );
       }
 
-      // 2. Save local order
+      // 2. Save local order & push to Firestore Real-Time DB
       const newOrder = createTenantOrder(selectedTenantId, {
         tenantId: selectedTenantId,
         warehouseId: activeWarehouse?.id || 'wh-default',
@@ -253,6 +265,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
         source: 'WEB_PORTAL',
         printed: false,
       });
+
+      pushOrderToFirestore(newOrder, selectedTenantId).catch(console.warn);
 
       setOrderSuccessNumber(newOrder.orderNumber);
       setCart({});

@@ -3,6 +3,7 @@ import initialMasterStock from '../utils/initialMasterStock.json';
 import { normalizeProductName, detectPackagingUnitFromProductName } from '../utils/stockManager';
 import { loadCloudConfig, debouncedPushStockToCloud } from '../utils/cloudSync';
 import { parseSheetDate } from '../utils/dateUtils';
+import { pushStockToFirestore } from './firestoreSync';
 
 // Database Storage Keys
 const DB_STORAGE_KEYS = {
@@ -86,6 +87,7 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
     localStorage.setItem('storeprint_warehouse_stock_v1', JSON.stringify(stock));
     localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(stock)));
     if (syncCloud) {
+      pushStockToFirestore(stock).catch(console.warn);
       const config = loadCloudConfig();
       if (config.enabled && config.endpointUrl) {
         debouncedPushStockToCloud(stock, config, 1200).catch(console.warn);

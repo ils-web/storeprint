@@ -42,6 +42,11 @@ import {
   ingestGoogleFormsOrders,
 } from './services/unifiedDb';
 import {
+  subscribeToFirestoreStock,
+  subscribeToFirestoreOrders,
+  updateOrderPrintedInFirestore,
+} from './services/firestoreSync';
+import {
   loadStoredStock,
   saveStoredStock,
   syncStockWithProductHeaders,
@@ -440,6 +445,29 @@ export default function App() {
     };
   }, [loadOrders]);
 
+  // Real-Time Master Warehouse Stock Sync via Firestore
+  useEffect(() => {
+    const unsubStock = subscribeToFirestoreStock((liveStock) => {
+      setStock(liveStock);
+      setProductHeaders(Object.keys(liveStock));
+    }, activeTenantId);
+
+    return () => {
+      if (unsubStock) unsubStock();
+    };
+  }, [activeTenantId]);
+
+  // Real-Time Orders Feed Sync via Firestore
+  useEffect(() => {
+    const unsubOrders = subscribeToFirestoreOrders((_liveOrders) => {
+      loadOrders(false);
+    }, activeTenantId);
+
+    return () => {
+      if (unsubOrders) unsubOrders();
+    };
+  }, [activeTenantId, loadOrders]);
+
   // Initial Load once on mount or tenant switch
   useEffect(() => {
     loadOrders(false);
@@ -797,8 +825,11 @@ export default function App() {
       prev.map((o) => (newPrinted.has(o.id) || (o.timestamp && newPrinted.has(`${o.department}_${o.timestamp}`)) ? { ...o, printed: true } : o))
     );
 
-    // Also update multiTenantDb printed status
+    // Also update multiTenantDb and Firestore printed status
     try {
+      ordersToPrint.forEach((o) => {
+        updateOrderPrintedInFirestore(o.id, true, new Date().toISOString(), activeTenantId).catch(console.warn);
+      });
       const tenantOrders = getTenantOrders(activeTenantId);
       const updatedTenantOrders = tenantOrders.map((tOrder) => {
         const match = ordersToPrint.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
@@ -853,6 +884,9 @@ export default function App() {
         localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, serialized);
         localStorage.setItem('storeprint_db_printed_orders_v2', serialized);
       } catch {}
+
+      // Update Firestore
+      updateOrderPrintedInFirestore(orderId, newStatus, newStatus ? new Date().toISOString() : undefined, activeTenantId).catch(console.warn);
 
       // Also update multiTenantDb so PWA orders stay in sync
       try {
