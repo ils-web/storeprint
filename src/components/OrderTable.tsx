@@ -93,9 +93,9 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     try {
       const saved = localStorage.getItem(PERIOD_FILTER_KEY);
       const valid: PeriodFilterType[] = ['all', 'today', 'week', 'last7', 'last30', 'month', 'custom'];
-      return saved && valid.includes(saved as PeriodFilterType) ? (saved as PeriodFilterType) : 'all';
+      return saved && valid.includes(saved as PeriodFilterType) ? (saved as PeriodFilterType) : 'today';
     } catch {
-      return 'all';
+      return 'today';
     }
   });
 
