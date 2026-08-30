@@ -31,8 +31,9 @@ export function InstallAppModal({
   const [copiedLink, setCopiedLink] = useState(false);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
   const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-  const portalUrl = `${origin}/?view=portal_pwa${tenantQuery}`;
+  const portalUrl = `${origin}${pathname}/?view=portal_pwa${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
 
   useEffect(() => {
@@ -293,51 +294,52 @@ export function InstallAppModal({
 
         {/* Body Guide */}
         <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-200 overflow-y-auto flex-1">
-          {isInstalled ? (
-            <div className="bg-emerald-950/50 border-2 border-emerald-500/50 rounded-2xl p-5 text-center space-y-2">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-              <h4 className="font-black text-lg text-emerald-300">האפליקציה כבר מותקנת במכשיר זה!</h4>
-              <p className="text-sm text-slate-300">ניתן לפתוח אותה ישירות ממסך הבית של הטלפון או המחשב.</p>
+          {isInstalled && (
+            <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span className="text-xs sm:text-sm font-bold text-emerald-200">האפליקציה מותקנת במכשיר זה (ניתן להדפיס ולשתף קוד QR לכל שאר המחלקות)</span>
+              </div>
             </div>
-          ) : (
-            <>
-              {/* QR Code Tab (Default) */}
-              {activeTab === 'qr' && (
-                <div className="space-y-4 text-center">
-                  <div className="bg-white p-4 rounded-3xl inline-block shadow-xl border-2 border-slate-200">
-                    <img src={qrImageUrl} alt="App Install QR" className="w-48 h-48 sm:w-52 sm:h-52 object-contain" />
-                    <p className="text-xs font-black text-slate-800 mt-2">סרקו במצלמת הטלפון להתקנה</p>
-                  </div>
+          )}
 
-                  <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 text-right space-y-2">
-                    <div className="font-bold text-white text-base flex items-center gap-2">
-                      <span>💡 שלט לתלייה בעמדות האחיות והרופאים:</span>
-                    </div>
-                    <p className="text-sm text-slate-300">
-                      ניתן להדפיס שלט מהודר לתלייה במחלקה. הצוות הרפואי יוכל לסרוק ולהזמין ציוד ישירות ממסך הבית.
-                    </p>
-                  </div>
+          {/* QR Code Tab (Default) */}
+          {activeTab === 'qr' && (
+            <div className="space-y-4 text-center">
+              <div className="bg-white p-4 rounded-3xl inline-block shadow-xl border-2 border-slate-200">
+                <img src={qrImageUrl} alt="App Install QR" className="w-48 h-48 sm:w-52 sm:h-52 object-contain" />
+                <p className="text-xs font-black text-slate-800 mt-2">סרקו במצלמת הטלפון להתקנה מיידית</p>
+              </div>
 
-                  {/* Print & Copy Actions */}
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button
-                      onClick={handlePrintPoster}
-                      className="flex-1 py-3.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-sm sm:text-base rounded-xl shadow-lg shadow-sky-500/30 flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
-                    >
-                      <Printer className="w-5 h-5" />
-                      <span>הדפס שלט QR לתלייה במחלקה 🖨️</span>
-                    </button>
-
-                    <button
-                      onClick={handleCopyLink}
-                      className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer border border-slate-700"
-                    >
-                      {copiedLink ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
-                      <span>{copiedLink ? 'הועתק!' : 'העתק קישור'}</span>
-                    </button>
-                  </div>
+              <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 text-right space-y-2">
+                <div className="font-bold text-white text-base flex items-center gap-2">
+                  <span>💡 שלט לתלייה בעמדות האחיות, הרופאים ומנהלי המחלקות:</span>
                 </div>
-              )}
+                <p className="text-xs sm:text-sm text-slate-300">
+                  הדפיסו שלט מהודר לתלייה במחלקות. כל אח/ות או מנהל/ת יוכלו לסרוק ולהתקין את האפליקציה בטלפון שלהם.
+                </p>
+              </div>
+
+              {/* Print & Copy Actions */}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  onClick={handlePrintPoster}
+                  className="flex-1 py-3.5 px-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-sm sm:text-base rounded-xl shadow-lg shadow-sky-500/30 flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
+                >
+                  <Printer className="w-5 h-5" />
+                  <span>הדפס שלט QR לתלייה במחלקה 🖨️</span>
+                </button>
+
+                <button
+                  onClick={handleCopyLink}
+                  className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer border border-slate-700"
+                >
+                  {copiedLink ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+                  <span>{copiedLink ? 'הועתק!' : 'העתק קישור'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
               {/* Android Tab */}
               {activeTab === 'android' && (
@@ -408,8 +410,6 @@ export function InstallAppModal({
                   </div>
                 </div>
               )}
-            </>
-          )}
         </div>
 
         {/* Footer */}

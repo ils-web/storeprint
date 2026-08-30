@@ -23,10 +23,11 @@ export function DepartmentQRPrintModal({
 
   // Base URL for mobile staff order portal
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
 
   const getPortalUrlForDept = (dept: string) => {
     const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-    return `${origin}/?view=portal_pwa${tenantQuery}&dept=${encodeURIComponent(dept)}`;
+    return `${origin}${pathname}/?view=portal_pwa${tenantQuery}&dept=${encodeURIComponent(dept)}`;
   };
 
   const getQrImageUrl = (dept: string) => {

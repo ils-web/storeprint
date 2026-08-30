@@ -12,7 +12,8 @@ export function MobileStockQRModal({ isOpen, onClose }: MobileStockQRModalProps)
   if (!isOpen) return null;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const mobileStockUrl = `${origin}/?view=mobile_stock`;
+  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
+  const mobileStockUrl = `${origin}${pathname}/?view=mobile_stock`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(mobileStockUrl)}`;
 
   const handleCopy = () => {
