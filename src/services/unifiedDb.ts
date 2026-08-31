@@ -409,13 +409,14 @@ export function getOrderPrintKey(order: {
   if (id.startsWith('order-') || id.startsWith('pwa-') || id.startsWith('tenant-')) {
     return id;
   }
-  const dept = (order.department || '').trim();
-  const time = (order.timestamp || order.rawDate || '').trim();
-  if (dept && time) {
-    return `forms_order_${dept}:::${time}`;
+  const dept = (order.department || '').trim().replace(/\s+/g, ' ');
+  const rawTime = (order.timestamp || order.rawDate || '').trim();
+  const cleanTime = rawTime.replace(/\s+/g, ' ');
+  if (dept && cleanTime) {
+    return `forms_order_${dept}:::${cleanTime}`;
   }
-  if (time) {
-    return `forms_order_time:::${time}`;
+  if (cleanTime) {
+    return `forms_order_time:::${cleanTime}`;
   }
   return id || `forms_order_${dept}_unknown`;
 }

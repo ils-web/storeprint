@@ -878,8 +878,19 @@ export default function App() {
 
       const { updatedStock } = deductOrdersFromDbStock(ordersToPrint);
       setStock(updatedStock);
+      saveDbStock(updatedStock);
       saveStoredStock(updatedStock);
       syncToMultiTenantDb(productHeaders, departments, updatedStock);
+
+      const updatedOrders = orders.map((o) =>
+        cleanPrinted.has(getOrderPrintKey(o)) || ordersToPrint.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o))
+          ? { ...o, printed: true }
+          : o
+      );
+      setOrders(updatedOrders);
+      try {
+        localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updatedOrders));
+      } catch {}
     }
 
     setIsPrintConfirmOpen(false);
@@ -930,11 +941,15 @@ export default function App() {
       return clean;
     });
 
-    setOrders((currentOrders) =>
-      currentOrders.map((o) =>
+    setOrders((currentOrders) => {
+      const updated = currentOrders.map((o) =>
         getOrderPrintKey(o) === key || o.id === orderId ? { ...o, printed: newStatus } : o
-      )
-    );
+      );
+      try {
+        localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
 
     setSuccessMessage(newStatus ? 'סטטוס ההזמנה שונה ל-"הודפס וקוזז" ✓' : 'סטטוס ההזמנה הוחזר ל-"ממתין להדפסה" ⏱');
     setTimeout(() => setSuccessMessage(null), 2500);
