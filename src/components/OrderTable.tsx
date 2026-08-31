@@ -522,10 +522,15 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                               </span>
                             )}
                           </div>
-                          {order.printed && (
+                          {order.printed ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.2 rounded-md">
                               <FileCheck className="w-3 h-3" />
-                              <span>הודפס למחלקה זו</span>
+                              <span>הודפס וקוזז מהמלאי ✓</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.2 rounded-md">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              <span>ממתין להדפסה ⏱</span>
                             </span>
                           )}
                         </div>
@@ -609,12 +614,12 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           {order.printed ? (
                             <>
                               <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>הודפס ✓</span>
+                              <span>הודפס וקוזז ✓</span>
                             </>
                           ) : (
                             <>
                               <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>ממתין ⏱</span>
+                              <span>ממתין להדפסה ⏱</span>
                             </>
                           )}
                         </button>

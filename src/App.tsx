@@ -40,6 +40,10 @@ import {
   deductOrdersFromDbStock,
   getDbDepartments,
   ingestGoogleFormsOrders,
+  getDbPrintedOrderIds,
+  saveDbPrintedOrderIds,
+  getOrderPrintKey,
+  sanitizePrintedOrderIds,
 } from './services/unifiedDb';
 import {
   subscribeToFirestoreStock,
@@ -158,14 +162,9 @@ export default function App() {
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Printed Orders Memory Set
+  // Printed Orders Memory Set (Strict, immutable submission keys only)
   const [printedOrderIds, setPrintedOrderIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(PRINTED_ORDERS_STORAGE_KEY);
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch {
-      return new Set();
-    }
+    return getDbPrintedOrderIds();
   });
 
   // Deleted Orders Permanent Blacklist
@@ -335,14 +334,7 @@ export default function App() {
       const tenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
       const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
-      const currentPrinted = new Set<string>();
-      try {
-        const raw = localStorage.getItem(PRINTED_ORDERS_STORAGE_KEY);
-        if (raw) {
-          const arr = JSON.parse(raw);
-          arr.forEach((id: string) => currentPrinted.add(id));
-        }
-      } catch {}
+      const currentPrinted = getDbPrintedOrderIds();
 
       try {
         const rows = await fetchPublicCsvValues(spreadsheetId, gid);
@@ -354,15 +346,8 @@ export default function App() {
         const result = ingestGoogleFormsOrders(rows, currentPrinted);
 
         const checkOrderPrinted = (o: Order) => {
-          if (o.printed) return true;
-          const keys = [
-            o.id,
-            o.rowNumber ? String(o.rowNumber) : '',
-            o.rowNumber ? `הזמנה #${o.rowNumber}` : '',
-            o.timestamp && o.department ? `${o.department}_${o.timestamp}` : '',
-            o.timestamp || '',
-          ].filter(Boolean);
-          return keys.some((k) => currentPrinted.has(k));
+          const printKey = getOrderPrintKey(o);
+          return currentPrinted.has(printKey);
         };
 
         const syncedOrders = result.orders.map((o) => ({
@@ -373,14 +358,14 @@ export default function App() {
         // Merge PWA orders with Sheet orders (PWA orders first so latest submitted orders appear at the very top!)
         const allOrdersMap = new Map<string, Order>();
         convertedTenantOrders.forEach((o) => {
-          const isPrinted = Boolean(o.printed) || checkOrderPrinted(o);
+          const isPrinted = checkOrderPrinted(o);
           allOrdersMap.set(o.id, {
             ...o,
             printed: isPrinted,
           });
         });
         syncedOrders.forEach((o) => {
-          const isPrinted = Boolean(o.printed) || checkOrderPrinted(o);
+          const isPrinted = checkOrderPrinted(o);
           if (!allOrdersMap.has(o.id)) {
             allOrdersMap.set(o.id, {
               ...o,
@@ -391,7 +376,7 @@ export default function App() {
             allOrdersMap.set(o.id, {
               ...o,
               ...existing,
-              printed: isPrinted || existing.printed,
+              printed: isPrinted,
             });
           }
         });
@@ -804,49 +789,42 @@ export default function App() {
   const handleExecutePrint = (ordersToPrint: Order[], deductStock: boolean, isCopy: boolean = false) => {
     printOrdersHtml(ordersToPrint, printSettings, isCopy);
 
-    const newPrinted = new Set(printedOrderIds);
-    ordersToPrint.forEach((o) => {
-      newPrinted.add(o.id);
-      if (o.rowNumber) {
-        newPrinted.add(String(o.rowNumber));
-        newPrinted.add(`הזמנה #${o.rowNumber}`);
-      }
-      if (o.timestamp && o.department) newPrinted.add(`${o.department}_${o.timestamp}`);
-      if (o.timestamp) newPrinted.add(o.timestamp);
-    });
-    setPrintedOrderIds(newPrinted);
-    try {
-      const serialized = JSON.stringify(Array.from(newPrinted));
-      localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, serialized);
-      localStorage.setItem('storeprint_db_printed_orders_v2', serialized);
-    } catch {}
-
-    setOrders((prev) =>
-      prev.map((o) => (newPrinted.has(o.id) || (o.timestamp && newPrinted.has(`${o.department}_${o.timestamp}`)) ? { ...o, printed: true } : o))
-    );
-
-    // Also update multiTenantDb and Firestore printed status
-    try {
-      ordersToPrint.forEach((o) => {
-        updateOrderPrintedInFirestore(o.id, true, new Date().toISOString(), activeTenantId).catch(console.warn);
-      });
-      const tenantOrders = getTenantOrders(activeTenantId);
-      const updatedTenantOrders = tenantOrders.map((tOrder) => {
-        const match = ordersToPrint.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
-        if (match) {
-          return {
-            ...tOrder,
-            printed: true,
-            printedAt: new Date().toISOString(),
-            status: 'PRINTED' as const,
-          };
-        }
-        return tOrder;
-      });
-      saveTenantOrders(activeTenantId, updatedTenantOrders);
-    } catch {}
-
+    // IRONCLAD RULE: Only mark order as printed if printed WITH stock deduction!
     if (deductStock) {
+      const newPrinted = new Set<string>(printedOrderIds);
+      ordersToPrint.forEach((o) => {
+        const key = getOrderPrintKey(o);
+        newPrinted.add(key);
+      });
+      const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
+      setPrintedOrderIds(cleanPrinted);
+      saveDbPrintedOrderIds(cleanPrinted);
+
+      setOrders((prev) =>
+        prev.map((o) => (cleanPrinted.has(getOrderPrintKey(o)) ? { ...o, printed: true } : o))
+      );
+
+      // Also update multiTenantDb and Firestore printed status
+      try {
+        ordersToPrint.forEach((o) => {
+          updateOrderPrintedInFirestore(o.id, true, new Date().toISOString(), activeTenantId).catch(console.warn);
+        });
+        const tenantOrders = getTenantOrders(activeTenantId);
+        const updatedTenantOrders = tenantOrders.map((tOrder) => {
+          const match = ordersToPrint.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
+          if (match) {
+            return {
+              ...tOrder,
+              printed: true,
+              printedAt: new Date().toISOString(),
+              status: 'PRINTED' as const,
+            };
+          }
+          return tOrder;
+        });
+        saveTenantOrders(activeTenantId, updatedTenantOrders);
+      } catch {}
+
       const { updatedStock } = deductOrdersFromDbStock(ordersToPrint);
       setStock(updatedStock);
       saveStoredStock(updatedStock);
@@ -859,34 +837,27 @@ export default function App() {
   };
 
   const handleTogglePrintedStatus = (orderId: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    const keys = [
-      orderId,
-      targetOrder?.rowNumber ? String(targetOrder.rowNumber) : '',
-      targetOrder?.rowNumber ? `הזמנה #${targetOrder.rowNumber}` : '',
-      targetOrder?.timestamp && targetOrder?.department ? `${targetOrder.department}_${targetOrder.timestamp}` : '',
-      targetOrder?.timestamp || '',
-    ].filter(Boolean);
+    const targetOrder = orders.find(
+      (o) => o.id === orderId || getOrderPrintKey(o) === orderId || (o.rowNumber && String(o.rowNumber) === orderId)
+    );
+    const key = targetOrder ? getOrderPrintKey(targetOrder) : orderId;
 
     let newStatus = false;
     setPrintedOrderIds((prev) => {
-      const next = new Set(prev);
-      const isCurrentlyPrinted = keys.some((k) => next.has(k));
+      const next = new Set<string>(prev);
+      const isCurrentlyPrinted = next.has(key);
+      newStatus = !isCurrentlyPrinted;
       if (isCurrentlyPrinted) {
-        keys.forEach((k) => next.delete(k));
-        newStatus = false;
+        next.delete(key);
       } else {
-        keys.forEach((k) => next.add(k));
-        newStatus = true;
+        next.add(key);
       }
-      try {
-        const serialized = JSON.stringify(Array.from(next));
-        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, serialized);
-        localStorage.setItem('storeprint_db_printed_orders_v2', serialized);
-      } catch {}
+      const clean = sanitizePrintedOrderIds(next);
+      saveDbPrintedOrderIds(clean);
 
       // Update Firestore
-      updateOrderPrintedInFirestore(orderId, newStatus, newStatus ? new Date().toISOString() : undefined, activeTenantId).catch(console.warn);
+      const targetId = targetOrder ? targetOrder.id : orderId;
+      updateOrderPrintedInFirestore(targetId, newStatus, newStatus ? new Date().toISOString() : undefined, activeTenantId).catch(console.warn);
 
       // Also update multiTenantDb so PWA orders stay in sync
       try {
@@ -905,14 +876,16 @@ export default function App() {
         saveTenantOrders(activeTenantId, updated);
       } catch {}
 
-      return next;
+      return clean;
     });
 
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, printed: newStatus } : o))
+    setOrders((currentOrders) =>
+      currentOrders.map((o) =>
+        getOrderPrintKey(o) === key || o.id === orderId ? { ...o, printed: newStatus } : o
+      )
     );
 
-    setSuccessMessage(newStatus ? 'סטטוס ההזמנה שונה ל-"הודפס" ✓' : 'סטטוס ההזמנה הוחזר ל-"ממתין" ⏱');
+    setSuccessMessage(newStatus ? 'סטטוס ההזמנה שונה ל-"הודפס וקוזז" ✓' : 'סטטוס ההזמנה הוחזר ל-"ממתין להדפסה" ⏱');
     setTimeout(() => setSuccessMessage(null), 2500);
   };
 

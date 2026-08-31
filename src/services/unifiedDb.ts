@@ -395,13 +395,66 @@ export function saveDbDepartments(departments: string[]): void {
 }
 
 /**
- * Loads set of printed order composite keys
+ * Computes a deterministic, unique, and immutable key for an order's printed status.
+ * NEVER uses relative row numbers (r, rowNumber, הזמנה #X) which shift and cause false positive matches.
+ */
+export function getOrderPrintKey(order: {
+  id?: string;
+  department?: string;
+  timestamp?: string;
+  rawDate?: string;
+}): string {
+  const id = (order.id || '').trim();
+  // PWA or Tenant Order format (e.g. order-1724900000000, pwa-...)
+  if (id.startsWith('order-') || id.startsWith('pwa-') || id.startsWith('tenant-')) {
+    return id;
+  }
+  const dept = (order.department || '').trim();
+  const time = (order.timestamp || order.rawDate || '').trim();
+  if (dept && time) {
+    return `forms_order_${dept}:::${time}`;
+  }
+  if (time) {
+    return `forms_order_time:::${time}`;
+  }
+  return id || `forms_order_${dept}_unknown`;
+}
+
+/**
+ * Sanitizes printed order IDs by purging legacy row numbers and relative labels ("1", "5", "הזמנה #4")
+ */
+export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
+  const clean = new Set<string>();
+  for (const id of rawIds) {
+    if (!id || typeof id !== 'string') continue;
+    const trimmed = id.trim();
+    // Discard pure numbers (e.g. "5", "42", "1")
+    if (/^\d+$/.test(trimmed)) continue;
+    // Discard generic row labels (e.g. "הזמנה #5", "הזמנה 5", "שורה 5")
+    if (/^הזמנה\s*#?\s*\d+$/i.test(trimmed)) continue;
+    if (/^שורה\s*\d+$/i.test(trimmed)) continue;
+    if (trimmed.length < 5) continue;
+    clean.add(trimmed);
+  }
+  return clean;
+}
+
+/**
+ * Loads set of printed order composite keys, automatically purged of corrupted legacy row numbers
  */
 export function getDbPrintedOrderIds(): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw = localStorage.getItem(DB_STORAGE_KEYS.PRINTED_ORDERS);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
+    const raw =
+      localStorage.getItem(DB_STORAGE_KEYS.PRINTED_ORDERS) ||
+      localStorage.getItem('storeprint_printed_orders_v1');
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    const sanitized = sanitizePrintedOrderIds(parsed);
+    // Write back cleaned set
+    saveDbPrintedOrderIds(sanitized);
+    return sanitized;
   } catch {
     return new Set();
   }
@@ -413,7 +466,10 @@ export function getDbPrintedOrderIds(): Set<string> {
 export function saveDbPrintedOrderIds(ids: Set<string>): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(DB_STORAGE_KEYS.PRINTED_ORDERS, JSON.stringify(Array.from(ids)));
+    const cleanArr = Array.from(sanitizePrintedOrderIds(ids));
+    const serialized = JSON.stringify(cleanArr);
+    localStorage.setItem(DB_STORAGE_KEYS.PRINTED_ORDERS, serialized);
+    localStorage.setItem('storeprint_printed_orders_v1', serialized);
   } catch {}
 }
 
@@ -456,6 +512,7 @@ export function ingestGoogleFormsOrders(
 
   const orders: Order[] = [];
   const deptSet = new Set<string>();
+  const cleanPrintedSet = sanitizePrintedOrderIds(existingPrintedSet);
 
   // 2. Iterate through data rows
   for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
@@ -500,12 +557,8 @@ export function ingestGoogleFormsOrders(
 
     if (orderItems.length > 0) {
       const orderId = `הזמנה #${r - headerRowIndex}`;
-      const compositeKey = `${department}_${timestamp}`;
-      const isPrinted =
-        existingPrintedSet.has(orderId) ||
-        existingPrintedSet.has(String(r)) ||
-        existingPrintedSet.has(compositeKey) ||
-        existingPrintedSet.has(timestamp);
+      const printKey = getOrderPrintKey({ id: orderId, department, timestamp, rawDate });
+      const isPrinted = cleanPrintedSet.has(printKey);
 
       const parsedDate = parseSheetDate(timestamp || rawDate) || new Date();
 
