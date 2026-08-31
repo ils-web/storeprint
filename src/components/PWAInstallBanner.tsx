@@ -17,9 +17,10 @@ export const PWAInstallBanner: React.FC = () => {
       return; // Already installed
     }
 
-    // Check if iOS
+    // Check if mobile (Android, iOS, etc.)
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIphoneOrIpad = /iphone|ipad|ipod/.test(userAgent);
+    const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
     setIsIOS(isIphoneOrIpad);
 
     // Chrome / Android PWA Install Event
@@ -32,10 +33,10 @@ export const PWAInstallBanner: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // If on mobile browser and not installed, show banner after 2 seconds
-    if (isIphoneOrIpad && !isStandalone) {
-      const dismissed = localStorage.getItem('storeprint_pwa_ios_dismissed');
+    if (isMobile && !isStandalone) {
+      const dismissed = localStorage.getItem('storeprint_pwa_banner_dismissed');
       if (!dismissed) {
-        const timer = setTimeout(() => setShowBanner(true), 2500);
+        const timer = setTimeout(() => setShowBanner(true), 2000);
         return () => clearTimeout(timer);
       }
     }
@@ -45,27 +46,29 @@ export const PWAInstallBanner: React.FC = () => {
     };
   }, []);
 
+  const [showAndroidGuide, setShowAndroidGuide] = useState<boolean>(false);
+
   const handleInstallClick = async () => {
     if (isIOS) {
       setShowIOSGuide(true);
       return;
     }
 
-    if (!deferredPrompt) return;
-
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setShowBanner(false);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setShowBanner(false);
+      }
+      setDeferredPrompt(null);
+    } else {
+      setShowAndroidGuide(true);
     }
-    setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
     setShowBanner(false);
-    if (isIOS) {
-      localStorage.setItem('storeprint_pwa_ios_dismissed', 'true');
-    }
+    localStorage.setItem('storeprint_pwa_banner_dismissed', 'true');
   };
 
   if (!showBanner) return null;
@@ -155,6 +158,62 @@ export const PWAInstallBanner: React.FC = () => {
             <button
               onClick={() => setShowIOSGuide(false)}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-black py-2.5 rounded-2xl text-xs transition-colors cursor-pointer"
+            >
+              הבנתי, תודה!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Android / Chrome Guide Modal */}
+      {showAndroidGuide && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xs z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-black text-base flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-emerald-600" />
+                <span>התקנה ב-Android / Chrome</span>
+              </h3>
+              <button
+                onClick={() => setShowAndroidGuide(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
+              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="font-mono font-black text-emerald-600 bg-emerald-100 rounded-lg w-6 h-6 flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div>
+                  לחץ על תפריט <strong>3 הנקודות (⋮)</strong> בפינה העליונה של דפדפן Chrome.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="font-mono font-black text-emerald-600 bg-emerald-100 rounded-lg w-6 h-6 flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div>
+                  בחר באפשרות <strong>"התקנת אפליקציה" (Install App)</strong> או <strong>"הוסף למסך הבית"</strong>.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="font-mono font-black text-emerald-600 bg-emerald-100 rounded-lg w-6 h-6 flex items-center justify-center shrink-0">
+                  3
+                </span>
+                <div>
+                  אשר את ההתקנה — והאיקון של StorePrint יופיע במסך הבית של הטלפון שלך!
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAndroidGuide(false)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-2xl text-xs transition-colors cursor-pointer"
             >
               הבנתי, תודה!
             </button>
