@@ -452,12 +452,15 @@ export default function App() {
         } catch {}
 
         if (!cachedLoaded) {
-          const mockOrders = getMockCurrentWeekOrders();
-          const cleanMock = mockOrders.map((o) => ({
-            ...o,
-            printed: currentPrinted.has(getOrderPrintKey(o)),
-          }));
-          setOrders(convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock);
+          setOrders((prev) => {
+            if (prev.length > 0) return prev;
+            const mockOrders = getMockCurrentWeekOrders();
+            const cleanMock = mockOrders.map((o) => ({
+              ...o,
+              printed: currentPrinted.has(getOrderPrintKey(o)),
+            }));
+            return convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock;
+          });
         }
       } finally {
         setIsLoading(false);

@@ -92,12 +92,26 @@ export async function fetchSheetValues(
 }
 
 /**
- * Fallback CSV Fetcher for public Google Sheets (with CORS proxy fallback)
+ * Robust CSV Fetcher for public Google Sheets with CORS-enabled gviz endpoint and proxies
  */
 export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = DEFAULT_GID): Promise<string[][]> {
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
   const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
 
-  // 1. Try direct fetch
+  // 1. Primary: Google Visualization CSV endpoint (CORS-friendly, no auth required for public sheets)
+  try {
+    const response = await fetch(gvizUrl);
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('GVIZ CSV fetch failed, trying direct export...', err);
+  }
+
+  // 2. Secondary: Direct CSV export endpoint
   try {
     const response = await fetch(directCsvUrl);
     if (response.ok) {
@@ -110,9 +124,9 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
     console.warn('Direct CSV fetch failed, attempting proxy fallback...', err);
   }
 
-  // 2. Try proxy fallback for environments where direct fetch is blocked
+  // 3. Tertiary: AllOrigins proxy fallback
   try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directCsvUrl)}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrl)}`;
     const response = await fetch(proxyUrl);
     if (response.ok) {
       const csvText = await response.text();
