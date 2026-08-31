@@ -337,7 +337,9 @@ export default function App() {
       const currentPrinted = getDbPrintedOrderIds();
 
       try {
-        const rows = await fetchPublicCsvValues(spreadsheetId, gid);
+        const currentSpreadsheetId = spreadsheetId || activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID;
+        const currentGid = gid || activeTenant?.spreadsheetGid || DEFAULT_GID;
+        const rows = await fetchPublicCsvValues(currentSpreadsheetId, currentGid);
 
         if (!rows || rows.length < 2) {
           throw new Error('קובץ הטבלה ריק או שאין בו מספיק נתונים');
@@ -384,14 +386,14 @@ export default function App() {
         const deletedSet = (() => {
           try {
             const raw = localStorage.getItem('storeprint_deleted_orders_v2');
-            return raw ? new Set(JSON.parse(raw)) : new Set();
+            return raw ? sanitizePrintedOrderIds(JSON.parse(raw)) : new Set<string>();
           } catch {
-            return new Set();
+            return new Set<string>();
           }
         })();
 
         const mergedOrders = Array.from(allOrdersMap.values()).filter(
-          (o) => !deletedSet.has(o.id) && !deletedSet.has(String(o.rowNumber))
+          (o) => !deletedSet.has(o.id) && !deletedSet.has(getOrderPrintKey(o))
         );
 
         setOrders(mergedOrders);
@@ -411,12 +413,18 @@ export default function App() {
         }
       } catch (err: any) {
         console.warn('Live fetch error, falling back to mock data + PWA orders:', err);
+        const mockOrders = getMockCurrentWeekOrders();
+        const cleanMock = mockOrders.map((o) => ({
+          ...o,
+          printed: currentPrinted.has(getOrderPrintKey(o)),
+        }));
+        setOrders(convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock);
       } finally {
         setIsLoading(false);
         isFetchingOrdersRef.current = false;
       }
     },
-    [spreadsheetId, gid, activeTenantId, convertTenantOrderToAppOrder, syncToMultiTenantDb, cloudConfig]
+    [spreadsheetId, gid, activeTenantId, activeTenant, convertTenantOrderToAppOrder]
   );
 
   // Auto-reload only on custom order creation events

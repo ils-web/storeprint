@@ -28,6 +28,17 @@ export const app = getApps().length === 0
   ? initializeApp(firebaseConfig || DEFAULT_FIREBASE_CONFIG) 
   : getApp();
 
-export const db: Firestore = getFirestore(app);
-export const auth: Auth = getAuth(app);
-export const isFirebaseReady = Boolean(app && db);
+export let db: Firestore | null = null;
+export let auth: Auth | null = null;
+export let isFirebaseReady = false;
+
+try {
+  if (app) {
+    db = getFirestore(app);
+    auth = getAuth(app);
+    // Only enable if valid config exists
+    isFirebaseReady = false; // Kept false until Firestore database is explicitly enabled in console
+  }
+} catch (e) {
+  console.warn('Firestore not active, operating in offline/Sheets mode.');
+}
