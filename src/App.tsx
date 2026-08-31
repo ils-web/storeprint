@@ -58,6 +58,7 @@ import {
   getLowStockItems,
   detectPackagingUnitFromProductName,
 } from './utils/stockManager';
+import { parseSheetDate } from './utils/dateUtils';
 import {
   loadCloudConfig,
   saveCloudConfig,
@@ -138,7 +139,23 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal' | 'analytics'>('orders');
 
   // Orders & Fast Cached Departments State
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const raw = localStorage.getItem('storeprint_orders_cache_v2');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const currentPrinted = getDbPrintedOrderIds();
+          return parsed.map((o: any) => ({
+            ...o,
+            parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+            printed: currentPrinted.has(getOrderPrintKey(o)),
+          }));
+        }
+      }
+    } catch {}
+    return [];
+  });
   const [departments, setDepartments] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(DEPARTMENTS_CACHE_KEY);
@@ -397,6 +414,10 @@ export default function App() {
         );
 
         setOrders(mergedOrders);
+        try {
+          localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(mergedOrders));
+        } catch {}
+
         if (result.departments.length > 0) {
           setDepartments(result.departments);
           localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
@@ -412,13 +433,32 @@ export default function App() {
           setTimeout(() => setSuccessMessage(null), 3500);
         }
       } catch (err: any) {
-        console.warn('Live fetch error, falling back to mock data + PWA orders:', err);
-        const mockOrders = getMockCurrentWeekOrders();
-        const cleanMock = mockOrders.map((o) => ({
-          ...o,
-          printed: currentPrinted.has(getOrderPrintKey(o)),
-        }));
-        setOrders(convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock);
+        console.warn('Live fetch error, checking cached orders:', err);
+        let cachedLoaded = false;
+        try {
+          const raw = localStorage.getItem('storeprint_orders_cache_v2');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const cleanCached = parsed.map((o: any) => ({
+                ...o,
+                parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+                printed: currentPrinted.has(getOrderPrintKey(o)),
+              }));
+              setOrders(cleanCached);
+              cachedLoaded = true;
+            }
+          }
+        } catch {}
+
+        if (!cachedLoaded) {
+          const mockOrders = getMockCurrentWeekOrders();
+          const cleanMock = mockOrders.map((o) => ({
+            ...o,
+            printed: currentPrinted.has(getOrderPrintKey(o)),
+          }));
+          setOrders(convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock);
+        }
       } finally {
         setIsLoading(false);
         isFetchingOrdersRef.current = false;

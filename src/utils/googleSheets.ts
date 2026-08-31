@@ -92,16 +92,39 @@ export async function fetchSheetValues(
 }
 
 /**
- * Fallback CSV Fetcher for public Google Sheets (without requiring OAuth)
+ * Fallback CSV Fetcher for public Google Sheets (with CORS proxy fallback)
  */
 export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = DEFAULT_GID): Promise<string[][]> {
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-  const response = await fetch(csvUrl);
-  if (!response.ok) {
-    throw new Error(`Не удалось загрузить публичный CSV Google Sheets (${response.status})`);
+  const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+
+  // 1. Try direct fetch
+  try {
+    const response = await fetch(directCsvUrl);
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('Direct CSV fetch failed, attempting proxy fallback...', err);
   }
-  const csvText = await response.text();
-  return parseCsvString(csvText);
+
+  // 2. Try proxy fallback for environments where direct fetch is blocked
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directCsvUrl)}`;
+    const response = await fetch(proxyUrl);
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('Proxy fallback failed:', err);
+  }
+
+  throw new Error('Не удалось загрузить данные из Google Таблицы');
 }
 
 /**
