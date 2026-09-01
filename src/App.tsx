@@ -43,6 +43,7 @@ import {
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
   getOrderPrintKey,
+  isOrderPrintedInSet,
   sanitizePrintedOrderIds,
 } from './services/unifiedDb';
 import {
@@ -359,7 +360,10 @@ export default function App() {
       const tenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
       const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
-      const currentPrinted = getDbPrintedOrderIds();
+      // Combine stored printed IDs with live state
+      const currentPrinted = new Set<string>();
+      getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+      printedOrderIds.forEach((id) => currentPrinted.add(id));
 
       try {
         const currentSpreadsheetId = spreadsheetId || activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID;
@@ -373,8 +377,7 @@ export default function App() {
         const result = ingestGoogleFormsOrders(rows, currentPrinted);
 
         const checkOrderPrinted = (o: Order) => {
-          const printKey = getOrderPrintKey(o);
-          return currentPrinted.has(printKey);
+          return isOrderPrintedInSet(o, currentPrinted);
         };
 
         const syncedOrders = result.orders.map((o) => ({
@@ -862,14 +865,17 @@ export default function App() {
       ordersToPrint.forEach((o) => {
         const key = getOrderPrintKey(o);
         newPrinted.add(key);
+        if (o.id) newPrinted.add(o.id);
+        if (o.department && o.timestamp) {
+          newPrinted.add(`forms_order_${o.department.trim()}:::${o.timestamp.trim()}`);
+        }
+        if (o.department && o.rawDate) {
+          newPrinted.add(`forms_order_${o.department.trim()}:::${o.rawDate.trim()}`);
+        }
       });
       const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
       setPrintedOrderIds(cleanPrinted);
       saveDbPrintedOrderIds(cleanPrinted);
-
-      setOrders((prev) =>
-        prev.map((o) => (cleanPrinted.has(getOrderPrintKey(o)) ? { ...o, printed: true } : o))
-      );
 
       // Also update multiTenantDb and Firestore printed status
       try {
@@ -899,7 +905,7 @@ export default function App() {
       syncToMultiTenantDb(productHeaders, departments, updatedStock);
 
       const updatedOrders = orders.map((o) =>
-        cleanPrinted.has(getOrderPrintKey(o)) || ordersToPrint.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o))
+        isOrderPrintedInSet(o, cleanPrinted) || ordersToPrint.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o) || p.id === o.id)
           ? { ...o, printed: true }
           : o
       );
@@ -923,12 +929,30 @@ export default function App() {
     let newStatus = false;
     setPrintedOrderIds((prev) => {
       const next = new Set<string>(prev);
-      const isCurrentlyPrinted = next.has(key);
+      const isCurrentlyPrinted = targetOrder ? isOrderPrintedInSet(targetOrder, next) : next.has(key);
       newStatus = !isCurrentlyPrinted;
       if (isCurrentlyPrinted) {
         next.delete(key);
+        if (targetOrder) {
+          if (targetOrder.id) next.delete(targetOrder.id);
+          if (targetOrder.department && targetOrder.timestamp) {
+            next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
+          }
+          if (targetOrder.department && targetOrder.rawDate) {
+            next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
+          }
+        }
       } else {
         next.add(key);
+        if (targetOrder) {
+          if (targetOrder.id) next.add(targetOrder.id);
+          if (targetOrder.department && targetOrder.timestamp) {
+            next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
+          }
+          if (targetOrder.department && targetOrder.rawDate) {
+            next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
+          }
+        }
       }
       const clean = sanitizePrintedOrderIds(next);
       saveDbPrintedOrderIds(clean);
@@ -959,7 +983,9 @@ export default function App() {
 
     setOrders((currentOrders) => {
       const updated = currentOrders.map((o) =>
-        getOrderPrintKey(o) === key || o.id === orderId ? { ...o, printed: newStatus } : o
+        getOrderPrintKey(o) === key || o.id === orderId || (targetOrder && o.id === targetOrder.id)
+          ? { ...o, printed: newStatus }
+          : o
       );
       try {
         localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updated));

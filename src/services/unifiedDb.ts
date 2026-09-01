@@ -422,6 +422,39 @@ export function getOrderPrintKey(order: {
 }
 
 /**
+ * Deterministically checks whether an order has been marked as printed across all composite key variants
+ */
+export function isOrderPrintedInSet(
+  order: { id?: string; department?: string; timestamp?: string; rawDate?: string },
+  printedSet: Set<string>
+): boolean {
+  if (!printedSet || printedSet.size === 0) return false;
+  const primaryKey = getOrderPrintKey(order);
+  if (printedSet.has(primaryKey)) return true;
+
+  const id = (order.id || '').trim();
+  if (id && printedSet.has(id)) return true;
+
+  const dept = (order.department || '').trim().replace(/\s+/g, ' ');
+  const ts = (order.timestamp || '').trim().replace(/\s+/g, ' ');
+  const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
+
+  if (dept && ts && printedSet.has(`forms_order_${dept}:::${ts}`)) return true;
+  if (dept && rawDate && printedSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
+
+  // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
+  if (ts.includes(' ')) {
+    const parts = ts.split(' ');
+    if (parts.length === 2) {
+      const reversedTs = `${parts[1]} ${parts[0]}`;
+      if (dept && printedSet.has(`forms_order_${dept}:::${reversedTs}`)) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Sanitizes printed order IDs by purging legacy row numbers and relative labels ("1", "5", "הזמנה #4")
  */
 export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
@@ -585,8 +618,10 @@ export function ingestGoogleFormsOrders(
 
     if (orderItems.length > 0) {
       const orderId = `הזמנה #${r - headerRowIndex}`;
-      const printKey = getOrderPrintKey({ id: orderId, department, timestamp, rawDate });
-      const isPrinted = cleanPrintedSet.has(printKey);
+      const isPrinted = isOrderPrintedInSet(
+        { id: orderId, department, timestamp, rawDate },
+        cleanPrintedSet
+      );
 
       const parsedDate = parseSheetDate(timestamp || rawDate) || new Date();
 
