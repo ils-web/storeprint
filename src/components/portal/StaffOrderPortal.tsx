@@ -50,6 +50,7 @@ import {
   ShieldCheck,
   Flame,
   Check,
+  ChevronDown,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -126,9 +127,12 @@ function detectItemCategory(name: string): 'gloves' | 'dressings' | 'hygiene' | 
 
 export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToMain }: StaffOrderPortalProps) {
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
   const tenants = getTenants();
-  const [selectedTenantId, setSelectedTenantId] = useState<string>(
+  const [selectedTenantId] = useState<string>(
     initialTenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
   );
 
@@ -136,7 +140,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
   const warehouses = getWarehouses(selectedTenantId);
   const activeWarehouse = warehouses[0] || null;
 
-  // Departments List (from Unified DB, MultiTenant DB, or Defaults)
+  // Departments List
   const departmentsList = useMemo(() => {
     const fromDb = getDbDepartments();
     const fromTenant = getTenantDepartments(selectedTenantId).map((d) => d.name);
@@ -156,6 +160,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     return departmentsList[0] || "ג' 1 סיעוד מורכב";
   });
 
+  const [deptSearchTerm, setDeptSearchTerm] = useState('');
   const [patientsCount, setPatientsCount] = useState<string>('');
   const [requesterName, setRequesterName] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -163,10 +168,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     }
     return '';
   });
-  const [activeTab, setActiveTab] = useState<'catalog' | 'my_orders'>('catalog');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'gloves' | 'dressings' | 'hygiene' | 'medical' | 'in_cart'>('all');
 
-  // Search & Filter
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'gloves' | 'dressings' | 'hygiene' | 'medical' | 'in_stock' | 'in_cart'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -178,7 +181,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getDbStock());
 
-  // Save selected department to local storage for convenience
+  // Save selected department
   useEffect(() => {
     if (selectedDepartmentName && typeof window !== 'undefined') {
       localStorage.setItem('storeprint_portal_saved_dept', selectedDepartmentName);
@@ -215,14 +218,21 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Available Products: Complete Master Catalog from Warehouse Stock (excluding inactive items)
+  // RULE 1: Catalog strictly matches active warehouse stock and EXCLUDES frozen/inactive items
   const inventoryItems = useMemo(() => {
-    const stockItems = (Object.values(liveStock || {}) || []) as StockItem[];
+    const dbStock = getDbStock();
+    const mergedStock: Record<string, StockItem> = { ...dbStock, ...(liveStock || {}) };
 
-    if (stockItems.length > 0) {
-      return stockItems
-        .filter((item) => item.isActive !== false)
-        .sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0))
+    const stockList = Object.values(mergedStock);
+
+    if (stockList.length > 0) {
+      return stockList
+        .filter((item) => item && item.isActive !== false && item.name && !item.name.startsWith('פריט '))
+        .sort((a, b) => {
+          const colA = typeof a.colIndex === 'number' ? a.colIndex : 999;
+          const colB = typeof b.colIndex === 'number' ? b.colIndex : 999;
+          return colA - colB;
+        })
         .map((item, idx) => ({
           id: item.id || item.name,
           warehouseId: activeWarehouse?.id || 'wh-default',
@@ -231,7 +241,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
           currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
           minThreshold: item.minThreshold || 10,
           colIndex: item.colIndex || idx + 1,
-          isActive: item.isActive !== false,
+          isActive: true,
           limitByPatients: Boolean(item.limitByPatients),
           category: detectItemCategory(item.name),
         }));
@@ -250,6 +260,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
       if (categoryFilter === 'in_cart') {
         const inCartQty = cart[p.id]?.orderedQty || 0;
         if (inCartQty <= 0) return false;
+      } else if (categoryFilter === 'in_stock') {
+        if (p.currentStock <= 0) return false;
       } else if (categoryFilter !== 'all') {
         if (p.category !== categoryFilter) return false;
       }
@@ -506,77 +518,80 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     printWindow.document.close();
   };
 
-  const [refreshPastOrdersKey, setRefreshPastOrdersKey] = useState<number>(0);
-
-  const pastOrders = useMemo(() => {
+  // Department's own past submissions
+  const myDeptOrders = useMemo(() => {
     return getTenantOrders(selectedTenantId).filter(
-      (o) => !selectedDepartmentName || o.departmentName === selectedDepartmentName
+      (o) => o.departmentName === selectedDepartmentName
     );
-  }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber, refreshPastOrdersKey]);
+  }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber]);
 
   return (
     <div
       className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-32 text-sm selection:bg-indigo-500 selection:text-white"
       dir="rtl"
     >
-      {/* Top Fixed Header */}
+      {/* Top App Header */}
       <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+          {/* Department Selector Pill */}
           <div className="flex items-center gap-2 min-w-0">
             {onBackToMain && (
               <button
                 onClick={onBackToMain}
                 className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0"
-                title="חזרה למסך ניהול המחסן"
+                title="חזרה למסך ניהול"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-sm sm:text-base text-white truncate">
-                  פורטל הזמנות מחלקות 📋
-                </span>
-                <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30 shrink-0">
-                  {inventoryItems.length} פריטים
-                </span>
+
+            <button
+              onClick={() => setIsDeptModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-slate-100 rounded-xl border border-slate-700 transition-all cursor-pointer min-w-0 text-right"
+              title="לחץ להחלפת מחלקה"
+            >
+              <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400 leading-none">מחלקה מזמינה:</div>
+                <div className="font-black text-xs sm:text-sm text-white truncate flex items-center gap-1">
+                  <span>{selectedDepartmentName}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                </div>
               </div>
-              <p className="text-[11px] text-slate-400 truncate">
-                מחלקה: <strong className="text-indigo-300">{selectedDepartmentName}</strong>
-              </p>
-            </div>
+            </button>
           </div>
 
+          {/* Action Buttons */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => setIsInstallModalOpen(true)}
-              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md transition-all cursor-pointer"
-              title="התקנת האפליקציה למסך הבית"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">התקן</span>
-            </button>
+            {myDeptOrders.length > 0 && (
+              <button
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer relative"
+                title="היסטוריית הזמנות המחלקה"
+              >
+                <Clock className="w-4 h-4 text-sky-400" />
+                <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                  {myDeptOrders.length}
+                </span>
+              </button>
+            )}
 
             <button
-              onClick={() => setIsCartOpen(true)}
-              className={`relative px-3 py-1.5 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer font-bold text-xs ${
-                totalCartCount > 0
-                  ? 'bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white animate-pulse'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
-              }`}
+              onClick={() => setIsInstallModalOpen(true)}
+              className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+              title="התקנת האפליקציה למסך הבית"
             >
-              <ShoppingBag className="w-4 h-4" />
-              <span>סל ({totalCartCount})</span>
+              <Smartphone className="w-4 h-4 text-emerald-400" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-3xl mx-auto p-3 sm:p-4 space-y-3.5">
-        {/* Success Confirmation Modal / Screen */}
+      {/* Main Shopping Area */}
+      <main className="max-w-2xl mx-auto p-3 sm:p-4 space-y-3">
+        {/* Success Confirmation Card */}
         {orderSuccessNumber && lastSubmittedOrder && (
-          <div className="bg-gradient-to-br from-emerald-950/80 to-slate-900 border-2 border-emerald-500/60 rounded-3xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gradient-to-br from-emerald-950/90 to-slate-900 border-2 border-emerald-500/60 rounded-3xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/40">
@@ -600,533 +615,279 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
               </button>
             </div>
 
-            <div className="bg-slate-950/80 rounded-2xl p-3.5 border border-slate-800 space-y-2 text-xs">
-              <div className="font-bold text-slate-300 flex items-center justify-between">
-                <span>סיכום פריטים שהוזמנו ({lastSubmittedOrder.items.length}):</span>
-                <span className="text-slate-400 font-normal">
-                  {new Date(lastSubmittedOrder.createdAt).toLocaleTimeString('he-IL', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-800/60">
-                {lastSubmittedOrder.items.map((it: any, idx: number) => (
-                  <div key={idx} className="pt-1 flex items-center justify-between text-slate-200">
-                    <span>{it.name}</span>
-                    <span className="font-bold text-emerald-400 font-mono">
-                      {it.orderedQty} {it.orderedUnit || "יח'"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex gap-2">
               <button
-                type="button"
                 onClick={() => handlePrintSlip(lastSubmittedOrder)}
-                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
-                <Printer className="w-4 h-4 text-sky-400" />
+                <Printer className="w-4 h-4" />
                 <span>הדפס עותק הזמנה למחלקה</span>
               </button>
-
               <button
-                type="button"
                 onClick={() => {
                   setOrderSuccessNumber(null);
                   setLastSubmittedOrder(null);
-                  setActiveTab('catalog');
                 }}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-colors cursor-pointer"
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs cursor-pointer transition-colors"
               >
-                <Plus className="w-4 h-4" />
-                <span>ביצוע הזמנה נוספת</span>
+                בצע הזמנה נוספת
               </button>
             </div>
           </div>
         )}
 
-        {/* Department & Requester Header Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Building2 className="w-4 h-4 text-indigo-400" />
-              פרטי המחלקה והמזמין/ה
-            </label>
-            <span className="text-[11px] text-slate-400 font-mono">
-              סך הכל {inventoryItems.length} פריטים זמינים
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-            {/* Department Dropdown */}
-            <div className="sm:col-span-5">
-              <label className="text-[10px] font-bold text-slate-400 block mb-1">
-                מחלקה מזמינה *
-              </label>
-              <select
-                value={selectedDepartmentName}
-                onChange={(e) => setSelectedDepartmentName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer font-bold"
-              >
-                {departmentsList.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-                <option value="custom">+ הקלד מחלקה אחרת...</option>
-              </select>
-            </div>
-
-            {/* Requester Name */}
-            <div className="sm:col-span-4">
-              <label className="text-[10px] font-bold text-slate-400 block mb-1">
-                שם המזמין/ה (איש קשר) *
-              </label>
-              <input
-                type="text"
-                placeholder="לדוגמה: אילנה / מנהל תורן"
-                value={requesterName}
-                onChange={(e) => setRequesterName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-medium"
-              />
-            </div>
-
-            {/* Patients Count */}
-            <div className="sm:col-span-3">
-              <label className="text-[10px] font-bold text-slate-400 block mb-1">
-                מס' מטופלים במחלקה
-              </label>
-              <input
-                type="number"
-                min="0"
-                placeholder="מס' מאושפזים"
-                value={patientsCount}
-                onChange={(e) => setPatientsCount(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-center"
-              />
-            </div>
-          </div>
-
-          {selectedDepartmentName === 'custom' && (
-            <input
-              type="text"
-              placeholder="הקלד את שם המחלקה החדשה"
-              onChange={(e) => setSelectedDepartmentName(e.target.value)}
-              className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 mt-1"
-            />
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="חיפוש פריט, ציוד רפואי, חבישה, כפפות..."
+            className="w-full pr-10 pl-10 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute left-3.5 top-3.5 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
         </div>
 
-        {/* Navigation Tabs (Catalog vs Past Orders) */}
-        <div className="grid grid-cols-2 p-1 bg-slate-900 rounded-2xl border border-slate-800">
-          <button
-            onClick={() => setActiveTab('catalog')}
-            className={`py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'catalog'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>קטלוג פריטים להזמנה ({inventoryItems.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('my_orders')}
-            className={`py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'my_orders'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ClipboardList className="w-3.5 h-3.5" />
-            <span>ההזמנות שלי ({pastOrders.length})</span>
-          </button>
+        {/* Category Pills (Horizontal Scroll) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+          {[
+            { id: 'all', label: '🌟 הכל', count: inventoryItems.length },
+            { id: 'gloves', label: '🧤 כפפות ומיגון', count: inventoryItems.filter((i) => i.category === 'gloves').length },
+            { id: 'dressings', label: '🩹 חבישה וגאזות', count: inventoryItems.filter((i) => i.category === 'dressings').length },
+            { id: 'hygiene', label: '🧼 ספיגה והיגיינה', count: inventoryItems.filter((i) => i.category === 'hygiene').length },
+            { id: 'medical', label: '💉 עירוי ורפואי', count: inventoryItems.filter((i) => i.category === 'medical').length },
+            { id: 'in_stock', label: '⚡ במלאי זמין', count: inventoryItems.filter((i) => i.currentStock > 0).length },
+            { id: 'in_cart', label: `🛒 בסל (${totalCartCount})`, count: cartItemsList.length },
+          ].map((cat) => {
+            const isSelected = categoryFilter === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryFilter(cat.id as any)}
+                className={`px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                <span>{cat.label}</span>
+                {cat.count > 0 && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-indigo-800/80 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {cat.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        {activeTab === 'catalog' && (
-          <div className="space-y-3">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="חיפוש מהיר של פריט לפי שם, מק״ט או יחידה..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-10 pl-9 py-2.5 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white cursor-pointer"
-                  title="נקה חיפוש"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+        {/* Product Cards List */}
+        <div className="space-y-2.5 pt-1">
+          {filteredProducts.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-3">
+              <Package className="w-12 h-12 text-slate-600 mx-auto" />
+              <div>
+                <h4 className="text-base font-bold text-white">לא נמצאו פריטים מתאימים</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  נסה לשנות את מילת החיפוש או לבחור קטגוריה אחרת
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setCategoryFilter('all');
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                הצג את כל הפריטים
+              </button>
             </div>
+          ) : (
+            filteredProducts.map((product) => {
+              const inCartQty = cart[product.id]?.orderedQty || 0;
+              const isSelected = inCartQty > 0;
+              const isOutOfStock = product.currentStock <= 0;
+              const isLowStock = product.currentStock > 0 && product.currentStock <= product.minThreshold;
 
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-              <button
-                type="button"
-                onClick={() => setCategoryFilter('all')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  categoryFilter === 'all'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                }`}
-              >
-                🌟 הכל ({inventoryItems.length})
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCategoryFilter('gloves')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  categoryFilter === 'gloves'
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                }`}
-              >
-                🧤 כפפות ומיגון
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCategoryFilter('dressings')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  categoryFilter === 'dressings'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                }`}
-              >
-                🩹 חבישה וגאזות
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCategoryFilter('hygiene')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  categoryFilter === 'hygiene'
-                    ? 'bg-teal-600 text-white shadow-xs'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                }`}
-              >
-                🧼 ספיגה והיגיינה
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCategoryFilter('medical')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  categoryFilter === 'medical'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                }`}
-              >
-                💉 עירוי ורפואי
-              </button>
-
-              {cartItemsList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCategoryFilter('in_cart')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                    categoryFilter === 'in_cart'
-                      ? 'bg-pink-600 text-white shadow-xs'
-                      : 'bg-pink-950/40 text-pink-300 border border-pink-700/50 hover:bg-pink-900/40'
+              return (
+                <div
+                  key={product.id}
+                  className={`bg-slate-900 rounded-2xl p-3.5 border transition-all ${
+                    isSelected
+                      ? 'border-indigo-500/80 shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-500/30'
+                      : 'border-slate-800/90 hover:border-slate-700'
                   }`}
                 >
-                  🛒 בסל ההזמנה ({cartItemsList.length})
-                </button>
-              )}
-            </div>
-
-            {/* Products List */}
-            {filteredProducts.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-2">
-                <Package className="w-10 h-10 text-slate-600 mx-auto" />
-                <h4 className="font-bold text-white text-base">לא נמצאו פריטים תואמים</h4>
-                <p className="text-xs text-slate-400">
-                  נסה לשנות את מילת החיפוש או לבחור קטגוריה אחרת.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {filteredProducts.map((prod, idx) => {
-                  const inCart = cart[prod.id];
-                  const qty = inCart ? inCart.orderedQty : 0;
-                  const unit = inCart?.orderedUnit || prod.unit || "יח'";
-
-                  return (
-                    <div
-                      key={prod.id}
-                      className={`bg-slate-900 border rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md transition-all ${
-                        qty > 0
-                          ? 'border-indigo-500/90 ring-2 ring-indigo-500/20 bg-slate-900/95'
-                          : 'border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      {/* Product Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-800">
-                            #{prod.colIndex || idx + 1}
-                          </span>
-                          <h4 className="font-black text-sm sm:text-base text-white leading-snug">
-                            {prod.name}
-                          </h4>
-                          {prod.limitByPatients && (
-                            <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-600/50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
-                              <Users className="w-3 h-3" />
-                              מוגבל למטופלים
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2">
-                          <span>
-                            יתרה במחסן:{' '}
-                            <strong className={prod.currentStock > 0 ? 'text-slate-200' : 'text-rose-400'}>
-                              {prod.currentStock} {prod.unit || "יח'"}
-                            </strong>
-                          </span>
-                          {qty > 0 && (
-                            <span className="text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-700/50">
-                              ✓ בסל: {qty} {unit}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Quantity & Unit Controls */}
-                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
-                        {/* Packaging Unit Selector */}
-                        <select
-                          value={unit}
-                          onChange={(e) => handleUnitChange(prod, e.target.value as PackagingUnit)}
-                          className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-500 cursor-pointer"
-                        >
-                          {STANDARD_PACKAGING_UNITS.map((u) => (
-                            <option key={u.value} value={u.value}>
-                              {u.labelHe}
-                            </option>
-                          ))}
-                        </select>
-
-                        {/* Quick Batch Increment / Decrement Controls */}
-                        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700">
-                          {/* -5 */}
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(prod, unit, -5)}
-                            disabled={qty === 0}
-                            className="w-7 h-8 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-[10px] font-bold disabled:opacity-20 cursor-pointer transition-colors"
-                            title="הפחת 5"
-                          >
-                            -5
-                          </button>
-
-                          {/* -1 */}
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(prod, unit, -1)}
-                            disabled={qty === 0}
-                            className="w-8 h-8 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-white flex items-center justify-center disabled:opacity-20 cursor-pointer transition-colors"
-                            title="הפחת 1"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Numeric Qty Input */}
-                          <input
-                            type="number"
-                            min="0"
-                            value={qty === 0 ? '' : qty}
-                            placeholder="0"
-                            onChange={(e) =>
-                              handleSetQty(prod, unit, parseInt(e.target.value, 10) || 0)
-                            }
-                            className={`w-12 h-8 text-center font-black text-sm font-mono rounded-lg border focus:outline-none focus:ring-1 ${
-                              qty > 0
-                                ? 'bg-indigo-950/60 border-indigo-500 text-white focus:ring-indigo-400'
-                                : 'bg-slate-900 border-slate-700 text-slate-400 focus:ring-slate-500'
-                            }`}
-                          />
-
-                          {/* +1 */}
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(prod, unit, 1)}
-                            className="w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center justify-center cursor-pointer transition-colors shadow-xs"
-                            title="הוסף 1"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* +5 */}
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(prod, unit, 5)}
-                            className="w-7 h-8 rounded-lg bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 text-[10px] font-black cursor-pointer transition-colors"
-                            title="הוסף 5"
-                          >
-                            +5
-                          </button>
-
-                          {/* +10 */}
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateQty(prod, unit, 10)}
-                            className="w-7 h-8 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-300 text-[10px] font-black cursor-pointer transition-colors"
-                            title="הוסף 10"
-                          >
-                            +10
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Past Orders Tab */}
-        {activeTab === 'my_orders' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between px-1">
-              <h4 className="font-bold text-white text-sm">
-                היסטוריית הזמנות עבור מחלקת {selectedDepartmentName} ({pastOrders.length})
-              </h4>
-            </div>
-
-            {pastOrders.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-2">
-                <ClipboardList className="w-10 h-10 text-slate-600 mx-auto" />
-                <h4 className="font-bold text-white text-base">טרם בוצעו הזמנות עבור מחלקה זו</h4>
-                <p className="text-xs text-slate-400">
-                  כל הזמנה שתישלח תופיע כאן עם סטטוס מעקב בזמן אמת.
-                </p>
-              </div>
-            ) : (
-              pastOrders.map((ord) => (
-                <div
-                  key={ord.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <strong className="font-mono text-white text-sm">{ord.orderNumber}</strong>
-                        {ord.printed ? (
-                          <span className="text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            הודפס וסופק מהמחסן ✓
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-700/60 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-amber-400" />
-                            ממתין להדפסה וליקוט ⏱
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Product Info */}
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-sm text-white leading-snug">
+                          {product.name}
+                        </span>
+                        {product.limitByPatients && (
+                          <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                            מוגבל לפי מטופלים
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-slate-400 mt-1">
-                        תאריך: {new Date(ord.createdAt).toLocaleString('he-IL')}
-                        {ord.notes && <span className="mr-2">({ord.notes})</span>}
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handlePrintSlip(ord)}
-                        className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="הדפסת שובר"
-                      >
-                        <Printer className="w-4 h-4" />
-                      </button>
+                      {/* Badges: Stock Availability & Packaging Unit */}
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        {/* Live Stock Badge */}
+                        {isOutOfStock ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-900/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                            אזל זמנית מהמלאי
+                          </span>
+                        ) : isLowStock ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded-lg border border-amber-800/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                            נותרו במלאי: {product.currentStock} {product.unit}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-900/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            במלאי: {product.currentStock} {product.unit}
+                          </span>
+                        )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleReorder(ord)}
-                        className="px-2.5 py-1.5 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-indigo-500/40"
-                        title="שכפול פריטים לסל ההזמנה"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>הזמן שוב</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Items List in Past Order */}
-                  <div className="bg-slate-950 rounded-xl p-3 border border-slate-800 text-xs text-slate-300 divide-y divide-slate-800/60 space-y-1">
-                    {ord.items.map((it, idx) => (
-                      <div key={idx} className="pt-1 first:pt-0 flex justify-between items-center">
-                        <span>{it.name}</span>
-                        <span className="font-mono font-bold text-indigo-300">
-                          {it.orderedQty} {it.orderedUnit || "יח'"}
+                        <span className="text-slate-400 text-[11px]">
+                          אריזה: <strong className="text-slate-300">{product.unit}</strong>
                         </span>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* Quantity Selector (E-commerce Style) */}
+                    <div className="shrink-0 flex flex-col items-end gap-1.5">
+                      {!isSelected ? (
+                        <button
+                          onClick={() => handleUpdateQty(product, product.unit, 1)}
+                          className="px-3.5 py-2 bg-indigo-600/90 hover:bg-indigo-600 active:scale-95 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>הוסף</span>
+                        </button>
+                      ) : (
+                        <div className="space-y-1">
+                          {/* Stepper Pill */}
+                          <div className="flex items-center bg-slate-950 border border-indigo-500/60 rounded-xl p-0.5 shadow-inner">
+                            <button
+                              onClick={() => handleUpdateQty(product, product.unit, -1)}
+                              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              title="הפחת 1"
+                            >
+                              {inCartQty === 1 ? <Trash2 className="w-3.5 h-3.5 text-rose-400" /> : <Minus className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <input
+                              type="number"
+                              min="0"
+                              value={inCartQty}
+                              onChange={(e) => handleSetQty(product, product.unit, parseInt(e.target.value, 10) || 0)}
+                              className="w-12 text-center bg-transparent text-sm font-black text-white focus:outline-none"
+                            />
+
+                            <button
+                              onClick={() => handleUpdateQty(product, product.unit, 1)}
+                              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              title="הוסף 1"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                            </button>
+                          </div>
+
+                          {/* Quick Increment Chips */}
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleUpdateQty(product, product.unit, 5)}
+                              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 rounded border border-slate-700 cursor-pointer"
+                              title="הוסף 5"
+                            >
+                              +5
+                            </button>
+                            <button
+                              onClick={() => handleUpdateQty(product, product.unit, 10)}
+                              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 rounded border border-slate-700 cursor-pointer"
+                              title="הוסף 10"
+                            >
+                              +10
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        )}
+              );
+            })
+          )}
+        </div>
       </main>
 
-      {/* Floating Scroll-To-Top Button */}
-      {showScrollTop && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-24 left-4 z-40 p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-full shadow-2xl border border-slate-700 transition-all cursor-pointer"
-        >
-          <ArrowUp className="w-5 h-5" />
-        </button>
-      )}
-
-      {/* Sticky Bottom Cart Bar */}
-      {cartItemsList.length > 0 && !isCartOpen && (
-        <div className="fixed bottom-3 left-3 right-3 max-w-3xl mx-auto z-40">
+      {/* Floating Bottom Sticky Cart Bar */}
+      {totalCartCount > 0 && !isCartOpen && (
+        <div className="fixed bottom-3 inset-x-0 z-30 px-3 max-w-2xl mx-auto animate-in slide-in-from-bottom-5 duration-200">
           <button
             onClick={() => setIsCartOpen(true)}
-            className="w-full py-3.5 px-5 bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-2xl font-black text-sm shadow-2xl flex items-center justify-between border-2 border-indigo-400/40 cursor-pointer transition-all transform hover:-translate-y-0.5 active:scale-98"
+            className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white rounded-2xl shadow-2xl flex items-center justify-between font-black text-sm cursor-pointer transition-all active:scale-[0.99] border border-white/20"
           >
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5" />
-              <span>
-                סל הזמנה: <strong>{cartItemsList.length} פריטים</strong> ({totalCartCount} יחידות)
-              </span>
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-white/20 rounded-xl">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-black">{cartItemsList.length} פריטים בסל ({totalCartCount} יח')</div>
+                <div className="text-[11px] text-emerald-100 font-normal">מחלקה: {selectedDepartmentName}</div>
+              </div>
             </div>
-            <div className="flex items-center gap-1 text-xs bg-white/20 px-3 py-1 rounded-xl">
-              <span>לסיום ושליחה למחסן</span>
+
+            <div className="flex items-center gap-1.5 bg-white/20 px-3 py-1.5 rounded-xl text-xs font-black">
+              <span>המשך להזמנה</span>
               <ChevronRight className="w-4 h-4 rotate-180" />
             </div>
           </button>
         </div>
       )}
 
-      {/* Cart Drawer / Modal */}
+      {/* Scroll to Top Button */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className={`fixed left-4 z-20 p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-full shadow-xl border border-slate-700 cursor-pointer transition-all ${
+            totalCartCount > 0 ? 'bottom-20' : 'bottom-6'
+          }`}
+          title="חזרה לראש העמוד"
+        >
+          <ArrowUp className="w-4 h-4" />
+        </button>
+      )}
+
+      {/* Slide-Up Bottom Cart Drawer / Checkout Sheet */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border-t sm:border border-slate-700 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            {/* Modal Header */}
-            <div className="p-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150 p-0 sm:p-4"
+          dir="rtl"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-xl">
+                <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl">
                   <ShoppingBag className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-white text-base">סיכום סל הזמנה למחסן</h3>
+                  <h3 className="text-base font-black text-white">סל הזמנה למחלקה</h3>
                   <p className="text-xs text-slate-400">
-                    מחלקה: <strong className="text-indigo-300">{selectedDepartmentName}</strong> • {cartItemsList.length} פריטים
+                    {selectedDepartmentName} • {cartItemsList.length} פריטים ({totalCartCount} יח')
                   </p>
                 </div>
               </div>
@@ -1138,79 +899,114 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={handleSubmitOrder} className="p-4 overflow-y-auto flex-1 space-y-4">
-              {/* Selected Items List */}
+            {/* Drawer Body Form */}
+            <form onSubmit={handleSubmitOrder} className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Items List */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300 px-1">
-                  <span>פריטים שנבחרו:</span>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>רשימת הפריטים שנבחרו:</span>
                   <button
                     type="button"
                     onClick={handleClearCart}
-                    className="text-rose-400 hover:text-rose-300 text-xs flex items-center gap-1 cursor-pointer"
+                    className="text-rose-400 hover:underline cursor-pointer"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>רוקן סל</span>
+                    רוקן סל
                   </button>
                 </div>
 
-                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                  {cartItemsList.map((item) => {
-                    const prod = inventoryItems.find((p) => p.name === item.name || p.id === item.productId);
-                    return (
-                      <div
-                        key={item.id}
-                        className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-xs sm:text-sm text-white truncate">
-                            {item.name}
-                          </h5>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            יחידה: {item.orderedUnit || "יח'"}
-                          </span>
-                        </div>
+                {cartItemsList.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 text-xs">
+                    הסל ריק כרגע. סגור את החלון והוסף פריטים מהקטלוג.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {cartItemsList.map((item) => {
+                      const product = inventoryItems.find((p) => p.name === item.name) || {
+                        id: item.productId,
+                        name: item.name,
+                        unit: item.orderedUnit || "יח'",
+                        currentStock: 99,
+                        minThreshold: 10,
+                      };
 
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => prod && handleUpdateQty(prod, item.orderedUnit as PackagingUnit, -1)}
-                            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="w-10 text-center font-black font-mono text-sm text-white">
-                            {item.orderedQty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => prod && handleUpdateQty(prod, item.orderedUnit as PackagingUnit, 1)}
-                            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
+                      return (
+                        <div
+                          key={item.productId}
+                          className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs text-white truncate">{item.name}</div>
+                            <div className="text-[10px] text-slate-400">אריזה: {item.orderedUnit || "יח'"}</div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(product, item.orderedUnit as PackagingUnit, -1)}
+                              className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="font-black text-xs text-white w-7 text-center">
+                              {item.orderedQty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQty(product, item.orderedUnit as PackagingUnit, 1)}
+                              className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3 text-emerald-400" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetQty(product, item.orderedUnit as PackagingUnit, 0)}
+                              className="p-1 text-slate-500 hover:text-rose-400 rounded cursor-pointer mr-1"
+                              title="הסר פריט"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {/* Order Submission Fields */}
+              {/* Order Info Fields */}
               <div className="space-y-3 pt-2 border-t border-slate-800">
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
-                    שם המזמין/ה *
+                    שם המזמין/ה (איש קשר במחלקה) <span className="text-rose-400">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="שם מלא / תפקיד במחלקה"
+                    placeholder="שם מלא / תפקיד"
                     value={requesterName}
                     onChange={(e) => setRequesterName(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+
+                {cartItemsList.some((it) => {
+                  const p = inventoryItems.find((prod) => prod.name === it.name);
+                  return p?.limitByPatients;
+                }) && (
+                  <div>
+                    <label className="text-xs font-bold text-amber-300 block mb-1">
+                      מספר מטופלים במחלקה כעת (נדרש לפריטים מוגבלים) <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="לדוגמה: 36"
+                      value={patientsCount}
+                      onChange={(e) => setPatientsCount(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-amber-600/40 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
@@ -1242,6 +1038,166 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
                 )}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Department Picker Modal */}
+      {isDeptModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          dir="rtl"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col p-5 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-base font-black text-white">בחירת מחלקה מזמינה</h3>
+              </div>
+              <button
+                onClick={() => setIsDeptModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-3">
+              <input
+                type="text"
+                placeholder="חפש מחלקה..."
+                value={deptSearchTerm}
+                onChange={(e) => setDeptSearchTerm(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+              {departmentsList
+                .filter((d) => !deptSearchTerm || d.toLowerCase().includes(deptSearchTerm.toLowerCase()))
+                .map((dept) => {
+                  const isSelected = dept === selectedDepartmentName;
+                  return (
+                    <button
+                      key={dept}
+                      onClick={() => {
+                        setSelectedDepartmentName(dept);
+                        setIsDeptModalOpen(false);
+                      }}
+                      className={`w-full p-3 rounded-xl text-right font-bold text-xs sm:text-sm flex items-center justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800/80'
+                      }`}
+                    >
+                      <span>{dept}</span>
+                      {isSelected && <Check className="w-4 h-4" />}
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Department History Modal */}
+      {isHistoryModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          dir="rtl"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col p-5 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-sky-400" />
+                <div>
+                  <h3 className="text-base font-black text-white">הזמנות קודמות של מחלקת {selectedDepartmentName}</h3>
+                  <p className="text-xs text-slate-400">{myDeptOrders.length} הזמנות שנשלחו למחסן</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-1">
+              {myDeptOrders.length === 0 ? (
+                <div className="text-center py-10 text-slate-500 text-xs">
+                  לא נמצאו הזמנות קודמות עבור מחלקה זו.
+                </div>
+              ) : (
+                myDeptOrders.map((order) => {
+                  const dateStr = new Date(order.createdAt).toLocaleString('he-IL', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-mono font-bold text-xs text-indigo-400">
+                            {order.orderNumber}
+                          </div>
+                          <div className="text-[11px] text-slate-400">{dateStr}</div>
+                        </div>
+
+                        <div>
+                          {order.printed ? (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              הודפס וסופק ✓
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              ממתין להדפסה ⏱
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {order.items.map((it, idx) => (
+                          <span
+                            key={idx}
+                            className="text-[11px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg text-slate-300"
+                          >
+                            <strong>{it.orderedQty}</strong> {it.name}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2 pt-1 border-t border-slate-900">
+                        <button
+                          onClick={() => handlePrintSlip(order)}
+                          className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>הדפס שובר</span>
+                        </button>
+                        <button
+                          onClick={() => handleReorder(order)}
+                          className="flex-1 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>הזמן שוב 🔁</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}
