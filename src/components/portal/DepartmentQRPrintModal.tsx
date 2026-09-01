@@ -22,15 +22,15 @@ export function DepartmentQRPrintModal({
   if (!isOpen) return null;
 
   // Base URL for mobile staff order portal
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io/storeprint';
-  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '').replace(/\/order(\.html)?$/, '') : '/storeprint';
 
   const getPortalUrlForDept = (dept: string) => {
-    const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-    if (dept === 'universal' || !dept) {
-      return `${origin}${pathname}/?view=portal_pwa${tenantQuery}`;
-    }
-    return `${origin}${pathname}/?view=portal_pwa${tenantQuery}&dept=${encodeURIComponent(dept)}`;
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenant', tenantId);
+    if (dept && dept !== 'universal') params.set('dept', dept);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    return `${origin}${pathname}/order/${queryString}`;
   };
 
   const getQrImageUrl = (dept: string) => {

@@ -73,20 +73,22 @@ export const PWAInstallBanner: React.FC = () => {
 
   if (!showBanner) return null;
 
+  const isOrderApp = typeof window !== 'undefined' && window.location.pathname.includes('order');
+
   return (
     <>
       {/* Floating Bottom / Top Install Banner */}
       <div className="fixed bottom-3 sm:bottom-5 right-3 left-3 sm:right-auto sm:left-6 z-40 max-w-md bg-slate-900 text-white p-3.5 sm:p-4 rounded-3xl shadow-2xl border border-slate-700/80 flex items-center justify-between gap-3 animate-fadeIn" dir="rtl">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-tr from-sky-500 to-blue-600 text-white rounded-2xl shadow-md shrink-0">
+          <div className={`p-2.5 bg-gradient-to-tr ${isOrderApp ? 'from-emerald-500 to-teal-600' : 'from-sky-500 to-blue-600'} text-white rounded-2xl shadow-md shrink-0`}>
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
             <h4 className="text-xs sm:text-sm font-black text-white">
-              התקנת StorePrint בטלפון
+              {isOrderApp ? 'התקנת אפליקציית הזמנות מחלקה' : 'התקנת StorePrint בטלפון'}
             </h4>
             <p className="text-[11px] text-slate-400">
-              לפתיחה מהירה כאיקון אפליקציה במסך הבית
+              לפתיחה מהירה כאיקון אפליקציה ייעודי במסך הבית
             </p>
           </div>
         </div>

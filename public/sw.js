@@ -1,10 +1,15 @@
 // StorePrint Service Worker for PWA installability and caching
-const CACHE_NAME = 'storeprint-pwa-v3';
+const CACHE_NAME = 'storeprint-pwa-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
+  './order.html',
+  './order/index.html',
   './manifest.json',
+  './order-manifest.json',
   './favicon.svg',
+  './order-icon.svg',
+  './order-favicon.svg',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png'
@@ -55,7 +60,10 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            if (event.request.url.includes('/order')) {
+              return caches.match('./order.html') || caches.match('./order/index.html');
+            }
+            return caches.match('./index.html');
           }
           return new Response('Offline', { status: 503, statusText: 'Offline' });
         });
