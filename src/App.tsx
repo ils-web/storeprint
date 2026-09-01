@@ -42,6 +42,8 @@ import {
   ingestGoogleFormsOrders,
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
+  getDbDeletedOrderIds,
+  saveDbDeletedOrderIds,
   getOrderPrintKey,
   isOrderPrintedInSet,
   sanitizePrintedOrderIds,
@@ -190,14 +192,8 @@ export default function App() {
   });
 
   // Deleted Orders Permanent Blacklist
-  const DELETED_ORDERS_STORAGE_KEY = 'storeprint_deleted_orders_v2';
   const [deletedOrderIds, setDeletedOrderIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('storeprint_deleted_orders_v2');
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch {
-      return new Set();
-    }
+    return getDbDeletedOrderIds();
   });
 
   // Warehouse Stock State (Initialized from Unified DB)
@@ -411,17 +407,12 @@ export default function App() {
           }
         });
 
-        const deletedSet = (() => {
-          try {
-            const raw = localStorage.getItem('storeprint_deleted_orders_v2');
-            return raw ? sanitizePrintedOrderIds(JSON.parse(raw)) : new Set<string>();
-          } catch {
-            return new Set<string>();
-          }
-        })();
+        const deletedSet = new Set<string>();
+        getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
+        deletedOrderIds.forEach((id) => deletedSet.add(id));
 
         const mergedOrders = Array.from(allOrdersMap.values()).filter(
-          (o) => !deletedSet.has(o.id) && !deletedSet.has(getOrderPrintKey(o))
+          (o) => !isOrderPrintedInSet(o, deletedSet)
         );
 
         setOrders(mergedOrders);
@@ -807,18 +798,33 @@ export default function App() {
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    // 1. Add to permanent blacklist
+    const targetOrder = orders.find(
+      (o) => o.id === orderId || getOrderPrintKey(o) === orderId || (o.rowNumber && String(o.rowNumber) === orderId)
+    );
+    const key = targetOrder ? getOrderPrintKey(targetOrder) : orderId;
+
+    // 1. Add composite keys to permanent blacklist
     setDeletedOrderIds((prev) => {
-      const next = new Set(prev);
+      const next = new Set<string>(prev);
       next.add(orderId);
-      try {
-        localStorage.setItem('storeprint_deleted_orders_v2', JSON.stringify(Array.from(next)));
-      } catch {}
+      next.add(key);
+      if (targetOrder) {
+        if (targetOrder.id) next.add(targetOrder.id);
+        if (targetOrder.department && targetOrder.timestamp) {
+          next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
+        }
+        if (targetOrder.department && targetOrder.rawDate) {
+          next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
+        }
+      }
+      saveDbDeletedOrderIds(next);
       return next;
     });
 
     // 2. Remove from React state
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    setOrders((prev) =>
+      prev.filter((o) => o.id !== orderId && getOrderPrintKey(o) !== key && (!targetOrder || o.id !== targetOrder.id))
+    );
     setSelectedOrderIds((prev) => (Array.isArray(prev) ? prev.filter((id) => id !== orderId) : []));
 
     // 3. Remove from multiTenantDb if it was a PWA / tenant order
@@ -832,15 +838,28 @@ export default function App() {
 
     // 4. Remove from printed set
     setPrintedOrderIds((prev) => {
-      const next = new Set(prev);
+      const next = new Set<string>(prev);
       next.delete(orderId);
-      try {
-        localStorage.setItem(PRINTED_ORDERS_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {}
+      next.delete(key);
+      saveDbPrintedOrderIds(next);
       return next;
     });
 
-    // 5. Notify all components
+    // 5. Update local cache
+    try {
+      const currentCached = localStorage.getItem('storeprint_orders_cache_v2');
+      if (currentCached) {
+        const parsed = JSON.parse(currentCached);
+        if (Array.isArray(parsed)) {
+          const updatedCache = parsed.filter(
+            (o: any) => o.id !== orderId && getOrderPrintKey(o) !== key && (!targetOrder || o.id !== targetOrder.id)
+          );
+          localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updatedCache));
+        }
+      }
+    } catch {}
+
+    // 6. Notify all components
     window.dispatchEvent(new Event('storeprint_order_created'));
 
     setSuccessMessage('ההזמנה נמחקה לצמיתות מהמערכת 🗑️');

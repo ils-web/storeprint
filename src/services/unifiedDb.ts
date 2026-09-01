@@ -508,6 +508,37 @@ export function saveDbPrintedOrderIds(ids: Set<string>): void {
 }
 
 /**
+ * Loads set of deleted order keys from permanent blacklist
+ */
+export function getDbDeletedOrderIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw =
+      localStorage.getItem(DB_STORAGE_KEYS.DELETED_ORDERS) ||
+      localStorage.getItem('storeprint_deleted_orders_v2');
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set<string>(parsed.filter((id) => typeof id === 'string' && id.trim().length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Saves set of deleted order keys to permanent blacklist
+ */
+export function saveDbDeletedOrderIds(ids: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const cleanArr = Array.from(ids).filter((id) => typeof id === 'string' && id.trim().length > 0);
+    const serialized = JSON.stringify(cleanArr);
+    localStorage.setItem(DB_STORAGE_KEYS.DELETED_ORDERS, serialized);
+    localStorage.setItem('storeprint_deleted_orders_v2', serialized);
+  } catch {}
+}
+
+/**
  * Ingests incoming orders from Google Forms (Sheet rows) into the unified DB queue.
  * Extracts ONLY order rows (columns A..D + non-zero ordered items in E..FM) without modifying warehouse stock.
  */

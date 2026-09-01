@@ -71,6 +71,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   isSheetLoaded,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   
   const [selectedDept, setSelectedDept] = useState<string>(() => {
     try {
@@ -659,15 +660,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           {/* Delete Order (Safe Deletion) */}
                           {onDeleteOrder && (
                             <button
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `האם אתה בטוח שברצונך למחוק את הזמנת מחלקת ${order.department} (${order.timestamp})?`
-                                  )
-                                ) {
-                                  onDeleteOrder(order.id);
-                                }
-                              }}
+                              onClick={() => setOrderToDelete(order)}
                               className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 p-2 rounded-xl transition-colors cursor-pointer"
                               title="מחק הזמנה זו מהמאגר"
                             >
@@ -767,6 +760,70 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           * בלחיצה על «הדפסה» נפתח חלון אישור ובקרת מלאי. בלחיצה על «העתק» מודפסת העתקה ללא שום קיזוז מהמלאי
         </div>
       </div>
+
+      {/* Modern Safe Delete Confirmation Modal */}
+      {orderToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-100 text-right space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-100 rounded-2xl">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">מחיקת הזמנה מהמערכת</h3>
+                <p className="text-xs text-slate-500">הפעולה תסיר את ההזמנה מלוח הבקרה לצמיתות</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">מחלקה:</span>
+                <span className="font-black text-slate-900">{orderToDelete.department}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">זמן הזמנה:</span>
+                <span className="font-mono text-slate-800">{orderToDelete.timestamp}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">כמות פריטים:</span>
+                <span className="font-bold text-indigo-600">
+                  {orderToDelete.totalItemsCount || orderToDelete.items.length} פריטים
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              ⚠️ האם אתה בטוח שברצונך למחוק הזמנה זו? ההזמנה תימחק ולא תוצג יותר במערכת (גם לאחר רענון דף).
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setOrderToDelete(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteOrder) {
+                    onDeleteOrder(orderToDelete.id);
+                  }
+                  setOrderToDelete(null);
+                }}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>מחק הזמנה לצמיתות</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
