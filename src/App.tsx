@@ -120,6 +120,10 @@ export default function App() {
         } catch {}
       }
 
+      if (deptParam) {
+        setPreselectedDept(decodeURIComponent(deptParam));
+      }
+
       if (viewParam === 'portal_pwa') {
         setCurrentView('portal_pwa');
       } else if (viewParam === 'mobile_stock') {
@@ -270,31 +274,35 @@ export default function App() {
     const warehouses = getWarehouses(activeTenant.id);
     const primaryWhId = warehouses[0]?.id || 'wh-main-01';
 
+    const allProductNames = Array.from(new Set([...Object.keys(currentStockMap), ...prods]));
+
     // Build Inventory Products with preserved packaging units and active status
-    const items: InventoryProduct[] = prods.map((name, idx) => {
+    const items: InventoryProduct[] = allProductNames.map((name, idx) => {
       const existing = currentStockMap[name] || Object.values(currentStockMap).find((v) => v.name === name);
       const detectedUnit = detectPackagingUnitFromProductName(name);
       const safeQty = typeof existing?.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0;
       const safeMin = typeof existing?.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : 10;
       return {
-        id: `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
+        id: existing?.id || `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
         tenantId: activeTenant.id,
         warehouseId: primaryWhId,
         name,
-        colIndex: idx + 4,
+        colIndex: existing?.colIndex || idx + 4,
         currentStock: safeQty,
         minThreshold: safeMin,
         unit: existing?.unit || detectedUnit,
-        isActive: existing?.isActive !== undefined ? existing.isActive : true,
+        isActive: existing?.isActive !== false,
         limitByPatients: Boolean(existing?.limitByPatients),
-        updatedAt: new Date().toISOString(),
+        updatedAt: existing?.lastUpdated || new Date().toISOString(),
       };
     });
 
     saveInventory(activeTenant.id, items);
 
     // Build Departments
-    const deptItems: TenantDepartment[] = depts.map((dName, idx) => ({
+    const deptList = getDbDepartments();
+    const allDepts = Array.from(new Set([...deptList, ...depts]));
+    const deptItems: TenantDepartment[] = allDepts.map((dName, idx) => ({
       id: `dept-${idx}`,
       tenantId: activeTenant.id,
       name: dName,
@@ -419,12 +427,20 @@ export default function App() {
         } catch {}
 
         if (result.departments.length > 0) {
-          setDepartments(result.departments);
-          localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(result.departments));
+          setDepartments((prev) => {
+            const dbDepts = getDbDepartments();
+            const merged = Array.from(new Set([...result.departments, ...dbDepts, ...prev]));
+            localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
+            return merged;
+          });
         }
         if (result.productHeaders.length > 0) {
-          setProductHeaders(result.productHeaders);
-          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(result.productHeaders));
+          setProductHeaders((prev) => {
+            const dbStock = getDbStock();
+            const merged = Array.from(new Set([...Object.keys(dbStock), ...result.productHeaders, ...prev]));
+            localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(merged));
+            return merged;
+          });
         }
         setLastUpdated(new Date());
 
