@@ -56,7 +56,6 @@ import {
 interface StaffOrderPortalProps {
   initialTenantId?: string;
   initialDepartment?: string;
-  onBackToMain?: () => void;
 }
 
 const DEFAULT_DEPARTMENTS = [
@@ -125,7 +124,7 @@ function detectItemCategory(name: string): 'gloves' | 'dressings' | 'hygiene' | 
   return 'general';
 }
 
-export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToMain }: StaffOrderPortalProps) {
+export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOrderPortalProps) {
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -212,6 +211,25 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Auto-prompt mobile installation on first visit
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true;
+
+    if (!isStandalone) {
+      const alreadyPrompted = sessionStorage.getItem('storeprint_portal_installed_prompted');
+      if (!alreadyPrompted) {
+        sessionStorage.setItem('storeprint_portal_installed_prompted', 'true');
+        const timer = setTimeout(() => {
+          setIsInstallModalOpen(true);
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
   }, []);
 
   const scrollToTop = () => {
@@ -535,16 +553,6 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, onBackToM
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           {/* Department Selector Pill */}
           <div className="flex items-center gap-2 min-w-0">
-            {onBackToMain && (
-              <button
-                onClick={onBackToMain}
-                className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0"
-                title="חזרה למסך ניהול"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-
             <button
               onClick={() => setIsDeptModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-slate-100 rounded-xl border border-slate-700 transition-all cursor-pointer min-w-0 text-right"

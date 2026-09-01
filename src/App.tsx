@@ -13,6 +13,7 @@ import { LandingPage } from './components/landing/LandingPage';
 import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { InstallAppModal } from './components/portal/InstallAppModal';
+import { DepartmentQRPrintModal } from './components/portal/DepartmentQRPrintModal';
 import { ShortageDrawerModal } from './components/ShortageDrawerModal';
 import { LoginModal } from './components/auth/LoginModal';
 import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmModal';
@@ -204,6 +205,7 @@ export default function App() {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [isShortageDrawerOpen, setIsShortageDrawerOpen] = useState(false);
+  const [isDepartmentQROpen, setIsDepartmentQROpen] = useState(false);
 
   // Print Confirm Modal State
   const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
@@ -1070,7 +1072,6 @@ export default function App() {
         <StaffOrderPortal
           initialTenantId={activeTenantId}
           initialDepartment={preselectedDept}
-          onBackToMain={() => setCurrentView('app')}
         />
         <PWAInstallBanner />
       </>
@@ -1127,10 +1128,8 @@ export default function App() {
           }
         }}
         onOpenLanding={() => setCurrentView('landing')}
-        onOpenPortalPwa={() => setCurrentView('portal_pwa')}
-        onOpenMobileStock={() => setCurrentView('mobile_stock')}
+        onOpenDepartmentQR={() => setIsDepartmentQROpen(true)}
         onOpenShortageDrawer={() => setIsShortageDrawerOpen(true)}
-        onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onLogout={handleLogout}
         tenantName={activeTenant?.name}
       />
@@ -1377,10 +1376,11 @@ export default function App() {
         tenantName={activeTenant?.name}
       />
 
-      {/* Install App Modal */}
-      <InstallAppModal
-        isOpen={isInstallModalOpen}
-        onClose={() => setIsInstallModalOpen(false)}
+      {/* Department QR Print Modal */}
+      <DepartmentQRPrintModal
+        isOpen={isDepartmentQROpen}
+        onClose={() => setIsDepartmentQROpen(false)}
+        departments={departments}
         tenantId={activeTenantId}
         tenantName={activeTenant?.name}
       />

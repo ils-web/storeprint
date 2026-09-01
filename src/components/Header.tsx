@@ -14,6 +14,7 @@ import {
   Sparkles,
   Siren,
   BarChart3,
+  QrCode,
 } from 'lucide-react';
 import { AuthSession } from '../types/multiTenant';
 
@@ -36,10 +37,8 @@ interface HeaderProps {
   authSession?: AuthSession | null;
   onOpenSuperadmin?: () => void;
   onOpenLanding?: () => void;
-  onOpenPortalPwa?: () => void;
-  onOpenMobileStock?: () => void;
+  onOpenDepartmentQR?: () => void;
   onOpenShortageDrawer?: () => void;
-  onOpenInstallModal?: () => void;
   onLogout?: () => void;
   tenantName?: string;
 }
@@ -63,10 +62,8 @@ export const Header: React.FC<HeaderProps> = ({
   authSession,
   onOpenSuperadmin,
   onOpenLanding,
-  onOpenPortalPwa,
-  onOpenMobileStock,
+  onOpenDepartmentQR,
   onOpenShortageDrawer,
-  onOpenInstallModal,
   onLogout,
   tenantName,
 }) => {
@@ -169,15 +166,15 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Toolbar: Auto-refresh, Refresh, Multi-tenant Links */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
             
-            {/* Mobile Stock Manager quick button */}
-            {onOpenMobileStock && (
+            {/* Single Official Department QR Poster Print Button */}
+            {onOpenDepartmentQR && (
               <button
-                onClick={onOpenMobileStock}
-                className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-sky-600/25 transition-all cursor-pointer active:scale-95"
-                title="פתח ספירת מלאי ייעודית לסמארטפון"
+                onClick={onOpenDepartmentQR}
+                className="bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 border border-indigo-400/40 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title="הדפסת שלט QR מעוצב לתלייה במחלקות להזמנה ישירה מהטלפון"
               >
-                <Package className="w-3.5 h-3.5" />
-                <span>ספירת מלאי בנייד 📱</span>
+                <QrCode className="w-4 h-4 text-white" />
+                <span>🖨️ הדפסת קוד QR למחלקות</span>
               </button>
             )}
 
@@ -190,30 +187,6 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>חוסרים ({lowStockCount}) 🚨</span>
-              </button>
-            )}
-
-            {/* PWA Order Portal quick link */}
-            {onOpenPortalPwa && (
-              <button
-                onClick={onOpenPortalPwa}
-                className="bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all border border-indigo-500/30 cursor-pointer"
-                title="פתח פורטל הזמנות למובייל (PWA)"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-indigo-200" />
-                <span className="hidden md:inline">פורטל מובייל PWA</span>
-              </button>
-            )}
-
-            {/* Install PWA App Button */}
-            {onOpenInstallModal && (
-              <button
-                onClick={onOpenInstallModal}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                title="הורדה והתקנת אפליקציית ההזמנות למכשיר"
-              >
-                <Smartphone className="w-3.5 h-3.5 animate-bounce" />
-                <span>התקנת אפליקציה 📲</span>
               </button>
             )}
 
