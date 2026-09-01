@@ -1,5 +1,8 @@
-import { SheetTab, Order, OrderItem } from '../types';
+import { SheetTab, Order, OrderItem, StockItem } from '../types';
 import { parseSheetDate } from './dateUtils';
+import initialMasterStock from './initialMasterStock.json';
+
+const SEED_STOCK: Record<string, StockItem> = initialMasterStock as Record<string, StockItem>;
 
 export const DEFAULT_SPREADSHEET_ID = '1NJq4sJV0HPvkKUXy6kot3FUA7dnKAHD-iWTVXIY4qms';
 export const DEFAULT_GID = '1965220204';
@@ -203,8 +206,16 @@ export function processRawRowsToOrders(
     return { orders: [], productHeaders: [], totalRows: 0, departments: [] };
   }
 
-  // 1. Locate the header row by searching for 'חותמת זמן' or 'מחלקה' or default to index 3
-  let headerRowIndex = 3;
+  // 1. Build Master Column map from SEED_STOCK
+  const colMap: Record<number, string> = {};
+  Object.values(SEED_STOCK || {}).forEach((item) => {
+    if (item && typeof item.colIndex === 'number' && item.name && !item.name.startsWith('פריט ')) {
+      colMap[item.colIndex] = item.name;
+    }
+  });
+
+  // Locate the header row by searching for 'חותמת זמן' or 'מחלקה' or default to index 1
+  let headerRowIndex = 1;
   for (let r = 0; r < Math.min(10, rows.length); r++) {
     const rowStr = rows[r].join(' ').toLowerCase();
     if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור')) {
@@ -215,14 +226,25 @@ export function processRawRowsToOrders(
 
   const rawHeaders = rows[headerRowIndex] || [];
 
-  const cleanHeaderName = (h: string, fallbackIdx: number) => {
-    if (!h) return `פריט ${fallbackIdx}`;
-    return h.replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim() || `פריט ${fallbackIdx}`;
+  const cleanHeaderName = (h: string, colIdx: number) => {
+    const raw = (h || '').replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
+    if (raw && !raw.startsWith('פריט ')) {
+      return raw;
+    }
+    if (colMap[colIdx]) {
+      return colMap[colIdx];
+    }
+    return raw || `פריט ${colIdx - 3}`;
   };
 
   const productHeaders: string[] = [];
-  for (let c = 4; c < rawHeaders.length; c++) {
-    productHeaders.push(cleanHeaderName(rawHeaders[c], c - 3));
+  const maxCols = Math.max(rawHeaders.length, 192);
+  for (let c = 4; c < maxCols; c++) {
+    const h = rawHeaders[c] || '';
+    const name = cleanHeaderName(h, c);
+    if (name) {
+      productHeaders.push(name);
+    }
   }
 
   const orders: Order[] = [];
@@ -255,7 +277,7 @@ export function processRawRowsToOrders(
         continue;
       }
 
-      const itemName = cleanHeaderName(rawHeaders[c], c - 3);
+      const itemName = cleanHeaderName(rawHeaders[c] || '', c);
       if (!itemName) continue;
 
       orderItems.push({

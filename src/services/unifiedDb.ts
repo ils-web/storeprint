@@ -490,8 +490,24 @@ export function ingestGoogleFormsOrders(
     return { orders: [], departments: [], productHeaders: [] };
   }
 
-  // 1. Find Header Row (row 4 in sheet, 0-indexed ~3)
-  let headerRowIndex = 3;
+  // 1. Build Master Column map from DB stock and SEED_STOCK
+  const colMap: Record<number, string> = {};
+  const currentStock = getDbStock();
+  Object.values(currentStock || {}).forEach((item) => {
+    if (item && typeof item.colIndex === 'number' && item.name && !item.name.startsWith('פריט ')) {
+      colMap[item.colIndex] = item.name;
+    }
+  });
+  Object.values(SEED_STOCK || {}).forEach((item) => {
+    if (item && typeof item.colIndex === 'number' && item.name && !item.name.startsWith('פריט ')) {
+      if (!colMap[item.colIndex]) {
+        colMap[item.colIndex] = item.name;
+      }
+    }
+  });
+
+  // Find Header Row (row with מחלקה or חותמת זמן)
+  let headerRowIndex = 1;
   for (let r = 0; r < Math.min(10, rawRows.length); r++) {
     const rowStr = rawRows[r].join(' ').toLowerCase();
     if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור')) {
@@ -501,14 +517,25 @@ export function ingestGoogleFormsOrders(
   }
 
   const rawHeaders = rawRows[headerRowIndex] || [];
-  const cleanHeaderName = (h: string, fallbackIdx: number) => {
-    if (!h) return `פריט ${fallbackIdx}`;
-    return h.replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim() || `פריט ${fallbackIdx}`;
+  const cleanHeaderName = (h: string, colIdx: number) => {
+    const raw = (h || '').replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
+    if (raw && !raw.startsWith('פריט ')) {
+      return raw;
+    }
+    if (colMap[colIdx]) {
+      return colMap[colIdx];
+    }
+    return raw || `פריט ${colIdx - 3}`;
   };
 
   const productHeaders: string[] = [];
-  for (let c = 4; c < rawHeaders.length; c++) {
-    productHeaders.push(cleanHeaderName(rawHeaders[c], c - 3));
+  const maxCols = Math.max(rawHeaders.length, 192);
+  for (let c = 4; c < maxCols; c++) {
+    const h = rawHeaders[c] || '';
+    const name = cleanHeaderName(h, c);
+    if (name) {
+      productHeaders.push(name);
+    }
   }
 
   const orders: Order[] = [];
@@ -541,7 +568,7 @@ export function ingestGoogleFormsOrders(
         continue;
       }
 
-      const itemName = cleanHeaderName(rawHeaders[c], c - 3);
+      const itemName = cleanHeaderName(rawHeaders[c] || '', c);
       if (!itemName) continue;
 
       const numVal = parseFloat(cellQty.replace(/[^\d.]/g, ''));
