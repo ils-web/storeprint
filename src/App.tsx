@@ -549,8 +549,36 @@ export default function App() {
     try {
       const fetched = await fetchStockFromCloud(cloudConfig);
       if (fetched && Object.keys(fetched).length > 0) {
-        setStock(() => {
-          const synced = syncStockWithProductHeaders(productHeaders, fetched);
+        setStock((prevStock) => {
+          // Merge fetched cloud stock into current local DB stock to strictly preserve isActive, thresholds, units, and custom settings
+          const currentLocal = { ...getDbStock(), ...prevStock };
+          const mergedWithLocal: Record<string, StockItem> = { ...currentLocal };
+
+          Object.keys(fetched).forEach((key) => {
+            const cloudItem = fetched[key];
+            if (!cloudItem) return;
+            const normKey = normalizeProductName(key);
+            const localKey = Object.keys(currentLocal).find(
+              (k) => k === key || normalizeProductName(k) === normKey || currentLocal[k]?.name === key
+            );
+            const localItem = localKey ? currentLocal[localKey] : undefined;
+            const itemName = localItem?.name || cloudItem.name || key;
+
+            mergedWithLocal[itemName] = {
+              id: localItem?.id || cloudItem.id || `stock-${Date.now()}`,
+              name: itemName,
+              colIndex: localItem?.colIndex ?? cloudItem.colIndex,
+              currentStock: typeof cloudItem.currentStock === 'number' && !isNaN(cloudItem.currentStock) ? cloudItem.currentStock : (localItem?.currentStock ?? 0),
+              minThreshold: typeof cloudItem.minThreshold === 'number' && !isNaN(cloudItem.minThreshold) ? cloudItem.minThreshold : (localItem?.minThreshold ?? 10),
+              unit: cloudItem.unit || localItem?.unit || detectPackagingUnitFromProductName(itemName),
+              isActive: localItem?.isActive !== undefined ? localItem.isActive : (cloudItem.isActive !== undefined ? cloudItem.isActive : true),
+              limitByPatients: localItem?.limitByPatients !== undefined ? localItem.limitByPatients : Boolean(cloudItem.limitByPatients),
+              lastUpdated: new Date().toISOString(),
+            };
+          });
+
+          const synced = syncStockWithProductHeaders(productHeaders, mergedWithLocal);
+          saveDbStock(synced, true);
           saveStoredStock(synced);
           syncToMultiTenantDb(productHeaders, departments, synced);
           return synced;
@@ -601,10 +629,13 @@ export default function App() {
                   currentStock: cleanStock,
                   minThreshold: cleanMin,
                   unit: item.unit || "יח'",
+                  isActive: item.isActive !== false,
+                  limitByPatients: Boolean(item.limitByPatients),
                   lastUpdated: item.updatedAt || new Date().toISOString(),
                 };
               }
             });
+            saveDbStock(updated, false);
             saveStoredStock(updated);
             return updated;
           });

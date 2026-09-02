@@ -804,7 +804,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       globalThreshold={globalThreshold}
                       isMobile={true}
                       onUpdate={(name, newQty) =>
-                        onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit)
+                        onUpdateStockItem(name, newQty, item.minThreshold || globalThreshold, currentUnit, item.isActive !== false, item.limitByPatients)
                       }
                     />
                   </div>
@@ -816,7 +816,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       globalThreshold={globalThreshold}
                       isMobile={true}
                       onUpdate={(name, currentStock, minTh, unit) =>
-                        onUpdateStockItem(name, currentStock, minTh, unit)
+                        onUpdateStockItem(name, currentStock, minTh, unit, item.isActive !== false, item.limitByPatients)
                       }
                     />
                   </div>
@@ -1012,7 +1012,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                           {/* Pause / Resume Button */}
                           <button
-                            onClick={() => onUpdateStockItem(item.name, safeQty, item.minThreshold || globalThreshold, currentUnit, isInactive, item.limitByPatients)}
+                            onClick={() => onUpdateStockItem(item.name, safeQty, item.minThreshold || globalThreshold, currentUnit, isInactive ? true : false, item.limitByPatients)}
                             className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               isInactive
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'

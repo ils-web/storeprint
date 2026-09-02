@@ -86,8 +86,17 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
     localStorage.setItem(DB_STORAGE_KEYS.STOCK, JSON.stringify(stock));
     localStorage.setItem('storeprint_warehouse_stock_v1', JSON.stringify(stock));
     localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(stock)));
+    saveDbProducts(stock);
     if (syncCloud) {
-      pushStockToFirestore(stock).catch(console.warn);
+      let activeTenantId = 'tenant-main-01';
+      try {
+        const rawAuth = localStorage.getItem('storeprint_auth_session_v1');
+        if (rawAuth) {
+          const parsedAuth = JSON.parse(rawAuth);
+          if (parsedAuth?.tenantId) activeTenantId = parsedAuth.tenantId;
+        }
+      } catch {}
+      pushStockToFirestore(stock, activeTenantId).catch(console.warn);
       const config = loadCloudConfig();
       if (config.enabled && config.endpointUrl) {
         debouncedPushStockToCloud(stock, config, 1200).catch(console.warn);
@@ -303,9 +312,12 @@ export function updateDbStockItem(
   limitByPatients?: boolean
 ): Record<string, StockItem> {
   const current = getDbStock();
+  const normSearch = normalizeProductName(nameOrId);
   const targetKey = current[nameOrId]
     ? nameOrId
-    : Object.keys(current).find((k) => current[k]?.name === nameOrId || current[k]?.id === nameOrId) || nameOrId;
+    : Object.keys(current).find((k) => k === nameOrId || current[k]?.name === nameOrId || current[k]?.id === nameOrId)
+    || Object.keys(current).find((k) => normalizeProductName(k) === normSearch || normalizeProductName(current[k]?.name || '') === normSearch)
+    || nameOrId;
 
   const existing = current[targetKey];
   const cleanStock = typeof newQty === 'number' && !isNaN(newQty) ? Math.max(0, newQty) : 0;
@@ -314,15 +326,17 @@ export function updateDbStockItem(
   const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
   const cleanLimitByPatients = limitByPatients !== undefined ? limitByPatients : Boolean(existing?.limitByPatients);
   const nowIso = new Date().toISOString();
+  const finalName = existing?.name || nameOrId;
 
   const updated: Record<string, StockItem> = {
     ...current,
     [targetKey]: {
       ...(existing || {
         id: `stock-${Date.now()}`,
-        name: nameOrId,
+        name: finalName,
         colIndex: Object.keys(current).length + 4,
       }),
+      name: finalName,
       currentStock: cleanStock,
       minThreshold: cleanMin,
       unit: cleanUnit,

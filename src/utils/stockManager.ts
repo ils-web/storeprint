@@ -99,11 +99,13 @@ export function syncStockWithProductHeaders(
           .filter(Boolean);
 
   // Build index by name, id, normalized name, and colIndex for 100% reliable matching
+  const localStored = loadStoredStock();
   const existingByName: Record<string, StockItem> = {};
   const existingByNorm: Record<string, StockItem> = {};
   const existingByCol: Record<number, StockItem> = {};
 
-  Object.values(existingStock || {}).forEach((item) => {
+  // First populate from localStored, then overlay with existingStock
+  [...Object.values(localStored || {}), ...Object.values(existingStock || {})].forEach((item) => {
     if (!item) return;
     if (item.name) {
       existingByName[item.name.trim()] = item;
@@ -122,6 +124,7 @@ export function syncStockWithProductHeaders(
     if (!cleanName) return;
 
     const normKey = normalizeProductName(cleanName);
+    const localFallback = localStored[cleanName] || localStored[header];
     const existing =
       existingStock[cleanName] ||
       existingStock[header] ||
@@ -129,11 +132,17 @@ export function syncStockWithProductHeaders(
       existingByName[header.trim()] ||
       existingByNorm[normKey] ||
       existingByName[`stock-${idx + 4}`] ||
-      existingByCol[idx + 4];
+      existingByCol[idx + 4] ||
+      localFallback;
 
     const detectedUnit = detectPackagingUnitFromProductName(cleanName);
 
     if (existing) {
+      const finalIsActive =
+        existing.isActive !== undefined
+          ? existing.isActive
+          : (localFallback?.isActive !== undefined ? localFallback.isActive : true);
+
       // PRESERVE user custom values without overwriting with default
       result[cleanName] = {
         id: existing.id || `stock-${idx + 4}`,
@@ -142,10 +151,10 @@ export function syncStockWithProductHeaders(
         currentStock: typeof existing.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0,
         minThreshold: typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : DEFAULT_MIN_THRESHOLD,
         unit: existing.unit || detectedUnit,
-        isActive: existing.isActive !== undefined ? existing.isActive : true,
-        limitByPatients: Boolean(existing.limitByPatients),
-        lastDeducted: existing.lastDeducted,
-        lastUpdated: existing.lastUpdated,
+        isActive: finalIsActive,
+        limitByPatients: existing.limitByPatients !== undefined ? Boolean(existing.limitByPatients) : Boolean(localFallback?.limitByPatients),
+        lastDeducted: existing.lastDeducted || localFallback?.lastDeducted,
+        lastUpdated: existing.lastUpdated || localFallback?.lastUpdated,
       };
     } else {
       result[cleanName] = {
