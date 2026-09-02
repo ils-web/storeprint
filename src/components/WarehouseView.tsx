@@ -324,10 +324,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
   const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
 
-  const stockList = useMemo(() => Object.values(stock), [stock]);
+  const stockList = useMemo(() => {
+    if (!stock || typeof stock !== 'object') return [];
+    return Object.values(stock).filter(
+      (it): it is StockItem => Boolean(it && typeof it === 'object' && typeof it.name === 'string' && it.name.trim() !== '')
+    );
+  }, [stock]);
 
   // Helper to calculate effective threshold (x3 in emergency mode)
   const getEffectiveTh = useCallback((item: StockItem) => {
+    if (!item) return globalThreshold;
     const baseTh = item.minThreshold || globalThreshold;
     return isEmergencyMode ? baseTh * 3 : baseTh;
   }, [globalThreshold, isEmergencyMode]);
@@ -340,6 +346,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     let inactive = 0;
 
     stockList.forEach((item) => {
+      if (!item || !item.name) return;
       if (item.isActive === false) {
         inactive++;
         return;
@@ -362,7 +369,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Low stock items list for printing (strictly excluding inactive items)
   const lowStockItems = useMemo(() => {
     return stockList.filter((item) => {
-      if (item.isActive === false) return false;
+      if (!item || !item.name || item.isActive === false) return false;
       const th = getEffectiveTh(item);
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       return safeQty < th;
@@ -372,6 +379,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Filtered display list
   const filteredItems = useMemo(() => {
     return stockList.filter((item) => {
+      if (!item || !item.name) return false;
       const isItemInactive = item.isActive === false;
 
       if (filterType === 'inactive') {
@@ -390,7 +398,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase();
-        return item.name.toLowerCase().includes(q) || String(item.colIndex).includes(q);
+        const nameMatch = item.name ? item.name.toLowerCase().includes(q) : false;
+        const colMatch = item.colIndex ? String(item.colIndex).includes(q) : false;
+        return nameMatch || colMatch;
       }
 
       return true;

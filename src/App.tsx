@@ -83,6 +83,7 @@ import {
   fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download } from 'lucide-react';
 
 const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
@@ -144,7 +145,28 @@ export default function App() {
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
-  const [activeTab, setActiveTab] = useState<'orders' | 'warehouse' | 'order_portal' | 'analytics'>('orders');
+  const ACTIVE_TAB_KEY = 'storeprint_active_tab_v1';
+  const [activeTab, setActiveTabState] = useState<'orders' | 'warehouse' | 'order_portal' | 'analytics'>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam === 'warehouse' || tabParam === 'orders' || tabParam === 'analytics' || tabParam === 'order_portal') {
+        return tabParam;
+      }
+      const saved = localStorage.getItem(ACTIVE_TAB_KEY);
+      if (saved === 'warehouse' || saved === 'orders' || saved === 'analytics' || saved === 'order_portal') {
+        return saved;
+      }
+    } catch {}
+    return 'orders';
+  });
+
+  const setActiveTab = useCallback((tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, tab);
+    } catch {}
+  }, []);
 
   // Orders & Fast Cached Departments State
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -548,41 +570,73 @@ export default function App() {
     setIsSyncingCloud(true);
     try {
       const fetched = await fetchStockFromCloud(cloudConfig);
-      if (fetched && Object.keys(fetched).length > 0) {
-        setStock((prevStock) => {
-          // Merge fetched cloud stock into current local DB stock to strictly preserve isActive, thresholds, units, and custom settings
-          const currentLocal = { ...getDbStock(), ...prevStock };
-          const mergedWithLocal: Record<string, StockItem> = { ...currentLocal };
+      if (fetched && typeof fetched === 'object' && Object.keys(fetched).length > 0) {
+        const currentLocal = { ...getDbStock(), ...stock };
+        const mergedWithLocal: Record<string, StockItem> = { ...currentLocal };
 
-          Object.keys(fetched).forEach((key) => {
-            const cloudItem = fetched[key];
-            if (!cloudItem) return;
-            const normKey = normalizeProductName(key);
-            const localKey = Object.keys(currentLocal).find(
-              (k) => k === key || normalizeProductName(k) === normKey || currentLocal[k]?.name === key
-            );
-            const localItem = localKey ? currentLocal[localKey] : undefined;
-            const itemName = localItem?.name || cloudItem.name || key;
+        Object.keys(fetched).forEach((key) => {
+          const rawVal = (fetched as any)[key];
+          if (rawVal === undefined || rawVal === null) return;
 
-            mergedWithLocal[itemName] = {
-              id: localItem?.id || cloudItem.id || `stock-${Date.now()}`,
-              name: itemName,
-              colIndex: localItem?.colIndex ?? cloudItem.colIndex,
-              currentStock: typeof cloudItem.currentStock === 'number' && !isNaN(cloudItem.currentStock) ? cloudItem.currentStock : (localItem?.currentStock ?? 0),
-              minThreshold: typeof cloudItem.minThreshold === 'number' && !isNaN(cloudItem.minThreshold) ? cloudItem.minThreshold : (localItem?.minThreshold ?? 10),
-              unit: cloudItem.unit || localItem?.unit || detectPackagingUnitFromProductName(itemName),
-              isActive: localItem?.isActive !== undefined ? localItem.isActive : (cloudItem.isActive !== undefined ? cloudItem.isActive : true),
-              limitByPatients: localItem?.limitByPatients !== undefined ? localItem.limitByPatients : Boolean(cloudItem.limitByPatients),
-              lastUpdated: new Date().toISOString(),
-            };
-          });
+          const normKey = normalizeProductName(key);
+          const localKey = Object.keys(currentLocal).find(
+            (k) => k === key || normalizeProductName(k) === normKey || currentLocal[k]?.name === key
+          );
+          const localItem = localKey ? currentLocal[localKey] : undefined;
 
-          const synced = syncStockWithProductHeaders(productHeaders, mergedWithLocal);
-          saveDbStock(synced, true);
-          saveStoredStock(synced);
-          syncToMultiTenantDb(productHeaders, departments, synced);
-          return synced;
+          let cloudQty: number | undefined;
+          let cloudMin: number | undefined;
+          let cloudUnit: string | undefined;
+          let cloudIsActive: boolean | undefined;
+          let cloudLimitByPatients: boolean | undefined;
+
+          if (typeof rawVal === 'number') {
+            cloudQty = isNaN(rawVal) ? 0 : rawVal;
+          } else if (typeof rawVal === 'object') {
+            if (typeof rawVal.currentStock === 'number' && !isNaN(rawVal.currentStock)) {
+              cloudQty = rawVal.currentStock;
+            }
+            if (typeof rawVal.minThreshold === 'number' && !isNaN(rawVal.minThreshold)) {
+              cloudMin = rawVal.minThreshold;
+            }
+            if (typeof rawVal.unit === 'string' && rawVal.unit.trim()) {
+              cloudUnit = rawVal.unit.trim();
+            }
+            if (typeof rawVal.isActive === 'boolean') {
+              cloudIsActive = rawVal.isActive;
+            }
+            if (typeof rawVal.limitByPatients === 'boolean') {
+              cloudLimitByPatients = rawVal.limitByPatients;
+            }
+          }
+
+          const itemName = localItem?.name || (typeof rawVal === 'object' && rawVal.name ? String(rawVal.name) : key);
+          if (!itemName || typeof itemName !== 'string') return;
+
+          const safeStock = cloudQty !== undefined ? Math.max(0, cloudQty) : (localItem?.currentStock ?? 0);
+          const safeMin = cloudMin !== undefined ? Math.max(1, cloudMin) : (localItem?.minThreshold ?? 10);
+          const safeUnit = cloudUnit || localItem?.unit || detectPackagingUnitFromProductName(itemName);
+          const safeIsActive = localItem?.isActive !== undefined ? localItem.isActive : (cloudIsActive !== undefined ? cloudIsActive : true);
+          const safeLimit = localItem?.limitByPatients !== undefined ? localItem.limitByPatients : Boolean(cloudLimitByPatients);
+
+          mergedWithLocal[itemName] = {
+            id: localItem?.id || (typeof rawVal === 'object' && rawVal.id ? String(rawVal.id) : `stock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+            name: itemName,
+            colIndex: localItem?.colIndex ?? (typeof rawVal === 'object' && typeof rawVal.colIndex === 'number' ? rawVal.colIndex : undefined) ?? (Object.keys(mergedWithLocal).length + 4),
+            currentStock: safeStock,
+            minThreshold: safeMin,
+            unit: safeUnit,
+            isActive: safeIsActive,
+            limitByPatients: safeLimit,
+            lastUpdated: new Date().toISOString(),
+          };
         });
+
+        const synced = syncStockWithProductHeaders(productHeaders, mergedWithLocal);
+        setStock(synced);
+        saveDbStock(synced, true);
+        saveStoredStock(synced);
+        syncToMultiTenantDb(productHeaders, departments, synced);
         setSuccessMessage('סנכרון ענן הושלם בהצלחה! יתרות המלאי עודכנו.');
         setTimeout(() => setSuccessMessage(null), 4000);
       } else {
@@ -593,7 +647,9 @@ export default function App() {
         }
       }
     } catch (err: any) {
-      setErrorMessage(`שגיאת סנכרון: ${err.message}`);
+      console.error('Sync error:', err);
+      setErrorMessage(`שגיאת סנכרון: ${err?.message || 'שגיאה לא ידועה'}`);
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setIsSyncingCloud(false);
     }
@@ -1291,67 +1347,69 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full">
-        {activeTab === 'orders' && (
-          <OrderTable
-            orders={orders}
-            departments={departments}
-            stock={stock}
-            selectedOrderIds={selectedOrderIds}
-            onToggleSelectOrder={handleToggleSelectOrder}
-            onSelectAllOrders={handleSelectAllOrders}
-            onSinglePrint={handleSinglePrint}
-            onDirectCopyPrint={handleDirectCopyPrint}
-            onPreviewOrder={handlePreviewOrder}
-            onMassPrint={() => handleMassPrint(selectedOrderIds)}
-            onTogglePrintedStatus={handleTogglePrintedStatus}
-            onDeleteOrder={handleDeleteOrder}
-            isSheetLoaded={!isLoading}
-          />
-        )}
+        <ErrorBoundary fallbackTitle="אירעה שגיאה בטעינת המסך המבוקש">
+          {activeTab === 'orders' && (
+            <OrderTable
+              orders={orders}
+              departments={departments}
+              stock={stock}
+              selectedOrderIds={selectedOrderIds}
+              onToggleSelectOrder={handleToggleSelectOrder}
+              onSelectAllOrders={handleSelectAllOrders}
+              onSinglePrint={handleSinglePrint}
+              onDirectCopyPrint={handleDirectCopyPrint}
+              onPreviewOrder={handlePreviewOrder}
+              onMassPrint={() => handleMassPrint(selectedOrderIds)}
+              onTogglePrintedStatus={handleTogglePrintedStatus}
+              onDeleteOrder={handleDeleteOrder}
+              isSheetLoaded={!isLoading}
+            />
+          )}
 
-        {activeTab === 'warehouse' && (
-          <WarehouseView
-            stock={stock}
-            departments={departments}
-            tenantId={activeTenantId}
-            tenantName={activeTenant?.name}
-            isEmergencyMode={isEmergencyMode}
-            onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
-            cloudConfig={cloudConfig}
-            onOpenCloudModal={() => setIsCloudModalOpen(true)}
-            onSyncWithCloud={handleSyncWithCloud}
-            isSyncingCloud={isSyncingCloud}
-            onUpdateStockItem={handleUpdateStockItem}
-            onBatchUpdateStock={handleBatchUpdateStock}
-            onSetAllStock={handleSetAllStock}
-            onSaveFullItem={handleSaveFullItem}
-            onDeleteItem={handleDeleteStockItem}
-            onMoveItem={handleMoveStockItem}
-          />
-        )}
+          {activeTab === 'warehouse' && (
+            <WarehouseView
+              stock={stock}
+              departments={departments}
+              tenantId={activeTenantId}
+              tenantName={activeTenant?.name}
+              isEmergencyMode={isEmergencyMode}
+              onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
+              cloudConfig={cloudConfig}
+              onOpenCloudModal={() => setIsCloudModalOpen(true)}
+              onSyncWithCloud={handleSyncWithCloud}
+              isSyncingCloud={isSyncingCloud}
+              onUpdateStockItem={handleUpdateStockItem}
+              onBatchUpdateStock={handleBatchUpdateStock}
+              onSetAllStock={handleSetAllStock}
+              onSaveFullItem={handleSaveFullItem}
+              onDeleteItem={handleDeleteStockItem}
+              onMoveItem={handleMoveStockItem}
+            />
+          )}
 
-        {activeTab === 'order_portal' && (
-          <DepartmentOrderView
-            productHeaders={productHeaders}
-            stock={stock}
-            departments={departments}
-            cloudConfig={cloudConfig}
-            onOrderSubmitted={() => {
-              loadOrders(true);
-              setSuccessMessage('ההזמנה נקלטה בהצלחה ותופיע בטבלת ההזמנות! 🎉');
-              setTimeout(() => setSuccessMessage(null), 5000);
-            }}
-          />
-        )}
+          {activeTab === 'order_portal' && (
+            <DepartmentOrderView
+              productHeaders={productHeaders}
+              stock={stock}
+              departments={departments}
+              cloudConfig={cloudConfig}
+              onOrderSubmitted={() => {
+                loadOrders(true);
+                setSuccessMessage('ההזמנה נקלטה בהצלחה ותופיע בטבלת ההזמנות! 🎉');
+                setTimeout(() => setSuccessMessage(null), 5000);
+              }}
+            />
+          )}
 
-        {activeTab === 'analytics' && (
-          <AnalyticsDashboard
-            orders={orders}
-            stock={stock}
-            departments={departments}
-            tenantName={activeTenant?.name}
-          />
-        )}
+          {activeTab === 'analytics' && (
+            <AnalyticsDashboard
+              orders={orders}
+              stock={stock}
+              departments={departments}
+              tenantName={activeTenant?.name}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Print Preview Modal */}
