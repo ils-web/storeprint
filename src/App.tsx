@@ -338,6 +338,13 @@ export default function App() {
     const timeStr = `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}:${String(dateObj.getSeconds()).padStart(2, '0')}`;
     const fullTimestamp = `${dateStr} ${timeStr}`;
 
+    const rawNotesOrPatients = [
+      to.patientsCount ? `מטופלים: ${to.patientsCount}` : '',
+      to.notes ? to.notes : '',
+    ]
+      .filter(Boolean)
+      .join(' • ');
+
     return {
       id: to.id || `pwa-order-${idx}-${to.orderNumber}`,
       rowNumber: to.rawGoogleSheetRow || (9000 + idx),
@@ -345,9 +352,9 @@ export default function App() {
       rawDate: dateStr,
       parsedDate: dateObj,
       department: to.departmentName,
-      patientsCount: to.patientsCount || '',
-      items: to.items.map((item, itemIdx) => ({
-        id: item.id || `item-${itemIdx}-${item.productId}`,
+      patientsCount: rawNotesOrPatients || to.patientsCount || '',
+      items: (to.items || []).map((item, itemIdx) => ({
+        id: item.id || `item-${itemIdx}-${item.productId || itemIdx}`,
         name: item.name,
         qty: item.orderedUnit && item.orderedUnit !== "יח'"
           ? `${item.orderedQty} ${item.orderedUnit}`
@@ -356,7 +363,7 @@ export default function App() {
         colIndex: 0,
         checked: item.checked,
       })),
-      totalItemsCount: to.totalItemsCount || to.items.length,
+      totalItemsCount: to.totalItemsCount || (to.items || []).length,
       printed: Boolean(to.printed),
       printedAt: to.printedAt,
       rawRow: {},
@@ -438,6 +445,12 @@ export default function App() {
         const mergedOrders = Array.from(allOrdersMap.values()).filter(
           (o) => !isOrderPrintedInSet(o, deletedSet)
         );
+
+        mergedOrders.sort((a, b) => {
+          const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
+          const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+          return timeB - timeA;
+        });
 
         setOrders(mergedOrders);
         try {

@@ -36,9 +36,9 @@ try {
   if (app) {
     db = getFirestore(app);
     auth = getAuth(app);
-    // Only enable if valid config exists
-    isFirebaseReady = false; // Kept false until Firestore database is explicitly enabled in console
+    isFirebaseReady = true;
   }
 } catch (e) {
-  console.warn('Firestore not active, operating in offline/Sheets mode.');
+  console.warn('Firestore not active, operating in offline/Sheets mode.', e);
+  isFirebaseReady = false;
 }
