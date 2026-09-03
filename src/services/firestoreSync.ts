@@ -1,7 +1,8 @@
-﻿import {
+import {
   doc,
   collection,
   setDoc,
+  getDocs,
   onSnapshot,
   query,
   limit,
@@ -188,5 +189,35 @@ export function subscribeToFirestoreOrders(
   } catch (err) {
     console.warn('Failed to start Firestore orders subscription:', err);
     return null;
+  }
+}
+
+/**
+ * Fetches all orders directly from Firestore (one-shot fetch for startup and loadOrders)
+ */
+export async function fetchOrdersFromFirestore(
+  tenantId: string = 'tenant-main-01'
+): Promise<MultiTenantOrder[]> {
+  if (!isFirebaseReady || !db) return [];
+  try {
+    const ordersCol = collection(db, 'tenants', tenantId, 'orders');
+    const q = query(ordersCol, limit(250));
+    const snapshot = await getDocs(q);
+    const orders: MultiTenantOrder[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data && data.items) {
+        orders.push(data as MultiTenantOrder);
+      }
+    });
+
+    if (orders.length > 0) {
+      orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      saveTenantOrders(tenantId, orders);
+    }
+    return orders;
+  } catch (err) {
+    console.warn('Firestore fetchOrdersFromFirestore error:', err);
+    return [];
   }
 }

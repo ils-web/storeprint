@@ -52,6 +52,7 @@ import {
 import {
   subscribeToFirestoreStock,
   subscribeToFirestoreOrders,
+  fetchOrdersFromFirestore,
   updateOrderPrintedInFirestore,
 } from './services/firestoreSync';
 import {
@@ -383,8 +384,18 @@ export default function App() {
         setErrorMessage(null);
       }
 
-      // Load local PWA orders for current active tenant
-      const tenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
+      // Load both remote Firestore orders and local PWA orders for current active tenant
+      let remoteTenantOrders: MultiTenantOrder[] = [];
+      try {
+        remoteTenantOrders = await fetchOrdersFromFirestore(activeTenantId || 'tenant-main-01');
+      } catch (e) {
+        console.warn('Could not fetch remote Firestore orders:', e);
+      }
+      const localTenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
+      const allTenantMap = new Map<string, MultiTenantOrder>();
+      localTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
+      remoteTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
+      const tenantOrders = Array.from(allTenantMap.values());
       const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
       // Combine stored printed IDs with live state
