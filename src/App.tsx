@@ -542,14 +542,61 @@ export default function App() {
 
   // Real-Time Orders Feed Sync via Firestore
   useEffect(() => {
-    const unsubOrders = subscribeToFirestoreOrders((_liveOrders) => {
-      loadOrders(false);
+    const unsubOrders = subscribeToFirestoreOrders((liveOrders) => {
+      if (liveOrders && Array.isArray(liveOrders)) {
+        saveTenantOrders(activeTenantId, liveOrders);
+
+        setOrders((prev) => {
+          const currentPrinted = new Set<string>();
+          getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+          printedOrderIds.forEach((id) => currentPrinted.add(id));
+
+          const deletedSet = new Set<string>();
+          getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
+          deletedOrderIds.forEach((id) => deletedSet.add(id));
+
+          const convertedLive = liveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
+          const allMap = new Map<string, Order>();
+
+          // First put existing orders (from Sheet and cache)
+          (prev || []).forEach((o) => {
+            if (o && o.id) allMap.set(o.id, o);
+          });
+
+          // Overlay with fresh live orders from Firestore
+          convertedLive.forEach((o) => {
+            if (o && o.id) {
+              const isPrinted = isOrderPrintedInSet(o, currentPrinted);
+              allMap.set(o.id, {
+                ...o,
+                printed: isPrinted,
+              });
+            }
+          });
+
+          const merged = Array.from(allMap.values()).filter(
+            (o) => !isOrderPrintedInSet(o, deletedSet)
+          );
+
+          merged.sort((a, b) => {
+            const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
+            const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+            return timeB - timeA;
+          });
+
+          try {
+            localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(merged));
+          } catch {}
+
+          return merged;
+        });
+      }
     }, activeTenantId);
 
     return () => {
       if (unsubOrders) unsubOrders();
     };
-  }, [activeTenantId, loadOrders]);
+  }, [activeTenantId, convertTenantOrderToAppOrder, printedOrderIds, deletedOrderIds]);
 
   // Initial Load once on mount or tenant switch
   useEffect(() => {

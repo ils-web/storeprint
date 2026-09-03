@@ -416,7 +416,31 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
     setIsSubmitting(true);
     try {
-      // 1. Submit directly to Google Sheets Cloud (if configured)
+      const formattedNotes = [
+        requesterName.trim() ? `שם מזמין/ה: ${requesterName.trim()}` : '',
+        notes.trim() ? notes.trim() : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      // 1. Create order & push to Firestore Real-Time DB FIRST (instant delivery!)
+      const newOrder = createTenantOrder(selectedTenantId, {
+        tenantId: selectedTenantId,
+        warehouseId: activeWarehouse?.id || 'wh-default',
+        departmentId: `dept-${Date.now()}`,
+        departmentName: selectedDepartmentName.trim(),
+        items: cartItemsList,
+        totalItemsCount: cartItemsList.length,
+        notes: formattedNotes,
+        patientsCount: patientsCount.trim() || undefined,
+        status: 'NEW',
+        source: 'WEB_PORTAL',
+        printed: false,
+      });
+
+      await pushOrderToFirestore(newOrder, selectedTenantId);
+
+      // 2. Submit directly to Google Sheets Cloud in background (non-blocking)
       const cloudConfig = loadCloudConfig();
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         const orderItemsMap: Record<string, { qty: number; unit?: string }> = {};
@@ -424,14 +448,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
           orderItemsMap[it.name] = { qty: it.orderedQty, unit: it.orderedUnit };
         });
 
-        const formattedNotes = [
-          requesterName.trim() ? `שם מזמין/ה: ${requesterName.trim()}` : '',
-          notes.trim() ? notes.trim() : '',
-        ]
-          .filter(Boolean)
-          .join(' | ');
-
-        await submitDepartmentOrderToCloud(
+        submitDepartmentOrderToCloud(
           {
             department: selectedDepartmentName.trim(),
             orderedBy: requesterName.trim() || undefined,
@@ -440,26 +457,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
             items: orderItemsMap,
           },
           cloudConfig
-        );
+        ).catch((err) => console.warn('Cloud sync error (order already in Firestore):', err));
       }
-
-      // 2. Save local order & push to Firestore Real-Time DB
-      const newOrder = createTenantOrder(selectedTenantId, {
-        tenantId: selectedTenantId,
-        warehouseId: activeWarehouse?.id || 'wh-default',
-        departmentId: `dept-${Date.now()}`,
-        departmentName: selectedDepartmentName.trim(),
-        items: cartItemsList,
-        totalItemsCount: cartItemsList.length,
-        notes: [requesterName.trim() ? `שם מזמין/ה: ${requesterName.trim()}` : '', notes.trim()]
-          .filter(Boolean)
-          .join(' | '),
-        status: 'NEW',
-        source: 'WEB_PORTAL',
-        printed: false,
-      });
-
-      pushOrderToFirestore(newOrder, selectedTenantId).catch(console.warn);
 
       setLastSubmittedOrder(newOrder);
       setOrderSuccessNumber(newOrder.orderNumber);
@@ -468,6 +467,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       setIsCartOpen(false);
       window.dispatchEvent(new Event('storeprint_order_created'));
     } catch (err: any) {
+      console.error('Order submit error:', err);
       alert(err.message || 'שגיאה בשליחת ההזמנה');
     } finally {
       setIsSubmitting(false);
