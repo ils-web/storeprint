@@ -18,7 +18,6 @@ import {
   createTenantOrder,
 } from '../../services/multiTenantDb';
 import { getDbStock, getDbDepartments } from '../../services/unifiedDb';
-import { loadCloudConfig, submitDepartmentOrderToCloud } from '../../utils/cloudSync';
 import { pushOrderToFirestore, subscribeToFirestoreStock } from '../../services/firestoreSync';
 import { StockItem } from '../../types';
 import { InstallAppModal } from './InstallAppModal';
@@ -438,27 +437,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
         printed: false,
       });
 
+      // Pure Database saving: pushes to Firestore and saves in local tenant DB
       await pushOrderToFirestore(newOrder, selectedTenantId);
-
-      // 2. Submit directly to Google Sheets Cloud in background (non-blocking)
-      const cloudConfig = loadCloudConfig();
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        const orderItemsMap: Record<string, { qty: number; unit?: string }> = {};
-        cartItemsList.forEach((it) => {
-          orderItemsMap[it.name] = { qty: it.orderedQty, unit: it.orderedUnit };
-        });
-
-        submitDepartmentOrderToCloud(
-          {
-            department: selectedDepartmentName.trim(),
-            orderedBy: requesterName.trim() || undefined,
-            patientsCount: patientsCount.trim() || undefined,
-            notes: formattedNotes || undefined,
-            items: orderItemsMap,
-          },
-          cloudConfig
-        ).catch((err) => console.warn('Cloud sync error (order already in Firestore):', err));
-      }
 
       setLastSubmittedOrder(newOrder);
       setOrderSuccessNumber(newOrder.orderNumber);
