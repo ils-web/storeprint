@@ -2,6 +2,7 @@ import {
   doc,
   collection,
   setDoc,
+  deleteDoc,
   getDocs,
   onSnapshot,
   query,
@@ -265,5 +266,33 @@ export async function fetchOrdersFromFirestore(
   } catch (err) {
     console.warn('Firestore fetchOrdersFromFirestore error:', err);
     return [];
+  }
+}
+
+/**
+ * Permanently deletes an order from Cloud Firestore (both tenant and global collections)
+ */
+export async function deleteOrderFromFirestore(
+  orderId: string,
+  tenantId: string = 'tenant-main-01'
+): Promise<boolean> {
+  if (!isFirebaseReady || !db) return false;
+  try {
+    const cleanId = orderId.trim();
+    if (!cleanId) return false;
+
+    // 1. Delete from tenant collection
+    const docRef = doc(db, 'tenants', tenantId, 'orders', cleanId);
+    await deleteDoc(docRef);
+
+    // 2. Delete from global collection
+    const globalRef = doc(db, 'orders', cleanId);
+    await deleteDoc(globalRef);
+
+    console.log('✅ Order deleted from Firestore permanently:', cleanId);
+    return true;
+  } catch (err) {
+    console.warn('Firestore deleteOrderFromFirestore error:', err);
+    return false;
   }
 }

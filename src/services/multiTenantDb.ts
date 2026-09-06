@@ -198,9 +198,22 @@ export function getTenants(): Tenant[] {
   const list = getStoredJson<Tenant[]>(TENANTS_KEY, [DEFAULT_INITIAL_TENANT]);
   let changed = false;
   const migrated = list.map((t) => {
-    if (t.id === 'tenant-main-01' && (!t.spreadsheetGid || t.spreadsheetGid === '0' || t.spreadsheetGid === 'null')) {
-      changed = true;
-      return { ...t, spreadsheetGid: DEFAULT_GID };
+    if (t.id === 'tenant-main-01') {
+      let updated = false;
+      let sId = t.spreadsheetId;
+      let sGid = t.spreadsheetGid;
+      if (!sId || sId === 'null' || sId === 'undefined') {
+        sId = DEFAULT_SPREADSHEET_ID;
+        updated = true;
+      }
+      if (!sGid || sGid === '0' || sGid === 'null' || sGid === 'undefined') {
+        sGid = DEFAULT_GID;
+        updated = true;
+      }
+      if (updated) {
+        changed = true;
+        return { ...t, spreadsheetId: sId, spreadsheetGid: sGid };
+      }
     }
     return t;
   });
@@ -513,6 +526,20 @@ export function updateOrderStatus(
   syncOrderToFirestore(orders[idx]).catch(console.warn);
   return orders[idx];
 }
+
+export function deleteTenantOrder(tenantId: string, orderId: string): boolean {
+  const orders = getTenantOrders(tenantId);
+  const initialLen = orders.length;
+  const filtered = orders.filter(
+    (o) => o.id !== orderId && !orderId.includes(o.orderNumber) && (o.id ? !orderId.includes(o.id) : true)
+  );
+  if (filtered.length !== initialLen) {
+    saveTenantOrders(tenantId, filtered);
+    return true;
+  }
+  return false;
+}
+
 
 // ----------------------------------------------------------------------------
 // AUTHENTICATION & SESSION

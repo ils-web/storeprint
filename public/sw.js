@@ -1,5 +1,5 @@
 // StorePrint Service Worker for PWA installability and caching
-const CACHE_NAME = 'storeprint-pwa-v10';
+const CACHE_NAME = 'storeprint-pwa-v11';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -44,9 +44,21 @@ self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
-  // Network First for all HTML and scripts to ensure live updates
+  // CRITICAL: NEVER intercept cross-origin requests (Google Sheets, Firestore, CDNs, Proxies)
+  // Let the browser handle external requests directly without SW interference!
+  let url;
+  try {
+    url = new URL(event.request.url);
+  } catch {
+    return;
+  }
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Network First for local assets
   event.respondWith(
-    fetch(event.request, { cache: 'no-store' })
+    fetch(event.request)
       .then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseToCache = networkResponse.clone();
@@ -70,3 +82,4 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+

@@ -106,7 +106,7 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
 
   // 1. Primary: GVIZ with range=A3:ZZ (100% CORS-friendly in browser, no 307 redirects, clean Row 0 with all 189 headers)
   try {
-    const response = await fetch(gvizUrlA3, { cache: 'no-store' });
+    const response = await fetch(gvizUrlA3);
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -114,12 +114,12 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('GVIZ range=A3:ZZ fetch failed, trying direct CSV export...', err);
+    console.warn('GVIZ range=A3:ZZ fetch failed, trying standard GVIZ fallback...', err);
   }
 
-  // 2. Secondary: Direct CSV export endpoint
+  // 2. Secondary: Standard GVIZ without range
   try {
-    const response = await fetch(directCsvUrl, { cache: 'no-store' });
+    const response = await fetch(gvizUrlAll);
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -127,12 +127,12 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('Direct CSV fetch failed, trying standard GVIZ fallback...', err);
+    console.warn('Standard GVIZ fetch failed, trying direct CSV export...', err);
   }
 
-  // 3. Tertiary: Standard GVIZ without range
+  // 3. Tertiary: Direct CSV export endpoint
   try {
-    const response = await fetch(gvizUrlAll, { cache: 'no-store' });
+    const response = await fetch(directCsvUrl);
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -140,13 +140,13 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('Standard GVIZ fetch failed, attempting proxy fallback...', err);
+    console.warn('Direct CSV fetch failed, attempting proxy fallback...', err);
   }
 
   // 4. Quaternary: AllOrigins proxy fallback
   try {
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrlA3)}&_t=${cacheBuster}`;
-    const response = await fetch(proxyUrl, { cache: 'no-store' });
+    const response = await fetch(proxyUrl);
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -154,7 +154,21 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('Proxy fallback failed:', err);
+    console.warn('AllOrigins Proxy fallback failed, trying corsproxy...', err);
+  }
+
+  // 5. Quinary: Corsproxy.io fallback
+  try {
+    const proxyUrl2 = `https://corsproxy.io/?${encodeURIComponent(gvizUrlA3)}`;
+    const response = await fetch(proxyUrl2);
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('Corsproxy fallback failed:', err);
   }
 
   throw new Error('Не удалось загрузить данные из Google Таблицы');

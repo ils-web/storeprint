@@ -54,6 +54,7 @@ import {
   subscribeToFirestoreOrders,
   fetchOrdersFromFirestore,
   updateOrderPrintedInFirestore,
+  deleteOrderFromFirestore,
 } from './services/firestoreSync';
 import {
   loadStoredStock,
@@ -79,6 +80,7 @@ import {
   getWarehouses,
   getTenantOrders,
   saveTenantOrders,
+  deleteTenantOrder,
   saveInventory,
   saveTenantDepartments,
   fetchInventoryFromFirestore,
@@ -496,7 +498,7 @@ export default function App() {
         console.warn('Live fetch error, checking cached orders:', err);
         let cachedLoaded = false;
         try {
-          const raw = localStorage.getItem('storeprint_orders_cache_v3');
+          const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -576,6 +578,27 @@ export default function App() {
             if (o && o.id) allMap.set(o.id, o);
           });
 
+          // If allMap has few items (race condition before Sheet loads), preserve cached Sheet orders
+          if (allMap.size <= 5) {
+            try {
+              const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 5) {
+                  parsed.forEach((o: any) => {
+                    if (o && o.id && !allMap.has(o.id)) {
+                      allMap.set(o.id, {
+                        ...o,
+                        parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+                        printed: isOrderPrintedInSet(o, currentPrinted),
+                      });
+                    }
+                  });
+                }
+              }
+            } catch {}
+          }
+
           // Overlay with fresh live orders from Firestore
           convertedLive.forEach((o) => {
             if (o && o.id) {
@@ -598,7 +621,9 @@ export default function App() {
           });
 
           try {
-            localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(merged));
+            if (merged.length >= (prev || []).length) {
+              localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(merged));
+            }
           } catch {}
 
           return merged;
@@ -986,14 +1011,16 @@ export default function App() {
     );
     setSelectedOrderIds((prev) => (Array.isArray(prev) ? prev.filter((id) => id !== orderId) : []));
 
-    // 3. Remove from multiTenantDb if it was a PWA / tenant order
-    try {
-      const tenantOrders = getTenantOrders(activeTenantId);
-      const updated = tenantOrders.filter(
-        (tOrder) => tOrder.id !== orderId && !orderId.includes(tOrder.orderNumber)
-      );
-      saveTenantOrders(activeTenantId, updated);
-    } catch {}
+    // 3. Remove from multiTenantDb and permanently from Cloud Firestore
+    const targetId = targetOrder?.id || orderId;
+    deleteTenantOrder(activeTenantId, orderId);
+    if (targetId !== orderId) {
+      deleteTenantOrder(activeTenantId, targetId);
+    }
+    deleteOrderFromFirestore(orderId, activeTenantId).catch(console.warn);
+    if (targetId !== orderId) {
+      deleteOrderFromFirestore(targetId, activeTenantId).catch(console.warn);
+    }
 
     // 4. Remove from printed set
     setPrintedOrderIds((prev) => {
