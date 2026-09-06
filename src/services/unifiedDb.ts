@@ -7,10 +7,10 @@ import { pushStockToFirestore } from './firestoreSync';
 
 // Database Storage Keys
 const DB_STORAGE_KEYS = {
-  PRODUCTS: 'storeprint_db_products_v2',
-  STOCK: 'storeprint_db_stock_v2',
+  PRODUCTS: 'storeprint_db_products_v3',
+  STOCK: 'storeprint_db_stock_v3',
   DEPARTMENTS: 'storeprint_db_departments_v2',
-  ORDERS: 'storeprint_db_orders_v2',
+  ORDERS: 'storeprint_db_orders_v3',
   PRINTED_ORDERS: 'storeprint_db_printed_orders_v2',
   DELETED_ORDERS: 'storeprint_db_deleted_orders_v2',
 };

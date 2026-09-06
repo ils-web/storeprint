@@ -172,7 +172,7 @@ export default function App() {
   // Orders & Fast Cached Departments State
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
-      const raw = localStorage.getItem('storeprint_orders_cache_v2');
+      const raw = localStorage.getItem('storeprint_orders_cache_v3');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -443,9 +443,10 @@ export default function App() {
           } else {
             const existing = allOrdersMap.get(o.id)!;
             allOrdersMap.set(o.id, {
-              ...o,
               ...existing,
-              printed: isPrinted,
+              ...o, // Fresh Google Sheet data ALWAYS overrides stale cached items
+              printed: existing.printed || isPrinted,
+              printedAt: existing.printedAt || o.printedAt,
             });
           }
         });
@@ -466,7 +467,7 @@ export default function App() {
 
         setOrders(mergedOrders);
         try {
-          localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(mergedOrders));
+          localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(mergedOrders));
         } catch {}
 
         if (result.departments.length > 0) {
@@ -495,7 +496,7 @@ export default function App() {
         console.warn('Live fetch error, checking cached orders:', err);
         let cachedLoaded = false;
         try {
-          const raw = localStorage.getItem('storeprint_orders_cache_v2');
+          const raw = localStorage.getItem('storeprint_orders_cache_v3');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -597,7 +598,7 @@ export default function App() {
           });
 
           try {
-            localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(merged));
+            localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(merged));
           } catch {}
 
           return merged;
@@ -741,25 +742,22 @@ export default function App() {
       fetchInventoryFromFirestore(activeTenantId).then((items) => {
         if (items && items.length > 0) {
           setStock((prev) => {
-            // If local stock is already populated with custom edits, preserve it
-            const hasLocalItems = Object.keys(prev).length > 0;
-            if (hasLocalItems) return prev;
-
             const updated = { ...prev };
             items.forEach((item) => {
               if (item.name && item.currentStock !== undefined) {
-                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
+                const existing = prev[item.name];
+                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : (existing?.currentStock ?? 0);
+                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (existing?.minThreshold ?? 10);
                 updated[item.name] = {
-                  id: item.id,
+                  id: item.id || existing?.id || `stock-${item.colIndex}`,
                   name: item.name,
-                  colIndex: item.colIndex || 0,
+                  colIndex: typeof item.colIndex === 'number' && item.colIndex > 0 ? item.colIndex : (existing?.colIndex || 0),
                   currentStock: cleanStock,
                   minThreshold: cleanMin,
-                  unit: item.unit || "יח'",
-                  isActive: item.isActive !== false,
-                  limitByPatients: Boolean(item.limitByPatients),
-                  lastUpdated: item.updatedAt || new Date().toISOString(),
+                  unit: item.unit || existing?.unit || "יח'",
+                  isActive: item.isActive !== undefined ? item.isActive : (existing?.isActive !== false),
+                  limitByPatients: item.limitByPatients !== undefined ? Boolean(item.limitByPatients) : Boolean(existing?.limitByPatients),
+                  lastUpdated: item.updatedAt || existing?.lastUpdated || new Date().toISOString(),
                 };
               }
             });
@@ -1008,14 +1006,14 @@ export default function App() {
 
     // 5. Update local cache
     try {
-      const currentCached = localStorage.getItem('storeprint_orders_cache_v2');
+      const currentCached = localStorage.getItem('storeprint_orders_cache_v3');
       if (currentCached) {
         const parsed = JSON.parse(currentCached);
         if (Array.isArray(parsed)) {
           const updatedCache = parsed.filter(
             (o: any) => o.id !== orderId && getOrderPrintKey(o) !== key && (!targetOrder || o.id !== targetOrder.id)
           );
-          localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updatedCache));
+          localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updatedCache));
         }
       }
     } catch {}
@@ -1091,7 +1089,7 @@ export default function App() {
       );
       setOrders(updatedOrders);
       try {
-        localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updatedOrders));
+        localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updatedOrders));
       } catch {}
     }
 
@@ -1168,7 +1166,7 @@ export default function App() {
           : o
       );
       try {
-        localStorage.setItem('storeprint_orders_cache_v2', JSON.stringify(updated));
+        localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updated));
       } catch {}
       return updated;
     });
