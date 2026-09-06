@@ -220,19 +220,16 @@ export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Rec
   const targetIndex = direction === 'up' ? index - 1 : index + 1;
   if (targetIndex < 0 || targetIndex >= items.length) return current;
 
-  // Swap elements
-  const temp = items[index];
-  items[index] = items[targetIndex];
-  items[targetIndex] = temp;
+  // Swap colIndex between the two items only
+  const currentItem = items[index];
+  const targetItem = items[targetIndex];
+  const tempCol = currentItem.colIndex;
+  currentItem.colIndex = targetItem.colIndex;
+  targetItem.colIndex = tempCol;
 
-  // Re-assign colIndex sequentially
   const next: Record<string, StockItem> = {};
-  items.forEach((item, idx) => {
-    const updatedItem = {
-      ...item,
-      colIndex: idx + 4,
-    };
-    next[updatedItem.name] = updatedItem;
+  items.forEach((item) => {
+    next[item.name] = item;
   });
 
   saveDbStock(next);
@@ -241,7 +238,7 @@ export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Rec
 }
 
 /**
- * Inserts or moves an item to a specific target position (1-indexed)
+ * Inserts or moves an item to a specific target position (1-indexed) without corrupting existing sheet column indices
  */
 export function insertDbStockItemAtPosition(
   savedItem: StockItem,
@@ -252,6 +249,14 @@ export function insertDbStockItemAtPosition(
   let items = Object.values(current).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
   const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
   const normNew = normalizeProductName(savedItem.name);
+
+  // Find if item already had an established colIndex
+  const existingItem = items.find(
+    (item) =>
+      (savedItem.id && item.id === savedItem.id) ||
+      (oldNameOrId && (item.name === oldNameOrId || normalizeProductName(item.name) === normOld)) ||
+      (item.name === savedItem.name || normalizeProductName(item.name) === normNew)
+  );
 
   // Remove existing occurrences of this item
   items = items.filter((item) => {
@@ -271,10 +276,13 @@ export function insertDbStockItemAtPosition(
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
 
+  // If item already has a defined colIndex, preserve it. If new, assign a safe index
+  const safeColIndex = savedItem.colIndex || existingItem?.colIndex || (targetPosition > 0 ? targetPosition + 3 : 200);
+
   const itemToInsert: StockItem = {
     id: savedItem.id || `stock-${Date.now()}`,
     name: savedItem.name.trim(),
-    colIndex: insertIndex + 4,
+    colIndex: safeColIndex,
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,
@@ -285,14 +293,9 @@ export function insertDbStockItemAtPosition(
 
   items.splice(insertIndex, 0, itemToInsert);
 
-  // Re-assign colIndex sequentially for all items
   const next: Record<string, StockItem> = {};
-  items.forEach((item, idx) => {
-    const updatedItem = {
-      ...item,
-      colIndex: idx + 4,
-    };
-    next[updatedItem.name] = updatedItem;
+  items.forEach((item) => {
+    next[item.name] = item;
   });
 
   saveDbStock(next);
@@ -584,19 +587,29 @@ export function ingestGoogleFormsOrders(
     }
   });
 
-  // Find Header Row (row with מחלקה or חותמת זמן)
-  let headerRowIndex = 1;
+  // Find Header Row: select the row with the maximum number of product columns
+  let bestHeaderRowIndex = -1;
+  let maxHeaderCount = 0;
   for (let r = 0; r < Math.min(10, rawRows.length); r++) {
-    const rowStr = rawRows[r].join(' ').toLowerCase();
-    if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור')) {
-      headerRowIndex = r;
-      break;
+    const row = rawRows[r];
+    if (!row) continue;
+    const rowStr = row.join(' ').toLowerCase();
+    if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור') || rowStr.includes('תאריך')) {
+      const nonEmptyCount = row.filter((c: string) => c && c.trim().length > 0).length;
+      if (nonEmptyCount > maxHeaderCount) {
+        maxHeaderCount = nonEmptyCount;
+        bestHeaderRowIndex = r;
+      }
     }
   }
+  const headerRowIndex = bestHeaderRowIndex >= 0 ? bestHeaderRowIndex : 2;
 
-  const rawHeaders = rawRows[headerRowIndex] || [];
   const cleanHeaderName = (h: string, colIdx: number) => {
-    const raw = (h || '').replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
+    let raw = (h || '').trim();
+    if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+      raw = raw.slice(1, -1).trim();
+    }
+    raw = raw.replace(/""/g, '"').trim();
     if (raw && !raw.startsWith('פריט ')) {
       return raw;
     }

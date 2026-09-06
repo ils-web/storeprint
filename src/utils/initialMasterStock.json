@@ -4,18 +4,22 @@
     "name": "אגד אלסטי רוחב 10 ס\"מ דגם C-80 פיזיו (בחבילה יש 10 יחידות)",
     "colIndex": 4,
     "currentStock": 2,
-    "minThreshold": 5,
+    "minThreshold": 1,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "מטושים TRASYSTEM  (100 יחידות בחבילה)": {
     "id": "stock-5",
     "name": "מטושים TRASYSTEM  (100 יחידות בחבילה)",
     "colIndex": 5,
-    "currentStock": 15,
+    "currentStock": 14,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "סטוקינט 12 סמ' (42 מטר) STOCKINETT": {
     "id": "stock-6",
@@ -24,7 +28,9 @@
     "currentStock": 1,
     "minThreshold": 1,
     "unit": "מטר",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "kerllix": {
     "id": "stock-7",
@@ -33,7 +39,9 @@
     "currentStock": 234,
     "minThreshold": 100,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "profix 15": {
     "id": "stock-8",
@@ -42,25 +50,31 @@
     "currentStock": 15,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "profix 10": {
     "id": "stock-9",
     "name": "profix 10",
     "colIndex": 9,
-    "currentStock": 2,
+    "currentStock": 12,
     "minThreshold": 15,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "tagaderm 6x7 קיבוע לעירוי": {
     "id": "stock-10",
     "name": "tagaderm 6x7 קיבוע לעירוי",
     "colIndex": 10,
-    "currentStock": 14,
+    "currentStock": 10,
     "minThreshold": 8,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "tagaderm 10x12 קיבוע לעירוי": {
     "id": "stock-11",
@@ -69,7 +83,9 @@
     "currentStock": 6,
     "minThreshold": 8,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "אפליקטור 100 יחידות": {
     "id": "stock-12",
@@ -78,16 +94,20 @@
     "currentStock": 998,
     "minThreshold": 20,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "דוקרנים לסוכר": {
     "id": "stock-13",
     "name": "דוקרנים לסוכר",
     "colIndex": 13,
-    "currentStock": 10,
+    "currentStock": 25,
     "minThreshold": 25,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "1 דליים של מגבונים לחים": {
     "id": "stock-14",
@@ -96,7 +116,9 @@
     "currentStock": 9,
     "minThreshold": 12,
     "unit": "דלי",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "דלי מגבונים לחים לניקוי משטחים": {
     "id": "stock-15",
@@ -105,16 +127,20 @@
     "currentStock": 34,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "דלי אדום לפסולת 7 ליטר": {
     "id": "stock-16",
     "name": "דלי אדום לפסולת 7 ליטר",
     "colIndex": 16,
-    "currentStock": 34,
+    "currentStock": 35,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "רצועת קשירה לטרכאוסטומי מתכוונן  L- POSEY": {
     "id": "stock-17",
@@ -123,88 +149,108 @@
     "currentStock": 15,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "רצועת קשירה לטרכאוסטומי מתכוונן  M- POSEY": {
     "id": "stock-18",
     "name": "רצועת קשירה לטרכאוסטומי מתכוונן  M- POSEY",
     "colIndex": 18,
-    "currentStock": 25,
+    "currentStock": 24,
     "minThreshold": 10,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "חלוק בידוד": {
     "id": "stock-19",
     "name": "חלוק בידוד",
     "colIndex": 19,
-    "currentStock": 71,
+    "currentStock": 50,
     "minThreshold": 15,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "נטיב אוויר 80 מ\"מ ירוק GUEDEL AIRWAY": {
     "id": "stock-20",
     "name": "נטיב אוויר 80 מ\"מ ירוק GUEDEL AIRWAY",
     "colIndex": 20,
-    "currentStock": 1,
-    "minThreshold": 20,
+    "currentStock": 10,
+    "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "נטיב אוויר 90 מ\"מ ירוק GUEDEL AIRWAY": {
     "id": "stock-21",
     "name": "נטיב אוויר 90 מ\"מ ירוק GUEDEL AIRWAY",
     "colIndex": 21,
-    "currentStock": 8,
+    "currentStock": 20,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "נטיב אוויר 100 מ\"מ ירוק GUEDEL AIRWAY": {
     "id": "stock-22",
     "name": "נטיב אוויר 100 מ\"מ ירוק GUEDEL AIRWAY",
     "colIndex": 22,
-    "currentStock": 3,
+    "currentStock": 20,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "אמבו": {
     "id": "stock-23",
     "name": "אמבו",
     "colIndex": 23,
-    "currentStock": 19,
+    "currentStock": 20,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "זונדה דאודונאל 14# (ירוק)": {
     "id": "stock-24",
     "name": "זונדה דאודונאל 14# (ירוק)",
     "colIndex": 24,
-    "currentStock": 30,
-    "minThreshold": 100,
+    "currentStock": 50,
+    "minThreshold": 50,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "זונדה דאודונאל 16# (כתום)": {
     "id": "stock-25",
     "name": "זונדה דאודונאל 16# (כתום)",
     "colIndex": 25,
     "currentStock": 130,
-    "minThreshold": 100,
+    "minThreshold": 50,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "זונדה דאודונאל 18# (אדום)": {
     "id": "stock-26",
     "name": "זונדה דאודונאל 18# (אדום)",
     "colIndex": 26,
     "currentStock": 50,
-    "minThreshold": 100,
+    "minThreshold": 50,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "חולץ סיכות - רב שימושי": {
     "id": "stock-27",
@@ -213,7 +259,9 @@
     "currentStock": 30,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "חוסם ורידים גומי": {
     "id": "stock-28",
@@ -222,7 +270,9 @@
     "currentStock": 8,
     "minThreshold": 7,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "מוליך לטובוס": {
     "id": "stock-29",
@@ -231,7 +281,9 @@
     "currentStock": 45,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "שרוך לטובוס": {
     "id": "stock-30",
@@ -240,16 +292,20 @@
     "currentStock": 3,
     "minThreshold": 2,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 5": {
     "id": "stock-31",
     "name": "טובוס 5",
     "colIndex": 31,
-    "currentStock": 0,
+    "currentStock": 10,
     "minThreshold": 5,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 6.5": {
     "id": "stock-32",
@@ -258,7 +314,9 @@
     "currentStock": 25,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 7": {
     "id": "stock-33",
@@ -267,7 +325,9 @@
     "currentStock": 20,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 7.5": {
     "id": "stock-34",
@@ -276,7 +336,9 @@
     "currentStock": 15,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 8": {
     "id": "stock-35",
@@ -285,7 +347,9 @@
     "currentStock": 15,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "טובוס 8.5": {
     "id": "stock-36",
@@ -294,7 +358,9 @@
     "currentStock": 15,
     "minThreshold": 15,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "קטטר סקשיין מידה  12": {
     "id": "stock-37",
@@ -303,7 +369,9 @@
     "currentStock": 250,
     "minThreshold": 50,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 6.5": {
     "id": "stock-38",
@@ -312,7 +380,9 @@
     "currentStock": 0,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 7": {
     "id": "stock-39",
@@ -321,7 +391,9 @@
     "currentStock": 14,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 7.5": {
     "id": "stock-40",
@@ -330,7 +402,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 8": {
     "id": "stock-41",
@@ -339,7 +413,9 @@
     "currentStock": 11,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 8.5": {
     "id": "stock-42",
@@ -348,7 +424,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 9": {
     "id": "stock-43",
@@ -357,7 +435,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 9.5": {
     "id": "stock-44",
@@ -366,7 +446,9 @@
     "currentStock": 12,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA עם בלונית מס' 10": {
     "id": "stock-45",
@@ -375,7 +457,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA בלי בלונית מס' 6": {
     "id": "stock-46",
@@ -384,7 +468,9 @@
     "currentStock": 1,
     "minThreshold": 5,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA בלי בלונית מס' 7": {
     "id": "stock-47",
@@ -393,7 +479,9 @@
     "currentStock": 0,
     "minThreshold": 5,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "CANOLA בלי בלונית מס' 8": {
     "id": "stock-48",
@@ -402,16 +490,20 @@
     "currentStock": 2,
     "minThreshold": 5,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כוסיות לחלוקת תרופות- חד פעמי": {
     "id": "stock-49",
     "name": "כוסיות לחלוקת תרופות- חד פעמי",
     "colIndex": 49,
     "currentStock": 600,
-    "minThreshold": 100,
+    "minThreshold": 80,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כוס שתן רגיל לא סטרילי פקק אדום": {
     "id": "stock-50",
@@ -420,7 +512,9 @@
     "currentStock": 40,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "למונשמים בלבד- כוס שתן רגיל לא סטרילי": {
     "id": "stock-51",
@@ -429,25 +523,31 @@
     "currentStock": 40,
     "minThreshold": 40,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כיסוי למד חום 250 יחידות WELCHALLYN": {
     "id": "stock-52",
     "name": "כיסוי למד חום 250 יחידות WELCHALLYN",
     "colIndex": 52,
-    "currentStock": 50,
-    "minThreshold": 20,
+    "currentStock": 3,
+    "minThreshold": 4,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כדורי כלור די (D) 150 חידות": {
     "id": "stock-53",
     "name": "כדורי כלור די (D) 150 חידות",
     "colIndex": 53,
-    "currentStock": 1,
+    "currentStock": 2,
     "minThreshold": 2,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כפפות כירורגיות סטריליות 6.5": {
     "id": "stock-54",
@@ -456,7 +556,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כפפות כירורגיות סטריליות 7": {
     "id": "stock-55",
@@ -465,7 +567,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כפפות כירורגיות סטריליות 7.5": {
     "id": "stock-56",
@@ -474,7 +578,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כפפות כירורגיות סטריליות 8": {
     "id": "stock-57",
@@ -483,43 +589,53 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.693Z"
   },
   "כפפות ניטרל S": {
     "id": "stock-58",
     "name": "כפפות ניטרל S",
     "colIndex": 58,
-    "currentStock": 20,
+    "currentStock": 19,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות ניטרל M": {
     "id": "stock-59",
     "name": "כפפות ניטרל M",
     "colIndex": 59,
-    "currentStock": 67,
+    "currentStock": 41,
     "minThreshold": 50,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות ניטרל L": {
     "id": "stock-60",
     "name": "כפפות ניטרל L",
     "colIndex": 60,
-    "currentStock": 49,
+    "currentStock": 54,
     "minThreshold": 50,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות ניטרל XL": {
     "id": "stock-61",
     "name": "כפפות ניטרל XL",
     "colIndex": 61,
-    "currentStock": 8,
+    "currentStock": 3,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות פוליטג קופולימר סטרילי 100 יחידות (L)": {
     "id": "stock-62",
@@ -528,7 +644,9 @@
     "currentStock": 36,
     "minThreshold": 24,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות פוליטג קופולימר סטרילי 100 יחידות (M)": {
     "id": "stock-63",
@@ -537,7 +655,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מדבקה לזונדה SONDAFIX": {
     "id": "stock-64",
@@ -546,7 +666,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מד חום דיגיטאלי": {
     "id": "stock-65",
@@ -555,7 +677,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מד חום לקיר מעץ סיבית לבן": {
     "id": "stock-66",
@@ -564,34 +688,42 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מזרק 2.5 סמ\"ק 100 יחידות": {
     "id": "stock-67",
     "name": "מזרק 2.5 סמ\"ק 100 יחידות",
     "colIndex": 67,
-    "currentStock": 20,
+    "currentStock": 30,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "חבילה מזרק 5 סמ\"ק 100 יחידות": {
     "id": "stock-68",
     "name": "חבילה מזרק 5 סמ\"ק 100 יחידות",
     "colIndex": 68,
-    "currentStock": 17,
+    "currentStock": 25,
     "minThreshold": 15,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "חבילה מזרק 10 סמ\"ק 100 יחידות": {
     "id": "stock-69",
     "name": "חבילה מזרק 10 סמ\"ק 100 יחידות",
     "colIndex": 69,
-    "currentStock": 17,
+    "currentStock": 15,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "חבילה מזרק 20 סמ\"ק 100 יחידות": {
     "id": "stock-70",
@@ -600,7 +732,9 @@
     "currentStock": 15,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מזרק 60 סמ\"ק 25 יחידות": {
     "id": "stock-71",
@@ -609,7 +743,9 @@
     "currentStock": 600,
     "minThreshold": 600,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מזרק אינסולין + מחט 1 סמ\"ק 100 יחידות": {
     "id": "stock-72",
@@ -618,16 +754,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחבר לחמצן": {
     "id": "stock-73",
     "name": "מחבר לחמצן",
     "colIndex": 73,
-    "currentStock": 0,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחבר פקק לנידליין NEEDEL FREE": {
     "id": "stock-74",
@@ -636,70 +776,86 @@
     "currentStock": 10,
     "minThreshold": 100,
     "unit": "דלי",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט \"פרפר\"    g21  (A)     ירוק": {
     "id": "stock-75",
     "name": "מחט \"פרפר\"    g21  (A)     ירוק",
     "colIndex": 75,
-    "currentStock": 6,
-    "minThreshold": 6,
+    "currentStock": 5,
+    "minThreshold": 4,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט \"פרפר\"    g23  (A)     כחול": {
     "id": "stock-76",
     "name": "מחט \"פרפר\"    g23  (A)     כחול",
     "colIndex": 76,
-    "currentStock": 12,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "חבילה מחט 18g סטרילי 100 יחידות (ורוד) (A)": {
     "id": "stock-77",
     "name": "חבילה מחט 18g סטרילי 100 יחידות (ורוד) (A)",
     "colIndex": 77,
-    "currentStock": 5,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט 21g סטרילי 100 יחידות (ירוק) (A)": {
     "id": "stock-78",
     "name": "מחט 21g סטרילי 100 יחידות (ירוק) (A)",
     "colIndex": 78,
-    "currentStock": 12,
+    "currentStock": 11,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט 23g סטרילי 100 יחידות (כחול) (A)": {
     "id": "stock-79",
     "name": "מחט 23g סטרילי 100 יחידות (כחול) (A)",
     "colIndex": 79,
-    "currentStock": 10,
+    "currentStock": 9,
     "minThreshold": 8,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט ונפלון #18g סטרילי 100 יחידות (ירוק) (קנולה)": {
     "id": "stock-80",
     "name": "מחט ונפלון #18g סטרילי 100 יחידות (ירוק) (קנולה)",
     "colIndex": 80,
-    "currentStock": 5,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט ונפלון #20g סטרילי 100 יחידות (ורוד) (קנולה)": {
     "id": "stock-81",
     "name": "מחט ונפלון #20g סטרילי 100 יחידות (ורוד) (קנולה)",
     "colIndex": 81,
-    "currentStock": 2,
+    "currentStock": 4,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מחט ונפלון #22g סטרילי 100 יחידות (כחול) (קנולה)": {
     "id": "stock-82",
@@ -708,52 +864,64 @@
     "currentStock": 7,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מברשת לניקוי קנולות": {
     "id": "stock-83",
     "name": "מברשת לניקוי קנולות",
     "colIndex": 83,
-    "currentStock": 0,
+    "currentStock": 11,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פלסטר MICROPHOR   רוחב צר 2.5, אורך שלוש מטר  12 יחידות": {
     "id": "stock-84",
     "name": "פלסטר MICROPHOR   רוחב צר 2.5, אורך שלוש מטר  12 יחידות",
     "colIndex": 84,
-    "currentStock": 4,
+    "currentStock": 10,
     "minThreshold": 10,
-    "unit": "מטר",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "unit": "מארז",
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מסיכת חמצן \"משקפיים\" למבוגר": {
     "id": "stock-85",
     "name": "מסיכת חמצן \"משקפיים\" למבוגר",
     "colIndex": 85,
-    "currentStock": 20,
+    "currentStock": 70,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מסכת חמצן 100%": {
     "id": "stock-86",
     "name": "מסכת חמצן 100%",
     "colIndex": 86,
-    "currentStock": 18,
+    "currentStock": 40,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מסכה לטרכאוסטומי למבוגר": {
     "id": "stock-87",
     "name": "מסכה לטרכאוסטומי למבוגר",
     "colIndex": 87,
-    "currentStock": 15,
+    "currentStock": 25,
     "minThreshold": 20,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מסכות כירורגיות 50 יחידות": {
     "id": "stock-88",
@@ -762,7 +930,9 @@
     "currentStock": 280,
     "minThreshold": 100,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מעריך לחמצן": {
     "id": "stock-89",
@@ -771,25 +941,31 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צינור חיבור לסקשיין 7 מ\"מ": {
     "id": "stock-90",
     "name": "צינור חיבור לסקשיין 7 מ\"מ",
     "colIndex": 90,
-    "currentStock": 3,
+    "currentStock": 1,
     "minThreshold": 8,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מרטיב לחמצן": {
     "id": "stock-91",
     "name": "מרטיב לחמצן",
     "colIndex": 91,
-    "currentStock": 10,
+    "currentStock": 20,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט איהלציה T למונשמים": {
     "id": "stock-92",
@@ -798,43 +974,53 @@
     "currentStock": 4,
     "minThreshold": 4,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מתלה לשקית שתן פלסטיק": {
     "id": "stock-93",
     "name": "מתלה לשקית שתן פלסטיק",
     "colIndex": 93,
-    "currentStock": 30,
+    "currentStock": 40,
     "minThreshold": 20,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "שק לנפטר עם רוכסן": {
     "id": "stock-94",
     "name": "שק לנפטר עם רוכסן",
     "colIndex": 94,
-    "currentStock": 10,
+    "currentStock": 2,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט אינהלציה (מסכה + אמפולה)": {
     "id": "stock-95",
     "name": "סט אינהלציה (מסכה + אמפולה)",
     "colIndex": 95,
-    "currentStock": 3,
+    "currentStock": 13,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט הזנה קנגרו (NF(30": {
     "id": "stock-96",
     "name": "סט הזנה קנגרו (NF(30",
     "colIndex": 96,
-    "currentStock": 2,
+    "currentStock": 12,
     "minThreshold": 10,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט הזנה בגרוויטציה 30 יחידות": {
     "id": "stock-97",
@@ -843,16 +1029,20 @@
     "currentStock": 3,
     "minThreshold": 10,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "30 סט לעירוי I.V": {
     "id": "stock-98",
     "name": "30 סט לעירוי I.V",
     "colIndex": 98,
-    "currentStock": 13,
+    "currentStock": 50,
     "minThreshold": 15,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט למתן דם": {
     "id": "stock-99",
@@ -861,16 +1051,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט סטרילי להחדרת קטטר ללא חומר": {
     "id": "stock-100",
     "name": "סט סטרילי להחדרת קטטר ללא חומר",
     "colIndex": 100,
-    "currentStock": 0,
+    "currentStock": 20,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט להוצאת תפרים סטרילי": {
     "id": "stock-101",
@@ -879,7 +1073,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סטרי סטריפ 12 מ\"מ כחול 50 יחידות": {
     "id": "stock-102",
@@ -888,7 +1084,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סטרי סטריפ 6 מ\"מ כתום 50 יחידות": {
     "id": "stock-103",
@@ -897,16 +1095,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סכין לניתוח מס' 11+ ידית 1/10": {
     "id": "stock-104",
     "name": "סכין לניתוח מס' 11+ ידית 1/10",
     "colIndex": 104,
-    "currentStock": 5,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פד גאזה 7.5X7.5     שמונה שכבות 100 יחידות": {
     "id": "stock-105",
@@ -915,16 +1117,20 @@
     "currentStock": 197,
     "minThreshold": 100,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פד גזה כחול 20X10": {
     "id": "stock-106",
     "name": "פד גזה כחול 20X10",
     "colIndex": 106,
-    "currentStock": 27,
+    "currentStock": 17,
     "minThreshold": 20,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פד גאזה 10X10 שמונה שכבות 100 יחידות": {
     "id": "stock-107",
@@ -933,7 +1139,9 @@
     "currentStock": 102,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 12 W2": {
     "id": "stock-108",
@@ -942,7 +1150,9 @@
     "currentStock": 10,
     "minThreshold": 20,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 14 W2": {
     "id": "stock-109",
@@ -951,7 +1161,9 @@
     "currentStock": 10,
     "minThreshold": 30,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 16 W2": {
     "id": "stock-110",
@@ -960,7 +1172,9 @@
     "currentStock": 10,
     "minThreshold": 30,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 18 W2": {
     "id": "stock-111",
@@ -969,7 +1183,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 20 W2": {
     "id": "stock-112",
@@ -978,7 +1194,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 22 W2": {
     "id": "stock-113",
@@ -987,7 +1205,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר גדול 24 W2": {
     "id": "stock-114",
@@ -996,7 +1216,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר סיליקון 14": {
     "id": "stock-115",
@@ -1005,7 +1227,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר סיליקון 16": {
     "id": "stock-116",
@@ -1014,7 +1238,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פוליקטטר סיליקון 18": {
     "id": "stock-117",
@@ -1023,16 +1249,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פילטרים גרמושקה": {
     "id": "stock-118",
     "name": "פילטרים גרמושקה",
     "colIndex": 118,
-    "currentStock": 1200,
+    "currentStock": 700,
     "minThreshold": 700,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פנרוס  L": {
     "id": "stock-119",
@@ -1041,7 +1271,9 @@
     "currentStock": 100,
     "minThreshold": 100,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פנרוס  XL": {
     "id": "stock-120",
@@ -1050,7 +1282,9 @@
     "currentStock": 100,
     "minThreshold": 100,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פקק אדום": {
     "id": "stock-121",
@@ -1059,7 +1293,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פקק צהוב": {
     "id": "stock-122",
@@ -1068,7 +1304,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פקק לזונדה": {
     "id": "stock-123",
@@ -1077,7 +1315,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צמר גפן לבן 100 גר": {
     "id": "stock-124",
@@ -1086,16 +1326,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קופסא לשיניים תותבות": {
     "id": "stock-125",
     "name": "קופסא לשיניים תותבות",
     "colIndex": 125,
-    "currentStock": 8,
+    "currentStock": 28,
     "minThreshold": 20,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קטטר סקשיין גדול 14": {
     "id": "stock-126",
@@ -1104,7 +1348,9 @@
     "currentStock": 4,
     "minThreshold": 4,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קטטר סקשיין גדול 16 (כתום)": {
     "id": "stock-127",
@@ -1113,7 +1359,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קטטר סקשיין גדול 18 (אדום)": {
     "id": "stock-128",
@@ -1122,16 +1370,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "בקבוק שתן פלסטי": {
     "id": "stock-129",
     "name": "בקבוק שתן פלסטי",
     "colIndex": 129,
-    "currentStock": 0,
+    "currentStock": 10,
     "minThreshold": 10,
     "unit": "בקבוק",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "בקבוק שתן חד פעמי": {
     "id": "stock-130",
@@ -1140,7 +1392,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "בקבוק",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(4) 25 מ'": {
     "id": "stock-131",
@@ -1149,7 +1403,9 @@
     "currentStock": 7,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(5) 25 מ'": {
     "id": "stock-132",
@@ -1158,7 +1414,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(6) 25 מ'": {
     "id": "stock-133",
@@ -1167,43 +1425,53 @@
     "currentStock": 12,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(7) 25 מ'": {
     "id": "stock-134",
     "name": "רשת חבישה גדולה(7) 25 מ'",
     "colIndex": 134,
-    "currentStock": 2,
+    "currentStock": 8,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(8) 25 מ'": {
     "id": "stock-135",
     "name": "רשת חבישה גדולה(8) 25 מ'",
     "colIndex": 135,
-    "currentStock": 3,
+    "currentStock": 7,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "רשת חבישה גדולה(9) 25 מ'": {
     "id": "stock-136",
     "name": "רשת חבישה גדולה(9) 25 מ'",
     "colIndex": 136,
-    "currentStock": 2,
+    "currentStock": 8,
     "minThreshold": 10,
     "unit": "גליל",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "25 שקית שתן 2 ליטר 250 סמ\"ק ללא ברז": {
     "id": "stock-137",
     "name": "25 שקית שתן 2 ליטר 250 סמ\"ק ללא ברז",
     "colIndex": 137,
     "currentStock": 131,
-    "minThreshold": 100,
+    "minThreshold": 750,
     "unit": "ליטר",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "שקיות שתן עם ברז": {
     "id": "stock-138",
@@ -1212,7 +1480,9 @@
     "currentStock": 3,
     "minThreshold": 3,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "שפדלים (לוחצי לשון) 1 קרטון": {
     "id": "stock-139",
@@ -1221,7 +1491,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פינצטה ברזל": {
     "id": "stock-140",
@@ -1230,16 +1502,20 @@
     "currentStock": 5,
     "minThreshold": 5,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "תחבושת אגד אלסטי 10X2.5 ס\"מ": {
     "id": "stock-141",
     "name": "תחבושת אגד אלסטי 10X2.5 ס\"מ",
     "colIndex": 141,
-    "currentStock": 250,
-    "minThreshold": 100,
+    "currentStock": 1600,
+    "minThreshold": 500,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "תחבושת אגד אלסטי 7X2.5 ס\"מ": {
     "id": "stock-142",
@@ -1248,7 +1524,9 @@
     "currentStock": 0,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "תחבושת לגבס רוחב 20 ס\"מ": {
     "id": "stock-143",
@@ -1257,7 +1535,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סטטוסקופ לאחות": {
     "id": "stock-144",
@@ -1266,7 +1546,9 @@
     "currentStock": 1,
     "minThreshold": 1,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "אגד פלסטי (600) 10 ס\"מ": {
     "id": "stock-145",
@@ -1275,34 +1557,42 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צמיד זיהוי פלסטי למבוגר 100 יחידות אדום": {
     "id": "stock-146",
     "name": "צמיד זיהוי פלסטי למבוגר 100 יחידות אדום",
     "colIndex": 146,
-    "currentStock": 199,
+    "currentStock": 200,
     "minThreshold": 200,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צמיד זיהוי פלסטי למבוגר 100 יחידות לבן": {
     "id": "stock-147",
     "name": "צמיד זיהוי פלסטי למבוגר 100 יחידות לבן",
     "colIndex": 147,
-    "currentStock": 199,
+    "currentStock": 200,
     "minThreshold": 200,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צמיד זיהוי פלסטי למבוגר 100 יחידות צהוב": {
     "id": "stock-148",
     "name": "צמיד זיהוי פלסטי למבוגר 100 יחידות צהוב",
     "colIndex": 148,
-    "currentStock": 199,
+    "currentStock": 200,
     "minThreshold": 200,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צינור ראקטאלי 24  FR": {
     "id": "stock-149",
@@ -1311,7 +1601,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "צינור ראקטאלי 26  FR": {
     "id": "stock-150",
@@ -1320,7 +1612,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "CIRRUS 2 NEBULISER UNIVERSAL BREATHING SYSTEM": {
     "id": "stock-151",
@@ -1329,16 +1623,20 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "CANOLA עם בלונית מס' 6": {
-    "id": "stock-152",
+    "id": "stock-38",
     "name": "CANOLA עם בלונית מס' 6",
     "colIndex": 152,
-    "currentStock": 10,
+    "currentStock": 0,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": true,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "SPEACH VALVE": {
     "id": "stock-153",
@@ -1347,7 +1645,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "CANISTER 1000 CC": {
     "id": "stock-154",
@@ -1356,7 +1656,9 @@
     "currentStock": 2,
     "minThreshold": 10,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "medicpro orthopaedic padding (פד מסוג מדיקפרו אורטופדיק)": {
     "id": "stock-155",
@@ -1365,7 +1667,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "adesive wound dressing 15x10": {
     "id": "stock-156",
@@ -1374,52 +1678,64 @@
     "currentStock": 3,
     "minThreshold": 9,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "adesive wound dressing 20x10": {
     "id": "stock-157",
     "name": "adesive wound dressing 20x10",
     "colIndex": 157,
-    "currentStock": 5,
+    "currentStock": 3,
     "minThreshold": 9,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "adesive wound dressing 7.5x5": {
     "id": "stock-158",
     "name": "adesive wound dressing 7.5x5",
     "colIndex": 158,
-    "currentStock": 3,
+    "currentStock": 1,
     "minThreshold": 5,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פלסטר MICROPHOR   רוחב 5,  אורך 3 מטר,  12 יחידות": {
     "id": "stock-159",
     "name": "פלסטר MICROPHOR   רוחב 5,  אורך 3 מטר,  12 יחידות",
     "colIndex": 159,
-    "currentStock": 0,
+    "currentStock": 8,
     "minThreshold": 10,
     "unit": "מטר",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קרם סיליקון בקבוק L1": {
     "id": "stock-160",
     "name": "קרם סיליקון בקבוק L1",
     "colIndex": 160,
-    "currentStock": 7,
+    "currentStock": 60,
     "minThreshold": 70,
     "unit": "בקבוק",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "vaktener וואקו טיינר": {
     "id": "stock-161",
     "name": "vaktener וואקו טיינר",
     "colIndex": 161,
-    "currentStock": 250,
+    "currentStock": 230,
     "minThreshold": 100,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "קומבופלקס- צינורות מונשמים (מונפק לפי ארגז)": {
     "id": "stock-162",
@@ -1428,7 +1744,9 @@
     "currentStock": 200,
     "minThreshold": 40,
     "unit": "קרטון",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מספריים כירורגים": {
     "id": "stock-163",
@@ -1437,16 +1755,20 @@
     "currentStock": 3,
     "minThreshold": 3,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "נייר למכשיר א.ק.ג": {
     "id": "stock-164",
     "name": "נייר למכשיר א.ק.ג",
     "colIndex": 164,
-    "currentStock": 9,
+    "currentStock": 8,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מספריים לחבישות": {
     "id": "stock-165",
@@ -1455,7 +1777,9 @@
     "currentStock": 20,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "טפסים לתיעוד הטיפול במחלקת מונשמים (גרמושקה)": {
     "id": "stock-166",
@@ -1464,7 +1788,9 @@
     "currentStock": 20,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "שקיות ביוהזרד": {
     "id": "stock-167",
@@ -1473,7 +1799,9 @@
     "currentStock": 50,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מוצץ רוק ידני- מונשמים": {
     "id": "stock-168",
@@ -1482,34 +1810,9 @@
     "currentStock": 20,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
-  },
-  "פריט 166": {
-    "id": "stock-169",
-    "name": "פריט 166",
-    "colIndex": 169,
-    "currentStock": 10,
-    "minThreshold": 10,
-    "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
-  },
-  "פריט 167": {
-    "id": "stock-170",
-    "name": "פריט 167",
-    "colIndex": 170,
-    "currentStock": 10,
-    "minThreshold": 10,
-    "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
-  },
-  "פריט 168": {
-    "id": "stock-171",
-    "name": "פריט 168",
-    "colIndex": 171,
-    "currentStock": 10,
-    "minThreshold": 10,
-    "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מסכה לאמבו": {
     "id": "stock-172",
@@ -1518,7 +1821,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "fubupore 10x25": {
     "id": "stock-173",
@@ -1527,7 +1832,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "fubupore 10x15 קיבוע לעירוי": {
     "id": "stock-174",
@@ -1536,7 +1843,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "קופסה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "medi-fix  10/10": {
     "id": "stock-175",
@@ -1545,7 +1854,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "ברזל כחול  LINK LA- MED STOP COCK 3- WAY  מק\"ט 055052009": {
     "id": "stock-176",
@@ -1554,7 +1865,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "סט להחלפת תחבושת": {
     "id": "stock-177",
@@ -1563,7 +1876,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "תחבושת אגד נמתח אלסטי 10 ס\"מ": {
     "id": "stock-178",
@@ -1572,7 +1887,9 @@
     "currentStock": 0,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מתלה": {
     "id": "stock-179",
@@ -1581,7 +1898,9 @@
     "currentStock": 80,
     "minThreshold": 40,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "tagaderm 12x10": {
     "id": "stock-180",
@@ -1590,7 +1909,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "חוסם עורקים מגומי 6 ס\"מ/2 מטר": {
     "id": "stock-181",
@@ -1599,7 +1920,9 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "מארז",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "1 חבילה כוסיות לחלוקת תרופות- ירוק": {
     "id": "stock-182",
@@ -1608,78 +1931,185 @@
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
+  },
+  "1 חבילה כוסיות לחלוקת תרופות- ירוק (2)": {
+    "id": "stock-183",
+    "name": "1 חבילה כוסיות לחלוקת תרופות- ירוק (2)",
+    "colIndex": 183,
+    "currentStock": 10,
+    "minThreshold": 10,
+    "unit": "יח'",
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פלסטר TRANSPORE אדום": {
     "id": "stock-183",
     "name": "פלסטר TRANSPORE אדום",
-    "colIndex": 183,
+    "colIndex": 184,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "סט",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות ניילון חד פעמי- שקוף 100 יחידות": {
     "id": "stock-184",
     "name": "כפפות ניילון חד פעמי- שקוף 100 יחידות",
-    "colIndex": 184,
-    "currentStock": 10,
-    "minThreshold": 10,
-    "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
-  },
-  "שקית לנעליים": {
-    "id": "stock-185",
-    "name": "שקית לנעליים",
     "colIndex": 185,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
-  "כובעים לאחות לבידוד": {
-    "id": "stock-186",
-    "name": "כובעים לאחות לבידוד",
+  "שקית לנעליים": {
+    "id": "stock-185",
+    "name": "שקית לנעליים",
     "colIndex": 186,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
-  "פנרוס (MIZRA MEDICAL ITD) L": {
-    "id": "stock-187",
-    "name": "פנרוס (MIZRA MEDICAL ITD) L",
+  "כובעים לאחות לבידוד": {
+    "id": "stock-186",
+    "name": "כובעים לאחות לבידוד",
     "colIndex": 187,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
-  "הולדר לפרפר מחט רגילה 450263": {
-    "id": "stock-188",
-    "name": "הולדר לפרפר מחט רגילה 450263",
+  "פנרוס (MIZRA MEDICAL ITD) L": {
+    "id": "stock-187",
+    "name": "פנרוס (MIZRA MEDICAL ITD) L",
     "colIndex": 188,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "יח'",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
+  },
+  "הולדר לפרפר מחט רגילה 450263": {
+    "id": "stock-188",
+    "name": "הולדר לפרפר מחט רגילה 450263",
+    "colIndex": 189,
+    "currentStock": 10,
+    "minThreshold": 10,
+    "unit": "יח'",
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מייצג לא סטרילי 40X20": {
     "id": "stock-189",
     "name": "מייצג לא סטרילי 40X20",
-    "colIndex": 189,
+    "colIndex": 190,
     "currentStock": 10,
     "minThreshold": 10,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מייצג לא סטרילי 10X20 50 יחידות": {
     "id": "stock-190",
     "name": "מייצג לא סטרילי 10X20 50 יחידות",
-    "colIndex": 190,
+    "colIndex": 191,
     "currentStock": 40,
     "minThreshold": 40,
     "unit": "חבילה",
-    "lastUpdated": "Tue Aug 25 2026 15:58:44 GMT+0300 (שעון ישראל (קיץ))"
+    "isActive": false,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.694Z"
+  },
+  "אגד אלסטי רחב 10 ס\"מ B-60": {
+    "name": "אגד אלסטי רחב 10 ס\"מ B-60",
+    "unit": "חבילה",
+    "currentStock": 40,
+    "lastUpdated": "2026-09-06T08:43:28.695Z",
+    "isActive": true,
+    "limitByPatients": false,
+    "minThreshold": 10,
+    "id": "stock-1788258055726",
+    "colIndex": 200
+  },
+  "ANTIGON מגבונים לחים לניקוי משטחים": {
+    "currentStock": 20,
+    "lastUpdated": "2026-09-06T08:43:28.697Z",
+    "limitByPatients": false,
+    "isActive": true,
+    "colIndex": 201,
+    "name": "ANTIGON מגבונים לחים לניקוי משטחים",
+    "unit": "חבילה",
+    "minThreshold": 10,
+    "id": "stock-15"
+  },
+  "1 דליים של מגבונים לחים לגוף": {
+    "unit": "דלי",
+    "name": "1 דליים של מגבונים לחים לגוף",
+    "currentStock": 14,
+    "isActive": true,
+    "limitByPatients": false,
+    "lastUpdated": "2026-09-06T08:43:28.698Z",
+    "colIndex": 202,
+    "id": "stock-14",
+    "lastDeducted": "2026-09-06T05:48:56.825Z",
+    "minThreshold": 12
+  },
+  "פריט 166": {
+    "id": "stock-169",
+    "colIndex": 203,
+    "minThreshold": 10,
+    "lastUpdated": "2026-09-06T08:43:28.705Z",
+    "isActive": false,
+    "unit": "יח'",
+    "name": "פריט 166",
+    "limitByPatients": false,
+    "currentStock": 10
+  },
+  "פריט 168": {
+    "lastUpdated": "2026-09-06T08:43:28.705Z",
+    "isActive": false,
+    "currentStock": 10,
+    "limitByPatients": false,
+    "colIndex": 204,
+    "minThreshold": 10,
+    "id": "stock-171",
+    "unit": "יח'",
+    "name": "פריט 168"
+  },
+  "פריט 167": {
+    "minThreshold": 10,
+    "isActive": false,
+    "id": "stock-170",
+    "lastUpdated": "2026-09-06T08:43:28.705Z",
+    "name": "פריט 167",
+    "unit": "יח'",
+    "currentStock": 10,
+    "limitByPatients": false,
+    "colIndex": 205
+  },
+  "קטטר סקשיין גדול 14 עם פינגרטיפ": {
+    "minThreshold": 4,
+    "lastUpdated": "2026-09-06T08:43:28.706Z",
+    "isActive": true,
+    "unit": "קרטון",
+    "name": "קטטר סקשיין גדול 14 עם פינגרטיפ",
+    "limitByPatients": false,
+    "currentStock": 4,
+    "id": "stock-126",
+    "colIndex": 206
   }
 }

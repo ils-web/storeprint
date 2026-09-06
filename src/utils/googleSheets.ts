@@ -103,20 +103,7 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
   const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${effectiveGid}&_t=${cacheBuster}`;
   const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${effectiveGid}&_t=${cacheBuster}`;
 
-  // 1. Primary: Google Visualization CSV endpoint (CORS-friendly, no auth required for public sheets)
-  try {
-    const response = await fetch(gvizUrl, { cache: 'no-store' });
-    if (response.ok) {
-      const csvText = await response.text();
-      if (csvText && csvText.length > 50) {
-        return parseCsvString(csvText);
-      }
-    }
-  } catch (err) {
-    console.warn('GVIZ CSV fetch failed, trying direct export...', err);
-  }
-
-  // 2. Secondary: Direct CSV export endpoint
+  // 1. Primary: Direct CSV export endpoint (preserves all 189 product headers intact, CORS enabled)
   try {
     const response = await fetch(directCsvUrl, { cache: 'no-store' });
     if (response.ok) {
@@ -126,12 +113,25 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('Direct CSV fetch failed, attempting proxy fallback...', err);
+    console.warn('Direct CSV fetch failed, trying GVIZ fallback...', err);
+  }
+
+  // 2. Secondary: Google Visualization CSV endpoint (fallback)
+  try {
+    const response = await fetch(gvizUrl, { cache: 'no-store' });
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('GVIZ CSV fetch failed, attempting proxy fallback...', err);
   }
 
   // 3. Tertiary: AllOrigins proxy fallback
   try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrl)}&_t=${cacheBuster}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directCsvUrl)}&_t=${cacheBuster}`;
     const response = await fetch(proxyUrl, { cache: 'no-store' });
     if (response.ok) {
       const csvText = await response.text();
@@ -216,20 +216,31 @@ export function processRawRowsToOrders(
     }
   });
 
-  // Locate the header row by searching for 'חותמת זמן' or 'מחלקה' or default to index 1
-  let headerRowIndex = 1;
+  // Locate the true header row with the maximum number of product columns
+  let bestHeaderRowIndex = -1;
+  let maxHeaderCount = 0;
   for (let r = 0; r < Math.min(10, rows.length); r++) {
-    const rowStr = rows[r].join(' ').toLowerCase();
-    if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור')) {
-      headerRowIndex = r;
-      break;
+    const row = rows[r];
+    if (!row) continue;
+    const rowStr = row.join(' ').toLowerCase();
+    if (rowStr.includes('חותמת זמן') || rowStr.includes('מחלקה') || rowStr.includes('סקטור') || rowStr.includes('תאריך')) {
+      const nonEmptyCount = row.filter((c) => c && c.trim().length > 0).length;
+      if (nonEmptyCount > maxHeaderCount) {
+        maxHeaderCount = nonEmptyCount;
+        bestHeaderRowIndex = r;
+      }
     }
   }
+  const headerRowIndex = bestHeaderRowIndex >= 0 ? bestHeaderRowIndex : 2;
 
   const rawHeaders = rows[headerRowIndex] || [];
 
   const cleanHeaderName = (h: string, colIdx: number) => {
-    const raw = (h || '').replace(/^["']+|["']+$/g, '').replace(/""/g, '"').trim();
+    let raw = (h || '').trim();
+    if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+      raw = raw.slice(1, -1).trim();
+    }
+    raw = raw.replace(/""/g, '"').trim();
     if (raw && !raw.startsWith('פריט ')) {
       return raw;
     }
