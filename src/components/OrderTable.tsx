@@ -94,9 +94,12 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     try {
       const saved = localStorage.getItem(PERIOD_FILTER_KEY);
       const valid: PeriodFilterType[] = ['all', 'today', 'week', 'last7', 'last30', 'month', 'custom'];
-      return saved && valid.includes(saved as PeriodFilterType) ? (saved as PeriodFilterType) : 'today';
+      if (saved && ['all', 'last30', 'last7', 'month'].includes(saved)) {
+        return saved as PeriodFilterType;
+      }
+      return 'last30';
     } catch {
-      return 'today';
+      return 'last30';
     }
   });
 
@@ -454,12 +457,20 @@ export const OrderTable: React.FC<OrderTableProps> = ({
             {filteredOrders.length === 0 ? (
               <tr>
                 <td colSpan={7} className="py-16 text-center text-slate-500">
-                  <div className="max-w-md mx-auto space-y-2">
+                  <div className="max-w-md mx-auto space-y-3">
                     <Package className="w-10 h-10 text-slate-300 mx-auto" />
-                    <div className="font-bold text-slate-700 text-sm">לא נמצאו הזמנות</div>
+                    <div className="font-bold text-slate-700 text-sm">לא נמצאו הזמנות בתקופה שנבחרה</div>
                     <p className="text-xs text-slate-400">
-                      נסו לשנות את מונח החיפוש, לבחור תקופה אחרת או לסנן לפי מחלקה.
+                      בדקו אם ישנן הזמנות בימים קודמים או בצעו איפוס לסינון התקופה.
                     </p>
+                    {periodFilter !== 'all' && (
+                      <button
+                        onClick={() => handlePeriodChange('all')}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer"
+                      >
+                        <span>הצג את כל ההזמנות במערכת ({orders.length})</span>
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

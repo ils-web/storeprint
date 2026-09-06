@@ -19,6 +19,7 @@ import {
 } from '../../services/multiTenantDb';
 import { getDbStock, getDbDepartments } from '../../services/unifiedDb';
 import { pushOrderToFirestore, subscribeToFirestoreStock } from '../../services/firestoreSync';
+import { isFirebaseReady, db } from '../../services/firebase';
 import { StockItem } from '../../types';
 import { InstallAppModal } from './InstallAppModal';
 import {
@@ -233,6 +234,28 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleForceUpdate = () => {
+    if (typeof window === 'undefined') return;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          reg.unregister();
+        }
+        if ('caches' in window) {
+          caches.keys().then((keys) => {
+            Promise.all(keys.map((k) => caches.delete(k))).then(() => {
+              window.location.reload();
+            });
+          });
+        } else {
+          window.location.reload();
+        }
+      });
+    } else {
+      window.location.reload();
+    }
   };
 
   // RULE 1: Catalog strictly matches active warehouse stock and EXCLUDES frozen/inactive items
@@ -565,11 +588,19 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
             )}
 
             <button
+              onClick={handleForceUpdate}
+              className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+              title="רענן ומשוך גרסה עדכנית מהענן"
+            >
+              <RotateCcw className="w-4 h-4 text-emerald-400" />
+            </button>
+
+            <button
               onClick={() => setIsInstallModalOpen(true)}
               className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
               title="התקנת האפליקציה למסך הבית"
             >
-              <Smartphone className="w-4 h-4 text-emerald-400" />
+              <Smartphone className="w-4 h-4 text-sky-400" />
             </button>
           </div>
         </div>
