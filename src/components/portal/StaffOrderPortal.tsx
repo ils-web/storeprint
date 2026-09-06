@@ -454,14 +454,17 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
         items: cartItemsList,
         totalItemsCount: cartItemsList.length,
         notes: formattedNotes,
-        patientsCount: patientsCount.trim() || undefined,
+        patientsCount: patientsCount.trim() || '',
         status: 'NEW',
         source: 'WEB_PORTAL',
         printed: false,
       });
 
       // Pure Database saving: pushes to Firestore and saves in local tenant DB
-      await pushOrderToFirestore(newOrder, selectedTenantId);
+      const firestoreSuccess = await pushOrderToFirestore(newOrder, selectedTenantId);
+      if (!firestoreSuccess) {
+        console.warn('Firestore push returned false, order stored in local tenant DB');
+      }
 
       setLastSubmittedOrder(newOrder);
       setOrderSuccessNumber(newOrder.orderNumber);
@@ -554,7 +557,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       {/* Top App Header */}
       <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-md">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
-          {/* Department Selector Pill */}
+          {/* Department Selector Pill & Cloud Status */}
           <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setIsDeptModalOpen(true)}
@@ -570,6 +573,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                 </div>
               </div>
             </button>
+
+            <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-950/70 border border-emerald-500/40 rounded-xl text-[11px] font-bold text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>ענן מחובר</span>
+            </div>
           </div>
 
           {/* Action Buttons */}

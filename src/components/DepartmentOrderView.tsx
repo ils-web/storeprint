@@ -22,6 +22,9 @@ import {
 import { StockItem, CloudSyncConfig } from '../types';
 import { PACKAGING_UNITS } from './WarehouseView';
 import { submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../utils/cloudSync';
+import { pushOrderToFirestore } from '../services/firestoreSync';
+import { createTenantOrder } from '../services/multiTenantDb';
+import { MultiTenantOrderItem } from '../types/multiTenant';
 
 interface DepartmentOrderViewProps {
   productHeaders: string[];
@@ -175,7 +178,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     setCart({});
   };
 
-  // Submit Order to Google Sheets
+  // Submit Order directly to Firestore Cloud Database
   const handleSubmitOrder = async () => {
     const activeDept = (isCustomDept ? customDept : selectedDept).trim();
     if (!activeDept) {
@@ -188,40 +191,68 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
       return;
     }
 
-    if (!cloudConfig.endpointUrl) {
-      setSubmitError('קישור הענן (Apps Script) אינו מוגדר. פנה למנהל המחסן.');
-      return;
-    }
-
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const payload: DepartmentOrderPayload = {
-      department: activeDept,
-      orderedBy: requesterName.trim(),
-      patientsCount: patientsCount.trim(),
-      notes: notes.trim(),
-      items: cart,
-    };
+    const formattedNotes = [
+      requesterName.trim() ? `שם מזמין/ה: ${requesterName.trim()}` : '',
+      notes.trim() ? notes.trim() : '',
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    const orderItems: MultiTenantOrderItem[] = cartItemsList.map((item, idx) => ({
+      id: `item-${Date.now()}-${idx}`,
+      productId: `prod-${idx}`,
+      name: item.name,
+      orderedQty: item.qty,
+      orderedUnit: item.unit || "יח'",
+    }));
 
     try {
-      const res = await submitDepartmentOrderToCloud(payload, cloudConfig);
-      if (res.success) {
-        setSubmittedOrder({
-          orderId: res.orderId || `ORD-${Date.now().toString().slice(-6)}`,
-          timestamp: res.timestamp || new Date().toLocaleString('he-IL'),
+      // 1. Create order & push to Firestore Real-Time DB
+      const newOrder = createTenantOrder('tenant-main-01', {
+        tenantId: 'tenant-main-01',
+        warehouseId: 'wh-default',
+        departmentId: `dept-${Date.now()}`,
+        departmentName: activeDept,
+        items: orderItems,
+        totalItemsCount: orderItems.length,
+        notes: formattedNotes,
+        patientsCount: patientsCount.trim() || '',
+        status: 'NEW',
+        source: 'WEB_PORTAL',
+        printed: false,
+      });
+
+      await pushOrderToFirestore(newOrder, 'tenant-main-01');
+
+      // 2. Optionally sync with Apps Script if configured
+      if (cloudConfig.endpointUrl && cloudConfig.endpointUrl.trim()) {
+        const payload: DepartmentOrderPayload = {
           department: activeDept,
-          items: cartItemsList,
+          orderedBy: requesterName.trim(),
+          patientsCount: patientsCount.trim(),
           notes: notes.trim(),
-        });
-        clearCart();
-        setIsCartOpen(false);
-        if (onOrderSubmitted) onOrderSubmitted();
-      } else {
-        setSubmitError(res.message || 'שגיאה בשליחת ההזמנה');
+          items: cart,
+        };
+        submitDepartmentOrderToCloud(payload, cloudConfig).catch(console.warn);
       }
+
+      setSubmittedOrder({
+        orderId: newOrder.orderNumber,
+        timestamp: new Date().toLocaleString('he-IL'),
+        department: activeDept,
+        items: cartItemsList,
+        notes: notes.trim(),
+      });
+      clearCart();
+      setIsCartOpen(false);
+      window.dispatchEvent(new Event('storeprint_order_created'));
+      if (onOrderSubmitted) onOrderSubmitted();
     } catch (err: any) {
-      setSubmitError(err.message || 'שגיאת תקשורת');
+      console.error('Order submit error:', err);
+      setSubmitError(err.message || 'שגיאה בשליחת ההזמנה');
     } finally {
       setIsSubmitting(false);
     }

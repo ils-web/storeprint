@@ -178,9 +178,15 @@ async function syncWarehouseToFirestore(warehouse: Warehouse): Promise<void> {
 async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
   try {
     if (!db) return;
+    const cleanPayload = JSON.parse(JSON.stringify(order));
     const docRef = doc(db, 'tenants', order.tenantId, 'orders', order.id);
-    await setDoc(docRef, order, { merge: true });
-  } catch (e) {}
+    await setDoc(docRef, cleanPayload, { merge: true });
+
+    const globalRef = doc(db, 'orders', order.id);
+    await setDoc(globalRef, cleanPayload, { merge: true });
+  } catch (e) {
+    console.warn('syncOrderToFirestore warning:', e);
+  }
 }
 
 // ----------------------------------------------------------------------------

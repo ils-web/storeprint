@@ -30,10 +30,12 @@ export function InstallAppModal({
   const [activeTab, setActiveTab] = useState<'qr' | 'android' | 'ios' | 'desktop'>('qr');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
-  const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
-  const portalUrl = `${origin}${pathname}/?view=portal_pwa${tenantQuery}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
+  const cleanPath = typeof window !== 'undefined'
+    ? window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/order(\.html)?$/i, '').replace(/\/$/, '')
+    : '/storeprint';
+  const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
+  const portalUrl = `${origin}${cleanPath}/order/${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
 
   useEffect(() => {

@@ -15,6 +15,14 @@ import { getDbStock, saveDbStock } from './unifiedDb';
 import { saveTenantOrders } from './multiTenantDb';
 
 /**
+ * Sanitizes an object before passing to Firestore setDoc/updateDoc
+ * to completely eliminate 'Unsupported field value: undefined' errors.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
+/**
  * Pushes the full master warehouse stock to Firestore
  */
 export async function pushStockToFirestore(
@@ -23,27 +31,17 @@ export async function pushStockToFirestore(
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
   try {
+    const payload = sanitizeForFirestore({
+      stock,
+      totalItems: Object.keys(stock).length,
+      updatedAt: new Date().toISOString(),
+    });
+
     const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
-    await setDoc(
-      docRef,
-      {
-        stock,
-        totalItems: Object.keys(stock).length,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    await setDoc(docRef, payload, { merge: true });
 
     const globalDocRef = doc(db, 'warehouse', 'master_stock');
-    await setDoc(
-      globalDocRef,
-      {
-        stock,
-        totalItems: Object.keys(stock).length,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    await setDoc(globalDocRef, payload, { merge: true });
     return true;
   } catch (err) {
     console.warn('Firestore pushStock error:', err);
@@ -101,24 +99,29 @@ export async function pushOrderToFirestore(
   order: MultiTenantOrder,
   tenantId: string = 'tenant-main-01'
 ): Promise<boolean> {
-  if (!isFirebaseReady || !db) return false;
+  if (!isFirebaseReady || !db) {
+    console.warn('Firestore is not ready. Order saved locally.');
+    return false;
+  }
   try {
+    const cleanPayload = sanitizeForFirestore({
+      ...order,
+      syncedAt: new Date().toISOString(),
+    });
+
+    // Write to tenant collection
     const orderDocRef = doc(db, 'tenants', tenantId, 'orders', order.id);
-    await setDoc(orderDocRef, {
-      ...order,
-      syncedAt: new Date().toISOString(),
-    });
+    await setDoc(orderDocRef, cleanPayload);
 
+    // Also write to global orders collection
     const globalOrderRef = doc(db, 'orders', order.id);
-    await setDoc(globalOrderRef, {
-      ...order,
-      syncedAt: new Date().toISOString(),
-    });
+    await setDoc(globalOrderRef, cleanPayload);
 
+    console.log('✅ Order pushed to Firestore successfully:', order.id, order.departmentName);
     return true;
   } catch (err) {
-    console.warn('Firestore pushOrder error:', err);
-    return false;
+    console.error('Firestore pushOrder error:', err);
+    throw err;
   }
 }
 
@@ -133,12 +136,12 @@ export async function updateOrderPrintedInFirestore(
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
   try {
-    const patch = {
+    const patch = sanitizeForFirestore({
       printed,
       status: printed ? 'PRINTED' : 'NEW',
       printedAt: printedAt || (printed ? new Date().toISOString() : null),
       updatedAt: new Date().toISOString(),
-    };
+    });
 
     const docRef = doc(db, 'tenants', tenantId, 'orders', orderId);
     await setDoc(docRef, patch, { merge: true });
@@ -154,7 +157,7 @@ export async function updateOrderPrintedInFirestore(
 }
 
 /**
- * Subscribes to real-time orders from Firestore
+ * Subscribes to real-time orders from Firestore across both tenant and global collections
  */
 export function subscribeToFirestoreOrders(
   onOrdersUpdated: (orders: MultiTenantOrder[]) => void,
@@ -163,29 +166,50 @@ export function subscribeToFirestoreOrders(
   if (!isFirebaseReady || !db) return null;
 
   try {
-    const ordersCol = collection(db, 'tenants', tenantId, 'orders');
-    const q = query(ordersCol, limit(200));
+    const ordersMap = new Map<string, MultiTenantOrder>();
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const liveOrders: MultiTenantOrder[] = [];
-        snapshot.forEach((docSnap) => {
-          liveOrders.push(docSnap.data() as MultiTenantOrder);
-        });
-
-        if (liveOrders.length > 0) {
-          liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          saveTenantOrders(tenantId, liveOrders);
-          onOrdersUpdated(liveOrders);
+    const handleSnapshot = (snapshot: any) => {
+      snapshot.forEach((docSnap: any) => {
+        const data = docSnap.data() as MultiTenantOrder;
+        if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+          ordersMap.set(docSnap.id, data);
         }
-      },
-      (err) => {
-        console.warn('Firestore orders subscription error:', err);
+      });
+
+      const liveOrders = Array.from(ordersMap.values());
+      if (liveOrders.length > 0) {
+        liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        saveTenantOrders(tenantId, liveOrders);
+        onOrdersUpdated(liveOrders);
       }
+    };
+
+    // 1. Subscribe to tenant collection
+    const tenantCol = collection(db, 'tenants', tenantId, 'orders');
+    const q1 = query(tenantCol, limit(200));
+    const unsub1 = onSnapshot(
+      q1,
+      handleSnapshot,
+      (err) => console.warn('Firestore tenant orders subscription error:', err)
     );
 
-    return unsubscribe;
+    // 2. Subscribe to global collection
+    const globalCol = collection(db, 'orders');
+    const q2 = query(globalCol, limit(200));
+    const unsub2 = onSnapshot(
+      q2,
+      handleSnapshot,
+      (err) => console.warn('Firestore global orders subscription error:', err)
+    );
+
+    return () => {
+      try {
+        unsub1();
+      } catch {}
+      try {
+        unsub2();
+      } catch {}
+    };
   } catch (err) {
     console.warn('Failed to start Firestore orders subscription:', err);
     return null;
@@ -193,24 +217,46 @@ export function subscribeToFirestoreOrders(
 }
 
 /**
- * Fetches all orders directly from Firestore (one-shot fetch for startup and loadOrders)
+ * Fetches all orders directly from Firestore across both tenant and global collections
  */
 export async function fetchOrdersFromFirestore(
   tenantId: string = 'tenant-main-01'
 ): Promise<MultiTenantOrder[]> {
   if (!isFirebaseReady || !db) return [];
   try {
-    const ordersCol = collection(db, 'tenants', tenantId, 'orders');
-    const q = query(ordersCol, limit(250));
-    const snapshot = await getDocs(q);
-    const orders: MultiTenantOrder[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data && data.items) {
-        orders.push(data as MultiTenantOrder);
-      }
-    });
+    const ordersMap = new Map<string, MultiTenantOrder>();
 
+    // Fetch tenant collection
+    try {
+      const ordersCol = collection(db, 'tenants', tenantId, 'orders');
+      const q = query(ordersCol, limit(250));
+      const snapshot = await getDocs(q);
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+          ordersMap.set(docSnap.id, data as MultiTenantOrder);
+        }
+      });
+    } catch (e) {
+      console.warn('Error fetching tenant orders:', e);
+    }
+
+    // Fetch global collection
+    try {
+      const globalCol = collection(db, 'orders');
+      const qG = query(globalCol, limit(250));
+      const snapG = await getDocs(qG);
+      snapG.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+          ordersMap.set(docSnap.id, data as MultiTenantOrder);
+        }
+      });
+    } catch (e) {
+      console.warn('Error fetching global orders:', e);
+    }
+
+    const orders = Array.from(ordersMap.values());
     if (orders.length > 0) {
       orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       saveTenantOrders(tenantId, orders);
