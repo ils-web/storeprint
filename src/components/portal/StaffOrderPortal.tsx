@@ -51,6 +51,8 @@ import {
   Flame,
   Check,
   ChevronDown,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -72,6 +74,14 @@ const DEFAULT_DEPARTMENTS = [
   "ריפוי בעיסוק",
   "קלינאות תקשורת",
   "הנהלה / כללי",
+];
+
+const QUICK_NOTE_CHIPS = [
+  '⚡ דחוף להיום',
+  '☀️ משמרת בוקר',
+  '🌙 משמרת לילה',
+  '📦 להניח בחדר אחיות',
+  '🔄 השלמת ציוד חסר',
 ];
 
 // Smart Category Classifier
@@ -129,6 +139,24 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('storeprint_portal_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    }
+    return 'light';
+  });
+
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('storeprint_portal_theme', next);
+    }
+  };
+
+  const isLight = theme === 'light';
 
   const tenants = getTenants();
   const [selectedTenantId] = useState<string>(
@@ -551,44 +579,83 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   return (
     <div
-      className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-32 text-sm selection:bg-indigo-500 selection:text-white"
+      className={`min-h-screen ${
+        isLight ? 'bg-slate-100 text-slate-900' : 'bg-slate-950 text-slate-100'
+      } font-sans pb-36 text-sm selection:bg-indigo-500 selection:text-white transition-colors duration-200`}
       dir="rtl"
     >
       {/* Top App Header */}
-      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-md">
+      <header
+        className={`${
+          isLight ? 'bg-white/95 border-slate-200/90 shadow-xs' : 'bg-slate-900/95 border-slate-800 shadow-md'
+        } backdrop-blur-md border-b sticky top-0 z-30 px-3 sm:px-4 py-2.5 transition-colors duration-200`}
+      >
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
           {/* Department Selector Pill & Cloud Status */}
           <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setIsDeptModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-slate-100 rounded-xl border border-slate-700 transition-all cursor-pointer min-w-0 text-right"
+              className={`flex items-center gap-1.5 px-3 py-1.5 ${
+                isLight
+                  ? 'bg-slate-50 hover:bg-slate-100 text-slate-900 border-slate-300'
+                  : 'bg-slate-800/90 hover:bg-slate-800 text-slate-100 border-slate-700'
+              } rounded-xl border transition-all cursor-pointer min-w-0 text-right shadow-xs`}
               title="לחץ להחלפת מחלקה"
             >
-              <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+              <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] text-slate-400 leading-none">מחלקה מזמינה:</div>
-                <div className="font-black text-xs sm:text-sm text-white truncate flex items-center gap-1">
+                <div className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'} leading-none`}>
+                  מחלקה מזמינה:
+                </div>
+                <div
+                  className={`font-black text-xs sm:text-sm ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  } truncate flex items-center gap-1`}
+                >
                   <span>{selectedDepartmentName}</span>
                   <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
                 </div>
               </div>
             </button>
 
-            <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-950/70 border border-emerald-500/40 rounded-xl text-[11px] font-bold text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <div
+              className={`hidden xs:flex items-center gap-1.5 px-2.5 py-1 ${
+                isLight
+                  ? 'bg-emerald-50 border-emerald-300/80 text-emerald-800'
+                  : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+              } border rounded-xl text-[11px] font-bold`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>ענן מחובר</span>
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-indigo-600 border-slate-300 shadow-xs'
+                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
+              }`}
+              title={isLight ? 'מעבר למצב כהה (Dark Mode)' : 'מעבר למצב בהיר קליני (Light Mode)'}
+            >
+              {isLight ? <Moon className="w-4 h-4 text-indigo-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
+            </button>
+
             {myDeptOrders.length > 0 && (
               <button
                 onClick={() => setIsHistoryModalOpen(true)}
-                className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer relative"
+                className={`p-2 rounded-xl border transition-colors cursor-pointer relative ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
                 title="היסטוריית הזמנות המחלקה"
               >
-                <Clock className="w-4 h-4 text-sky-400" />
+                <Clock className="w-4 h-4 text-sky-500" />
                 <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
                   {myDeptOrders.length}
                 </span>
@@ -597,36 +664,139 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
             <button
               onClick={handleForceUpdate}
-              className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
               title="רענן ומשוך גרסה עדכנית מהענן"
             >
-              <RotateCcw className="w-4 h-4 text-emerald-400" />
+              <RotateCcw className="w-4 h-4 text-emerald-500" />
             </button>
 
             <button
               onClick={() => setIsInstallModalOpen(true)}
-              className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
               title="התקנת האפליקציה למסך הבית"
             >
-              <Smartphone className="w-4 h-4 text-sky-400" />
+              <Smartphone className="w-4 h-4 text-sky-500" />
             </button>
           </div>
         </div>
       </header>
 
+      {/* Sticky Search & Category Sub-Header */}
+      <div
+        className={`sticky top-[53px] z-20 ${
+          isLight ? 'bg-slate-100/95 border-slate-200' : 'bg-slate-950/95 border-slate-800'
+        } backdrop-blur-md border-b px-3 sm:px-4 py-2.5 shadow-sm transition-colors duration-200`}
+      >
+        <div className="max-w-2xl mx-auto space-y-2">
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="חיפוש פריט, ציוד רפואי, חבישה, כפפות..."
+              className={`w-full pr-10 pl-10 py-2.5 rounded-xl text-sm font-medium ${
+                isLight
+                  ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 shadow-xs'
+                  : 'bg-slate-900 border-slate-800 text-white placeholder-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner'
+              } border focus:outline-none transition-all`}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className={`absolute left-3.5 top-2.5 p-1 rounded-full cursor-pointer ${
+                  isLight
+                    ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+                title="נקה חיפוש"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Category Pills (Horizontal Scroll) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+            {[
+              { id: 'all', label: '🌟 הכל', count: inventoryItems.length },
+              { id: 'gloves', label: '🧤 כפפות ומיגון', count: inventoryItems.filter((i) => i.category === 'gloves').length },
+              { id: 'dressings', label: '🩹 חבישה וגאזות', count: inventoryItems.filter((i) => i.category === 'dressings').length },
+              { id: 'hygiene', label: '🧼 ספיגה והיגיינה', count: inventoryItems.filter((i) => i.category === 'hygiene').length },
+              { id: 'medical', label: '💉 עירוי ורפואי', count: inventoryItems.filter((i) => i.category === 'medical').length },
+              { id: 'in_stock', label: '⚡ במלאי זמין', count: inventoryItems.filter((i) => i.currentStock > 0).length },
+              { id: 'in_cart', label: `🛒 בסל (${totalCartCount})`, count: cartItemsList.length },
+            ].map((cat) => {
+              const isSelected = categoryFilter === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryFilter(cat.id as any)}
+                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : isLight
+                        ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-xs'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  }`}
+                >
+                  <span>{cat.label}</span>
+                  {cat.count > 0 && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        isSelected
+                          ? 'bg-indigo-800/80 text-white'
+                          : isLight
+                            ? 'bg-slate-100 text-slate-600'
+                            : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {cat.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Main Shopping Area */}
       <main className="max-w-2xl mx-auto p-3 sm:p-4 space-y-3">
         {/* Success Confirmation Card */}
         {orderSuccessNumber && lastSubmittedOrder && (
-          <div className="bg-gradient-to-br from-emerald-950/90 to-slate-900 border-2 border-emerald-500/60 rounded-3xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+          <div
+            className={`${
+              isLight
+                ? 'bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-500 shadow-xl'
+                : 'bg-gradient-to-br from-emerald-950/90 to-slate-900 border-2 border-emerald-500/60 shadow-2xl'
+            } rounded-3xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200`}
+          >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/40">
+                <div
+                  className={`p-3 ${
+                    isLight
+                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                  } rounded-2xl border`}
+                >
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-white">ההזמנה נשלחה בהצלחה למחסן! 🎉</h3>
-                  <p className="text-xs text-emerald-300 font-mono mt-0.5">
+                  <h3 className={`text-lg font-black ${isLight ? 'text-emerald-950' : 'text-white'}`}>
+                    ההזמנה נשלחה בהצלחה למחסן! 🎉
+                  </h3>
+                  <p className={`text-xs ${isLight ? 'text-emerald-800' : 'text-emerald-300'} font-mono mt-0.5`}>
                     מספר הזמנה: <strong>{orderSuccessNumber}</strong> • מחלקת {lastSubmittedOrder.departmentName}
                   </p>
                 </div>
@@ -636,7 +806,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   setOrderSuccessNumber(null);
                   setLastSubmittedOrder(null);
                 }}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                className={`p-1.5 rounded-lg cursor-pointer ${
+                  isLight
+                    ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -655,7 +829,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   setOrderSuccessNumber(null);
                   setLastSubmittedOrder(null);
                 }}
-                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs cursor-pointer transition-colors"
+                className={`py-2.5 px-4 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
+                  isLight
+                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
               >
                 בצע הזמנה נוספת
               </button>
@@ -663,67 +841,38 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
           </div>
         )}
 
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="חיפוש פריט, ציוד רפואי, חבישה, כפפות..."
-            className="w-full pr-10 pl-10 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner transition-all"
-          />
-          {searchQuery && (
+        {/* Results Counter if searching or filtering */}
+        {(searchQuery || categoryFilter !== 'all') && (
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className={`font-semibold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              נמצאו {filteredProducts.length} פריטים
+            </span>
             <button
-              onClick={() => setSearchQuery('')}
-              className="absolute left-3.5 top-3.5 text-slate-400 hover:text-white"
+              onClick={() => {
+                setSearchQuery('');
+                setCategoryFilter('all');
+              }}
+              className="text-indigo-600 hover:underline cursor-pointer font-bold"
             >
-              <X className="w-4 h-4" />
+              איפוס סינון
             </button>
-          )}
-        </div>
-
-        {/* Category Pills (Horizontal Scroll) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-          {[
-            { id: 'all', label: '🌟 הכל', count: inventoryItems.length },
-            { id: 'gloves', label: '🧤 כפפות ומיגון', count: inventoryItems.filter((i) => i.category === 'gloves').length },
-            { id: 'dressings', label: '🩹 חבישה וגאזות', count: inventoryItems.filter((i) => i.category === 'dressings').length },
-            { id: 'hygiene', label: '🧼 ספיגה והיגיינה', count: inventoryItems.filter((i) => i.category === 'hygiene').length },
-            { id: 'medical', label: '💉 עירוי ורפואי', count: inventoryItems.filter((i) => i.category === 'medical').length },
-            { id: 'in_stock', label: '⚡ במלאי זמין', count: inventoryItems.filter((i) => i.currentStock > 0).length },
-            { id: 'in_cart', label: `🛒 בסל (${totalCartCount})`, count: cartItemsList.length },
-          ].map((cat) => {
-            const isSelected = categoryFilter === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setCategoryFilter(cat.id as any)}
-                className={`px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                }`}
-              >
-                <span>{cat.label}</span>
-                {cat.count > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-indigo-800/80 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                    {cat.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+          </div>
+        )}
 
         {/* Product Cards List */}
-        <div className="space-y-2.5 pt-1">
+        <div className="space-y-3 pt-0.5">
           {filteredProducts.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-3">
-              <Package className="w-12 h-12 text-slate-600 mx-auto" />
+            <div
+              className={`${
+                isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+              } border rounded-3xl p-8 text-center space-y-3 shadow-xs`}
+            >
+              <Package className={`w-12 h-12 ${isLight ? 'text-slate-400' : 'text-slate-600'} mx-auto`} />
               <div>
-                <h4 className="text-base font-bold text-white">לא נמצאו פריטים מתאימים</h4>
-                <p className="text-xs text-slate-400 mt-1">
+                <h4 className={`text-base font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  לא נמצאו פריטים מתאימים
+                </h4>
+                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'} mt-1`}>
                   נסה לשנות את מילת החיפוש או לבחור קטגוריה אחרת
                 </p>
               </div>
@@ -732,7 +881,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   setSearchQuery('');
                   setCategoryFilter('all');
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
               >
                 הצג את כל הפריטים
               </button>
@@ -747,21 +896,41 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
               return (
                 <div
                   key={product.id}
-                  className={`bg-slate-900 rounded-2xl p-3.5 border transition-all ${
+                  className={`rounded-2xl p-3.5 sm:p-4 border transition-all ${
                     isSelected
-                      ? 'border-indigo-500/80 shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-500/30'
-                      : 'border-slate-800/90 hover:border-slate-700'
+                      ? isLight
+                        ? 'bg-indigo-50/70 border-indigo-400 shadow-md ring-1 ring-indigo-400/30'
+                        : 'bg-slate-900 border-indigo-500/80 shadow-lg shadow-indigo-950/40 ring-1 ring-indigo-500/30'
+                      : isLight
+                        ? 'bg-white border-slate-200/90 hover:border-slate-300 shadow-sm'
+                        : 'bg-slate-900 border-slate-800/90 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     {/* Product Info */}
-                    <div className="space-y-1.5 min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm text-white leading-snug">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Index number badge */}
+                        <span
+                          className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                            isLight
+                              ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}
+                        >
+                          #{product.colIndex}
+                        </span>
+
+                        <span
+                          className={`font-black text-base sm:text-lg leading-snug ${
+                            isLight ? 'text-slate-900' : 'text-white'
+                          }`}
+                        >
                           {product.name}
                         </span>
+
                         {product.limitByPatients && (
-                          <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                          <span className="text-[11px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md">
                             מוגבל לפי מטופלים
                           </span>
                         )}
@@ -771,83 +940,136 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                       <div className="flex items-center gap-2 flex-wrap text-xs">
                         {/* Live Stock Badge */}
                         {isOutOfStock ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-900/40">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                              isLight
+                                ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                : 'text-rose-400 bg-rose-950/40 border-rose-900/40'
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
                             אזל זמנית מהמלאי
                           </span>
                         ) : isLowStock ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded-lg border border-amber-800/40">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                              isLight
+                                ? 'text-amber-800 bg-amber-50 border-amber-300'
+                                : 'text-amber-300 bg-amber-950/40 border-amber-800/40'
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                             נותרו במלאי: {product.currentStock} {product.unit}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-900/40">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                              isLight
+                                ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                                : 'text-emerald-400 bg-emerald-950/40 border-emerald-900/40'
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                             במלאי: {product.currentStock} {product.unit}
                           </span>
                         )}
 
-                        <span className="text-slate-400 text-[11px]">
-                          אריזה: <strong className="text-slate-300">{product.unit}</strong>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
+                            isLight
+                              ? 'bg-slate-50 text-slate-700 border-slate-200'
+                              : 'bg-slate-800/80 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <span>אריזה:</span>
+                          <strong className={isLight ? 'text-slate-900' : 'text-white'}>
+                            {product.unit}
+                          </strong>
                         </span>
                       </div>
                     </div>
 
-                    {/* Quantity Selector (E-commerce Style) */}
+                    {/* Quantity Selector - Large Touch Targets */}
                     <div className="shrink-0 flex flex-col items-end gap-1.5">
                       {!isSelected ? (
                         <button
+                          type="button"
                           onClick={() => handleUpdateQty(product, product.unit, 1)}
-                          className="px-3.5 py-2 bg-indigo-600/90 hover:bg-indigo-600 active:scale-95 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                          className="h-11 sm:h-12 px-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-95 text-white rounded-xl text-sm font-black shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          <Plus className="w-4 h-4 stroke-[3]" />
                           <span>הוסף</span>
                         </button>
                       ) : (
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           {/* Stepper Pill */}
-                          <div className="flex items-center bg-slate-950 border border-indigo-500/60 rounded-xl p-0.5 shadow-inner">
+                          <div
+                            className={`flex items-center rounded-2xl p-1 shadow-sm border ${
+                              isLight
+                                ? 'bg-white border-indigo-300 shadow-sm'
+                                : 'bg-slate-950 border-indigo-500/60 shadow-inner'
+                            }`}
+                          >
                             <button
+                              type="button"
                               onClick={() => handleUpdateQty(product, product.unit, -1)}
-                              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                              title="הפחת 1"
+                              className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                                inCartQty === 1
+                                  ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600'
+                                  : isLight
+                                    ? 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                                    : 'text-slate-300 hover:bg-slate-800 active:bg-slate-700'
+                              }`}
+                              title={inCartQty === 1 ? 'הסר מהסל' : 'הפחת 1'}
                             >
-                              {inCartQty === 1 ? <Trash2 className="w-3.5 h-3.5 text-rose-400" /> : <Minus className="w-3.5 h-3.5" />}
+                              {inCartQty === 1 ? (
+                                <Trash2 className="w-5 h-5 text-rose-500" />
+                              ) : (
+                                <Minus className="w-5 h-5 stroke-[2.5]" />
+                              )}
                             </button>
 
                             <input
                               type="number"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               min="0"
                               value={inCartQty}
-                              onChange={(e) => handleSetQty(product, product.unit, parseInt(e.target.value, 10) || 0)}
-                              className="w-12 text-center bg-transparent text-sm font-black text-white focus:outline-none"
+                              onChange={(e) =>
+                                handleSetQty(product, product.unit, parseInt(e.target.value, 10) || 0)
+                              }
+                              className={`w-14 sm:w-16 h-11 text-center bg-transparent text-lg sm:text-xl font-black focus:outline-none ${
+                                isLight ? 'text-slate-900' : 'text-white'
+                              }`}
                             />
 
                             <button
+                              type="button"
                               onClick={() => handleUpdateQty(product, product.unit, 1)}
-                              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all cursor-pointer active:scale-95"
                               title="הוסף 1"
                             >
-                              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                              <Plus className="w-5 h-5 stroke-[3]" />
                             </button>
                           </div>
 
                           {/* Quick Increment Chips */}
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handleUpdateQty(product, product.unit, 5)}
-                              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 rounded border border-slate-700 cursor-pointer"
-                              title="הוסף 5"
-                            >
-                              +5
-                            </button>
-                            <button
-                              onClick={() => handleUpdateQty(product, product.unit, 10)}
-                              className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 rounded border border-slate-700 cursor-pointer"
-                              title="הוסף 10"
-                            >
-                              +10
-                            </button>
+                          <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                            {[1, 5, 10].map((inc) => (
+                              <button
+                                key={inc}
+                                type="button"
+                                onClick={() => handleUpdateQty(product, product.unit, inc)}
+                                className={`h-7 px-2.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer active:scale-95 ${
+                                  isLight
+                                    ? 'bg-slate-50 hover:bg-indigo-50 text-indigo-700 border-slate-200 hover:border-indigo-300'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                }`}
+                                title={`הוסף עוד ${inc} ${product.unit}`}
+                              >
+                                +{inc}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -862,22 +1084,26 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
       {/* Floating Bottom Sticky Cart Bar */}
       {totalCartCount > 0 && !isCartOpen && (
-        <div className="fixed bottom-3 inset-x-0 z-30 px-3 max-w-2xl mx-auto animate-in slide-in-from-bottom-5 duration-200">
+        <div className="fixed bottom-4 inset-x-0 z-30 px-3 max-w-2xl mx-auto animate-in slide-in-from-bottom-5 duration-200">
           <button
             onClick={() => setIsCartOpen(true)}
-            className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white rounded-2xl shadow-2xl flex items-center justify-between font-black text-sm cursor-pointer transition-all active:scale-[0.99] border border-white/20"
+            className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white rounded-2xl shadow-2xl flex items-center justify-between font-black text-sm sm:text-base cursor-pointer transition-all active:scale-[0.99] border border-white/20"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-white/20 rounded-xl">
-                <ShoppingBag className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <ShoppingBag className="w-6 h-6 text-white" />
               </div>
               <div className="text-right">
-                <div className="text-sm font-black">{cartItemsList.length} פריטים בסל ({totalCartCount} יח')</div>
-                <div className="text-[11px] text-emerald-100 font-normal">מחלקה: {selectedDepartmentName}</div>
+                <div className="text-sm sm:text-base font-black">
+                  {cartItemsList.length} פריטים בסל ({totalCartCount} יח')
+                </div>
+                <div className="text-xs text-emerald-100 font-medium">
+                  מחלקת {selectedDepartmentName}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-white/20 px-3 py-1.5 rounded-xl text-xs font-black">
+            <div className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-colors">
               <span>המשך להזמנה</span>
               <ChevronRight className="w-4 h-4 rotate-180" />
             </div>
@@ -889,8 +1115,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       {showScrollTop && (
         <button
           onClick={scrollToTop}
-          className={`fixed left-4 z-20 p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-full shadow-xl border border-slate-700 cursor-pointer transition-all ${
-            totalCartCount > 0 ? 'bottom-20' : 'bottom-6'
+          className={`fixed left-4 z-20 p-3 ${
+            isLight
+              ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+              : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+          } rounded-full shadow-xl border cursor-pointer transition-all ${
+            totalCartCount > 0 ? 'bottom-24' : 'bottom-6'
           }`}
           title="חזרה לראש העמוד"
         >
@@ -901,26 +1131,40 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       {/* Slide-Up Bottom Cart Drawer / Checkout Sheet */}
       {isCartOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150 p-0 sm:p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150 p-0 sm:p-4"
           dir="rtl"
         >
-          <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <div
+            className={`${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+            } border rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200`}
+          >
             {/* Drawer Header */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl">
+            <div
+              className={`p-4 border-b ${
+                isLight ? 'border-slate-200' : 'border-slate-800'
+              } flex items-center justify-between shrink-0`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-600/10 text-indigo-600 rounded-xl">
                   <ShoppingBag className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">סל הזמנה למחלקה</h3>
-                  <p className="text-xs text-slate-400">
+                  <h3 className={`text-base font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    סל הזמנה למחלקה
+                  </h3>
+                  <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     {selectedDepartmentName} • {cartItemsList.length} פריטים ({totalCartCount} יח')
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                className={`p-1.5 rounded-lg cursor-pointer ${
+                  isLight
+                    ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -930,19 +1174,25 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
             <form onSubmit={handleSubmitOrder} className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Items List */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
+                <div
+                  className={`flex items-center justify-between text-xs ${
+                    isLight ? 'text-slate-500' : 'text-slate-400'
+                  }`}
+                >
                   <span>רשימת הפריטים שנבחרו:</span>
                   <button
                     type="button"
                     onClick={handleClearCart}
-                    className="text-rose-400 hover:underline cursor-pointer"
+                    className="text-rose-500 hover:underline cursor-pointer font-bold"
                   >
                     רוקן סל
                   </button>
                 </div>
 
                 {cartItemsList.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-xs">
+                  <div
+                    className={`text-center py-8 ${isLight ? 'text-slate-400' : 'text-slate-500'} text-xs`}
+                  >
                     הסל ריק כרגע. סגור את החלון והוסף פריטים מהקטלוג.
                   </div>
                 ) : (
@@ -959,38 +1209,56 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                       return (
                         <div
                           key={item.productId}
-                          className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2"
+                          className={`${
+                            isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                          } p-3 rounded-xl border flex items-center justify-between gap-2`}
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-xs text-white truncate">{item.name}</div>
-                            <div className="text-[10px] text-slate-400">אריזה: {item.orderedUnit || "יח'"}</div>
+                            <div
+                              className={`font-bold text-xs sm:text-sm truncate ${
+                                isLight ? 'text-slate-900' : 'text-white'
+                              }`}
+                            >
+                              {item.name}
+                            </div>
+                            <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                              אריזה: {item.orderedUnit || "יח'"}
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(product, item.orderedUnit as PackagingUnit, -1)}
-                              className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${
+                                isLight
+                                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                              }`}
                             >
-                              <Minus className="w-3 h-3" />
+                              <Minus className="w-3.5 h-3.5" />
                             </button>
-                            <span className="font-black text-xs text-white w-7 text-center">
+                            <span
+                              className={`font-black text-sm w-8 text-center ${
+                                isLight ? 'text-slate-900' : 'text-white'
+                              }`}
+                            >
                               {item.orderedQty}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleUpdateQty(product, item.orderedUnit as PackagingUnit, 1)}
-                              className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded cursor-pointer"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
                             >
-                              <Plus className="w-3 h-3 text-emerald-400" />
+                              <Plus className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleSetQty(product, item.orderedUnit as PackagingUnit, 0)}
-                              className="p-1 text-slate-500 hover:text-rose-400 rounded cursor-pointer mr-1"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer mr-1"
                               title="הסר פריט"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -1001,10 +1269,14 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
               </div>
 
               {/* Order Info Fields */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className={`space-y-3 pt-3 border-t ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
-                    שם המזמין/ה (איש קשר במחלקה) <span className="text-rose-400">*</span>
+                  <label
+                    className={`text-xs font-bold block mb-1.5 ${
+                      isLight ? 'text-slate-800' : 'text-slate-300'
+                    }`}
+                  >
+                    שם המזמין/ה (איש קשר במחלקה) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1012,7 +1284,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                     placeholder="שם מלא / תפקיד"
                     value={requesterName}
                     onChange={(e) => setRequesterName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
+                    }`}
                   />
                 </div>
 
@@ -1021,8 +1297,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   return p?.limitByPatients;
                 }) && (
                   <div>
-                    <label className="text-xs font-bold text-amber-300 block mb-1">
-                      מספר מטופלים במחלקה כעת (נדרש לפריטים מוגבלים) <span className="text-rose-400">*</span>
+                    <label
+                      className={`text-xs font-bold block mb-1.5 ${
+                        isLight ? 'text-amber-800' : 'text-amber-300'
+                      }`}
+                    >
+                      מספר מטופלים במחלקה כעת (נדרש לפריטים מוגבלים) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -1030,13 +1310,21 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                       placeholder="לדוגמה: 36"
                       value={patientsCount}
                       onChange={(e) => setPatientsCount(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-amber-600/40 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500"
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${
+                        isLight
+                          ? 'bg-amber-50/50 border-amber-300 text-amber-950 placeholder-amber-400 focus:border-amber-600'
+                          : 'bg-slate-950 border-amber-600/40 text-white placeholder-slate-500 focus:border-amber-500'
+                      }`}
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                  <label
+                    className={`text-xs font-bold block mb-1.5 ${
+                      isLight ? 'text-slate-800' : 'text-slate-300'
+                    }`}
+                  >
                     הערות מיוחדות למחסן (אופציונלי)
                   </label>
                   <textarea
@@ -1044,8 +1332,40 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="לדוגמה: דחוף למשמרת בוקר, להניח בחדר אחיות..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
+                    }`}
                   />
+
+                  {/* Quick Preset Note Chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1.5">
+                    <span className={`text-[10px] font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      הוספה מהירה:
+                    </span>
+                    {QUICK_NOTE_CHIPS.map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => {
+                          setNotes((prev) => {
+                            const trimmed = prev.trim();
+                            if (!trimmed) return chip;
+                            if (trimmed.includes(chip)) return trimmed;
+                            return `${trimmed}, ${chip}`;
+                          });
+                        }}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg font-medium border transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-200'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -1053,14 +1373,14 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
               <button
                 type="submit"
                 disabled={isSubmitting || cartItemsList.length === 0}
-                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 active:scale-[0.99]"
               >
                 {isSubmitting ? (
                   <span>שולח הזמנה למחסן...</span>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    <span>שלח הזמנה למחסן ({totalCartCount} פריטים) 🚀</span>
+                    <Send className="w-5 h-5" />
+                    <span>שלח הזמנה למחסן ({totalCartCount} יח') 🚀</span>
                   </>
                 )}
               </button>
@@ -1072,18 +1392,24 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       {/* Department Picker Modal */}
       {isDeptModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-150"
           dir="rtl"
         >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col p-5 shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div
+            className={`${
+              isLight ? 'bg-white border-slate-200 text-slate-900 shadow-2xl' : 'bg-slate-900 border-slate-800 text-white shadow-2xl'
+            } border rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col p-5 animate-in zoom-in-95 duration-150`}
+          >
+            <div className={`flex items-center justify-between pb-3 border-b ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
               <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-base font-black text-white">בחירת מחלקה מזמינה</h3>
+                <Building2 className="w-5 h-5 text-indigo-500" />
+                <h3 className={`text-base font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>בחירת מחלקה מזמינה</h3>
               </div>
               <button
                 onClick={() => setIsDeptModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                className={`p-1 rounded-lg cursor-pointer ${
+                  isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1095,7 +1421,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                 placeholder="חפש מחלקה..."
                 value={deptSearchTerm}
                 onChange={(e) => setDeptSearchTerm(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                    : 'bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:border-indigo-500'
+                }`}
               />
             </div>
 
@@ -1114,7 +1444,9 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                       className={`w-full p-3 rounded-xl text-right font-bold text-xs sm:text-sm flex items-center justify-between transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-indigo-600 text-white shadow-md'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800/80'
+                          : isLight
+                            ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                            : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border border-slate-800/80'
                       }`}
                     >
                       <span>{dept}</span>
@@ -1130,21 +1462,31 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       {/* Department History Modal */}
       {isHistoryModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-150"
           dir="rtl"
         >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col p-5 shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div
+            className={`${
+              isLight ? 'bg-white border-slate-200 text-slate-900 shadow-2xl' : 'bg-slate-900 border-slate-800 text-white shadow-2xl'
+            } border rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col p-5 animate-in zoom-in-95 duration-150`}
+          >
+            <div className={`flex items-center justify-between pb-3 border-b ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-sky-400" />
+                <Clock className="w-5 h-5 text-sky-500" />
                 <div>
-                  <h3 className="text-base font-black text-white">הזמנות קודמות של מחלקת {selectedDepartmentName}</h3>
-                  <p className="text-xs text-slate-400">{myDeptOrders.length} הזמנות שנשלחו למחסן</p>
+                  <h3 className={`text-base font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    הזמנות קודמות של מחלקת {selectedDepartmentName}
+                  </h3>
+                  <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {myDeptOrders.length} הזמנות שנשלחו למחסן
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsHistoryModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                className={`p-1 rounded-lg cursor-pointer ${
+                  isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1152,7 +1494,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
             <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-1">
               {myDeptOrders.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 text-xs">
+                <div className={`text-center py-10 ${isLight ? 'text-slate-400' : 'text-slate-500'} text-xs`}>
                   לא נמצאו הזמנות קודמות עבור מחלקה זו.
                 </div>
               ) : (
@@ -1168,24 +1510,26 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   return (
                     <div
                       key={order.id}
-                      className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5"
+                      className={`${
+                        isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                      } p-3.5 rounded-2xl border space-y-2.5`}
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="font-mono font-bold text-xs text-indigo-400">
+                          <div className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">
                             {order.orderNumber}
                           </div>
-                          <div className="text-[11px] text-slate-400">{dateStr}</div>
+                          <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{dateStr}</div>
                         </div>
 
                         <div>
                           {order.printed ? (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" />
                               הודפס וסופק ✓
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               ממתין להדפסה ⏱
                             </span>
@@ -1197,24 +1541,32 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                         {order.items.map((it, idx) => (
                           <span
                             key={idx}
-                            className="text-[11px] bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg text-slate-300"
+                            className={`text-[11px] px-2 py-0.5 rounded-lg border ${
+                              isLight
+                                ? 'bg-white border-slate-200 text-slate-800'
+                                : 'bg-slate-900 border-slate-800 text-slate-300'
+                            }`}
                           >
                             <strong>{it.orderedQty}</strong> {it.name}
                           </span>
                         ))}
                       </div>
 
-                      <div className="flex gap-2 pt-1 border-t border-slate-900">
+                      <div className={`flex gap-2 pt-1 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
                         <button
                           onClick={() => handlePrintSlip(order)}
-                          className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          className={`flex-1 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                            isLight
+                              ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                          }`}
                         >
                           <Printer className="w-3.5 h-3.5" />
                           <span>הדפס שובר</span>
                         </button>
                         <button
                           onClick={() => handleReorder(order)}
-                          className="flex-1 py-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          className="flex-1 py-1.5 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           <span>הזמן שוב 🔁</span>

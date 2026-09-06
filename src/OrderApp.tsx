@@ -17,7 +17,7 @@ export default function OrderApp() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-white" dir="rtl">
+    <div className="min-h-screen font-sans selection:bg-emerald-500 selection:text-white" dir="rtl">
       <StaffOrderPortal
         initialTenantId={initialTenant}
         initialDepartment={initialDept}
