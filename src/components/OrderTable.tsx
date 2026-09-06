@@ -46,6 +46,8 @@ interface OrderTableProps {
   onMassPrint: () => void;
   onTogglePrintedStatus: (orderId: string) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onMassDeleteOrders?: (orderIds: string[]) => void;
+  onClearTestOrders?: () => void;
   isSheetLoaded: boolean;
 }
 
@@ -68,10 +70,13 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   onMassPrint,
   onTogglePrintedStatus,
   onDeleteOrder,
+  onMassDeleteOrders,
+  onClearTestOrders,
   isSheetLoaded,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isMassDeleteConfirmOpen, setIsMassDeleteConfirmOpen] = useState(false);
   
   const [selectedDept, setSelectedDept] = useState<string>(() => {
     try {
@@ -406,6 +411,30 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 {periodFilter === 'all' && `כל ההזמנות (${orders.length})`}
               </span>
             </span>
+
+            {/* Clear Test Orders Button */}
+            {onClearTestOrders && (
+              <button
+                onClick={onClearTestOrders}
+                className="bg-amber-50/90 hover:bg-rose-50 text-amber-900 hover:text-rose-700 border border-amber-200/80 hover:border-rose-300 text-xs font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                title="נקה את כל הזמנות הבדיקה מהמערכת וממסד הנתונים"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                <span>ניקוי הזמנות בדיקה 🧹</span>
+              </button>
+            )}
+
+            {/* Mass Delete Button */}
+            {safeSelectedOrderIds.length > 0 && onMassDeleteOrders && (
+              <button
+                onClick={() => setIsMassDeleteConfirmOpen(true)}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-black px-3.5 py-1.5 rounded-2xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                title="מחק הזמנות מסומנות מהמערכת לצמיתות"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>מחק נבחרים ({safeSelectedOrderIds.length})</span>
+              </button>
+            )}
 
             {/* Mass Print Button (Strictly for single selected department) */}
             {safeSelectedOrderIds.length > 0 && (
@@ -830,6 +859,56 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               >
                 <Trash2 className="w-4 h-4" />
                 <span>מחק הזמנה לצמיתות</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mass Delete Confirmation Modal */}
+      {isMassDeleteConfirmOpen && safeSelectedOrderIds.length > 0 && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150"
+          onClick={() => setIsMassDeleteConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-100 text-right space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-100 rounded-2xl">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">מחיקת הזמנות נבחרות</h3>
+                <p className="text-xs text-slate-500">הפעולה תסיר {safeSelectedOrderIds.length} הזמנות מהמערכת לצמיתות</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              ⚠️ האם אתה בטוח שברצונך למחוק {safeSelectedOrderIds.length} הזמנות מסומנות? הן יימחקו ולא יוצגו יותר במערכת.
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsMassDeleteConfirmOpen(false)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onMassDeleteOrders) {
+                    onMassDeleteOrders(safeSelectedOrderIds);
+                  }
+                  setIsMassDeleteConfirmOpen(false);
+                }}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>מחק {safeSelectedOrderIds.length} הזמנות</span>
               </button>
             </div>
           </div>

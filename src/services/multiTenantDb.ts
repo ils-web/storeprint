@@ -9,6 +9,7 @@ import {
   STANDARD_PACKAGING_UNITS,
 } from '../types/multiTenant';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
+import { CANONICAL_DEPARTMENTS } from './unifiedDb';
 import { db } from './firebase';
 import {
   doc,
@@ -451,12 +452,31 @@ export function updateInventoryStock(
 
 export function getTenantDepartments(tenantId: string): TenantDepartment[] {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
-  return getStoredJson<TenantDepartment[]>(key, []);
+  const stored = getStoredJson<TenantDepartment[]>(key, []);
+  const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+  const filtered = stored.filter((d) => d && d.name && canonicalSet.has(d.name));
+  if (filtered.length === CANONICAL_DEPARTMENTS.length) {
+    return filtered;
+  }
+  const defaultList: TenantDepartment[] = CANONICAL_DEPARTMENTS.map((dName, idx) => ({
+    id: `dept-${idx}`,
+    tenantId,
+    name: dName,
+    pinCode: '1234',
+  }));
+  saveTenantDepartments(tenantId, defaultList);
+  return defaultList;
 }
 
 export function saveTenantDepartments(tenantId: string, departments: TenantDepartment[]): void {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
-  setStoredJson(key, departments);
+  const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+  const cleaned = (departments || []).filter((d) => d && d.name && canonicalSet.has(d.name));
+  const finalDepts =
+    cleaned.length > 0
+      ? cleaned
+      : CANONICAL_DEPARTMENTS.map((d, i) => ({ id: `dept-${i}`, tenantId, name: d }));
+  setStoredJson(key, finalDepts);
 }
 
 export function addTenantDepartment(tenantId: string, name: string, pinCode?: string): TenantDepartment {
@@ -551,6 +571,19 @@ export function deleteTenantOrder(tenantId: string, orderId: string): boolean {
     return true;
   }
   return false;
+}
+
+export function clearAllTenantOrders(tenantId: string, departmentName?: string): void {
+  const key = `${ORDERS_KEY}${tenantId}`;
+  if (!departmentName) {
+    setStoredJson(key, []);
+    return;
+  }
+  const orders = getTenantOrders(tenantId);
+  const remaining = orders.filter(
+    (o) => o.departmentName !== departmentName && (o as any).department !== departmentName
+  );
+  setStoredJson(key, remaining);
 }
 
 

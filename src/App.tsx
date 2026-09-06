@@ -40,6 +40,7 @@ import {
   insertDbStockItemAtPosition,
   deductOrdersFromDbStock,
   getDbDepartments,
+  CANONICAL_DEPARTMENTS,
   ingestGoogleFormsOrders,
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
@@ -194,12 +195,7 @@ export default function App() {
     return [];
   });
   const [departments, setDepartments] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(DEPARTMENTS_CACHE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    return getDbDepartments();
   });
   const [productHeaders, setProductHeaders] = useState<string[]>(() => {
     try {
@@ -477,9 +473,10 @@ export default function App() {
         } catch {}
 
         if (result.departments.length > 0) {
-          setDepartments((prev) => {
-            const dbDepts = getDbDepartments();
-            const merged = Array.from(new Set([...result.departments, ...dbDepts, ...prev]));
+          setDepartments(() => {
+            const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+            const valid = result.departments.filter((d) => canonicalSet.has(d));
+            const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
             localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
             return merged;
           });
@@ -1056,6 +1053,48 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
+  const handleMassDeleteOrders = (orderIds: string[]) => {
+    if (!orderIds || orderIds.length === 0) return;
+    orderIds.forEach((id) => {
+      handleDeleteOrder(id);
+    });
+    setSelectedOrderIds([]);
+    setSuccessMessage(`${orderIds.length} הזמנות נמחקו לצמיתות מהמערכת 🗑️`);
+    setTimeout(() => setSuccessMessage(null), 3500);
+  };
+
+  const handleClearTestOrders = () => {
+    const testOrders = orders.filter((o) => {
+      const id = (o.id || '').toLowerCase();
+      const notes = (o.notes || '').toLowerCase();
+      return (
+        id.startsWith('order-') ||
+        id.startsWith('pwa-') ||
+        id.startsWith('tenant-') ||
+        id.includes('test') ||
+        notes.includes('בדיקה') ||
+        notes.includes('טסט') ||
+        notes.includes('test')
+      );
+    });
+
+    if (testOrders.length === 0) {
+      alert('לא נמצאו הזמנות בדיקה במערכת.');
+      return;
+    }
+
+    if (!window.confirm(`נמצאו ${testOrders.length} הזמנות בדיקה / טסטים. האם למחוק את כולן לצמיתות?`)) {
+      return;
+    }
+
+    testOrders.forEach((o) => {
+      handleDeleteOrder(o.id);
+    });
+    setSelectedOrderIds([]);
+    setSuccessMessage(`${testOrders.length} הזמנות בדיקה נמחקו לצמיתות מהמערכת ומהענן 🧹`);
+    setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
   const handlePreviewOrder = (order: Order) => {
     setPreviewOrders([order]);
     setIsPreviewOpen(true);
@@ -1463,6 +1502,8 @@ export default function App() {
               onMassPrint={() => handleMassPrint(selectedOrderIds)}
               onTogglePrintedStatus={handleTogglePrintedStatus}
               onDeleteOrder={handleDeleteOrder}
+              onMassDeleteOrders={handleMassDeleteOrders}
+              onClearTestOrders={handleClearTestOrders}
               isSheetLoaded={!isLoading}
             />
           )}

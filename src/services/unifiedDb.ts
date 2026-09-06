@@ -388,26 +388,53 @@ export function deductOrdersFromDbStock(orders: Order[]): {
   return { updatedStock: updated, totalDeducted };
 }
 
+export const CANONICAL_DEPARTMENTS: string[] = [
+  "ריפוי בעיסוק",
+  "שיקום ב' 1",
+  "סיעודית א'",
+  "מונשמים",
+  "ג' 1 סיעוד מורכב",
+  "שיקום ב' 2",
+  "ג' 2 סיעוד מורכב",
+  "ג' 3 סיעוד מורכב",
+  "פיזיו",
+];
+
 /**
- * Loads departments from DB
+ * Loads departments from DB, strictly aligned with canonical 9 hospital departments
  */
 export function getDbDepartments(): string[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return [...CANONICAL_DEPARTMENTS];
   try {
     const raw = localStorage.getItem(DB_STORAGE_KEYS.DEPARTMENTS);
-    return raw ? JSON.parse(raw) : [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+        const filtered = parsed.filter((d: string) => canonicalSet.has(d));
+        if (filtered.length === CANONICAL_DEPARTMENTS.length) {
+          return filtered;
+        }
+      }
+    }
+    // Default to canonical list and save clean state
+    saveDbDepartments(CANONICAL_DEPARTMENTS);
+    return [...CANONICAL_DEPARTMENTS];
   } catch {
-    return [];
+    return [...CANONICAL_DEPARTMENTS];
   }
 }
 
 /**
- * Saves departments to DB
+ * Saves departments to DB, strictly sanitizing against canonical list
  */
 export function saveDbDepartments(departments: string[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(DB_STORAGE_KEYS.DEPARTMENTS, JSON.stringify(departments));
+    const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+    const cleaned = (departments || []).filter((d) => canonicalSet.has(d));
+    const finalDepts = cleaned.length > 0 ? cleaned : CANONICAL_DEPARTMENTS;
+    localStorage.setItem(DB_STORAGE_KEYS.DEPARTMENTS, JSON.stringify(finalDepts));
   } catch {}
 }
 

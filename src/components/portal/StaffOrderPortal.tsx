@@ -16,9 +16,11 @@ import {
   getTenantOrders,
   saveTenantOrders,
   createTenantOrder,
+  deleteTenantOrder,
+  clearAllTenantOrders,
 } from '../../services/multiTenantDb';
-import { getDbStock, getDbDepartments } from '../../services/unifiedDb';
-import { pushOrderToFirestore, subscribeToFirestoreStock } from '../../services/firestoreSync';
+import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
+import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore } from '../../services/firestoreSync';
 import { isFirebaseReady, db } from '../../services/firebase';
 import { StockItem } from '../../types';
 import { InstallAppModal } from './InstallAppModal';
@@ -59,21 +61,7 @@ interface StaffOrderPortalProps {
   initialDepartment?: string;
 }
 
-const DEFAULT_DEPARTMENTS = [
-  "ג' 1 סיעוד מורכב",
-  "ג' 2 סיעוד מורכב",
-  "ג' 3 סיעוד מורכב",
-  "שיקום א'",
-  "שיקום ב' 1",
-  "שיקום ב' 2",
-  "סיעודית א'",
-  "סיעודית ב'",
-  "תשושי נפש",
-  "פיזיותרפיה",
-  "ריפוי בעיסוק",
-  "קלינאות תקשורת",
-  "הנהלה / כללי",
-];
+const DEFAULT_DEPARTMENTS = CANONICAL_DEPARTMENTS;
 
 const QUICK_NOTE_CHIPS = [
   '⚡ דחוף להיום',
@@ -166,24 +154,27 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   const warehouses = getWarehouses(selectedTenantId);
   const activeWarehouse = warehouses[0] || null;
 
-  // Departments List
+  // Departments List (Strictly 9 Canonical Departments)
   const departmentsList = useMemo(() => {
-    const fromDb = getDbDepartments();
-    const fromTenant = getTenantDepartments(selectedTenantId).map((d) => d.name);
-    const merged = Array.from(new Set([...fromDb, ...fromTenant, ...DEFAULT_DEPARTMENTS])).filter(Boolean);
-    return merged;
-  }, [selectedTenantId]);
+    return CANONICAL_DEPARTMENTS;
+  }, []);
 
   const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>(() => {
-    if (initialDepartment && initialDepartment.trim()) return initialDepartment.trim();
+    if (initialDepartment && CANONICAL_DEPARTMENTS.includes(initialDepartment.trim())) {
+      return initialDepartment.trim();
+    }
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const d = urlParams.get('dept');
-      if (d) return decodeURIComponent(d);
+      if (d && CANONICAL_DEPARTMENTS.includes(decodeURIComponent(d).trim())) {
+        return decodeURIComponent(d).trim();
+      }
       const saved = localStorage.getItem('storeprint_portal_saved_dept');
-      if (saved) return saved;
+      if (saved && CANONICAL_DEPARTMENTS.includes(saved.trim())) {
+        return saved.trim();
+      }
     }
-    return departmentsList[0] || "ג' 1 סיעוד מורכב";
+    return CANONICAL_DEPARTMENTS[4] || "ג' 1 סיעוד מורכב";
   });
 
   const [deptSearchTerm, setDeptSearchTerm] = useState('');
@@ -523,12 +514,30 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
     }
   };
 
+  const [orderHistoryVersion, setOrderHistoryVersion] = useState(0);
+
   // Department's own past submissions
   const myDeptOrders = useMemo(() => {
     return getTenantOrders(selectedTenantId).filter(
       (o) => o.departmentName === selectedDepartmentName
     );
-  }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber]);
+  }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber, orderHistoryVersion]);
+
+  const handleDeleteOrderFromPortal = (orderId: string) => {
+    if (!window.confirm('האם למחוק הזמנה זו מההיסטוריה?')) return;
+    deleteTenantOrder(selectedTenantId, orderId);
+    deleteOrderFromFirestore(orderId, selectedTenantId).catch(console.warn);
+    setOrderHistoryVersion((v) => v + 1);
+  };
+
+  const handleClearDepartmentOrders = () => {
+    if (!window.confirm(`האם לנקות את כל היסטוריית ההזמנות של מחלקת ${selectedDepartmentName}?`)) return;
+    myDeptOrders.forEach((o) => {
+      deleteOrderFromFirestore(o.id, selectedTenantId).catch(console.warn);
+    });
+    clearAllTenantOrders(selectedTenantId, selectedDepartmentName);
+    setOrderHistoryVersion((v) => v + 1);
+  };
 
   return (
     <div
@@ -598,22 +607,22 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
               {isLight ? <Moon className="w-4 h-4 text-indigo-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
             </button>
 
-            {myDeptOrders.length > 0 && (
-              <button
-                onClick={() => setIsHistoryModalOpen(true)}
-                className={`p-2 rounded-xl border transition-colors cursor-pointer relative ${
-                  isLight
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                }`}
-                title="היסטוריית הזמנות המחלקה"
-              >
-                <Clock className="w-4 h-4 text-sky-500" />
+            <button
+              onClick={() => setIsHistoryModalOpen(true)}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer relative ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+              title="היסטוריית הזמנות המחלקה"
+            >
+              <Clock className="w-4 h-4 text-sky-500" />
+              {myDeptOrders.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
                   {myDeptOrders.length}
                 </span>
-              </button>
-            )}
+              )}
+            </button>
 
             <button
               onClick={handleForceUpdate}
@@ -1420,14 +1429,26 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsHistoryModalOpen(false)}
-                className={`p-1 rounded-lg cursor-pointer ${
-                  isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {myDeptOrders.length > 0 && (
+                  <button
+                    onClick={handleClearDepartmentOrders}
+                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/20 flex items-center gap-1 cursor-pointer transition-colors"
+                    title="נקה את כל היסטוריית ההזמנות של מחלקה זו"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>נקה היסטוריה</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className={`p-1 rounded-lg cursor-pointer ${
+                    isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 py-3 pr-1">
@@ -1490,13 +1511,21 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                         ))}
                       </div>
 
-                      <div className={`pt-2 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
+                      <div className={`flex gap-2 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
+                        <button
+                          onClick={() => handleDeleteOrderFromPortal(order.id)}
+                          className="py-2 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
+                          title="מחק הזמנה זו מההיסטוריה"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>מחק</span>
+                        </button>
                         <button
                           onClick={() => handleReorder(order)}
-                          className="w-full py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                          className="flex-1 py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>הזמן שוב (טען פריטים אלו לסל) 🔁</span>
+                          <span>הזמן שוב (טען לסל) 🔁</span>
                         </button>
                       </div>
                     </div>
