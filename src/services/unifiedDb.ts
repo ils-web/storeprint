@@ -55,6 +55,111 @@ export function saveDbProducts(products: Record<string, StockItem>): void {
 }
 
 /**
+ * Sanitizes and strictly deduplicates a stock dictionary:
+ * - Guarantees that each product name has exactly ONE entry.
+ * - If multiple keys share the same name (or normalized name), merges them cleanly.
+ * - Ensures valid numbers for currentStock and minThreshold.
+ * - Ensures colIndex is consistent.
+ */
+export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Record<string, StockItem> {
+  if (!rawStock || typeof rawStock !== 'object') return { ...SEED_STOCK };
+
+  const cleanMap: Record<string, StockItem> = {};
+  const normMap: Record<string, string> = {}; // normalized name -> canonical name
+
+  Object.entries(rawStock).forEach(([key, rawItem]) => {
+    if (!rawItem || typeof rawItem !== 'object') return;
+    const name = String(rawItem.name || key).trim();
+    if (!name) return;
+
+    const normKey = normalizeProductName(name);
+    const existingKey = normMap[normKey];
+
+    const safeStock = typeof rawItem.currentStock === 'number' && !isNaN(rawItem.currentStock) ? Math.max(0, rawItem.currentStock) : 0;
+    const safeMin = typeof rawItem.minThreshold === 'number' && !isNaN(rawItem.minThreshold) ? Math.max(1, rawItem.minThreshold) : 10;
+    const safeUnit = rawItem.unit || detectPackagingUnitFromProductName(name);
+    const safeIsActive = rawItem.isActive !== false;
+    const safeLimit = Boolean(rawItem.limitByPatients);
+    const safeCol = typeof rawItem.colIndex === 'number' && rawItem.colIndex > 0 ? rawItem.colIndex : undefined;
+    const safeId = rawItem.id || `stock-${safeCol || Date.now()}`;
+
+    if (existingKey && cleanMap[existingKey]) {
+      const existing = cleanMap[existingKey];
+      existing.currentStock = Math.max(existing.currentStock, safeStock);
+      if (rawItem.minThreshold !== undefined) existing.minThreshold = safeMin;
+      if (rawItem.unit) existing.unit = safeUnit;
+      if (rawItem.isActive !== undefined) existing.isActive = safeIsActive;
+      if (rawItem.limitByPatients !== undefined) existing.limitByPatients = safeLimit;
+      if (safeCol && (!existing.colIndex || existing.colIndex > safeCol)) existing.colIndex = safeCol;
+      existing.lastUpdated = rawItem.lastUpdated || existing.lastUpdated || new Date().toISOString();
+    } else {
+      cleanMap[name] = {
+        id: safeId,
+        name,
+        colIndex: safeCol || Object.keys(cleanMap).length + 4,
+        currentStock: safeStock,
+        minThreshold: safeMin,
+        unit: safeUnit,
+        isActive: safeIsActive,
+        limitByPatients: safeLimit,
+        lastUpdated: rawItem.lastUpdated || new Date().toISOString(),
+      };
+      normMap[normKey] = name;
+    }
+  });
+
+  if (Object.keys(cleanMap).length === 0) {
+    return { ...SEED_STOCK };
+  }
+
+  return cleanMap;
+}
+
+/**
+ * Restores the entire warehouse stock to the canonical master catalog (192 items from initialMasterStock.json).
+ * Optionally preserves valid positive inventory quantities that were entered by the user.
+ */
+export function resetDbStockToMasterCatalog(preserveQuantities: boolean = true): Record<string, StockItem> {
+  const seed = { ...SEED_STOCK };
+  const current = getDbStock();
+
+  const restored: Record<string, StockItem> = {};
+  const currentByNorm: Record<string, StockItem> = {};
+  Object.values(current || {}).forEach((item) => {
+    if (item && item.name) {
+      currentByNorm[normalizeProductName(item.name)] = item;
+    }
+  });
+
+  Object.entries(seed).forEach(([name, seedItem], idx) => {
+    const norm = normalizeProductName(name);
+    const existing = preserveQuantities ? (current[name] || currentByNorm[norm]) : undefined;
+    const currentStock = (existing && typeof existing.currentStock === 'number' && !isNaN(existing.currentStock))
+      ? Math.max(0, existing.currentStock)
+      : seedItem.currentStock;
+    const minThreshold = (existing && typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold))
+      ? Math.max(1, existing.minThreshold)
+      : seedItem.minThreshold;
+
+    restored[name] = {
+      ...seedItem,
+      id: seedItem.id || `stock-${idx + 4}`,
+      colIndex: idx + 4,
+      currentStock,
+      minThreshold,
+      unit: existing?.unit || seedItem.unit || detectPackagingUnitFromProductName(name),
+      isActive: existing?.isActive !== undefined ? existing.isActive : (seedItem.isActive !== false),
+      limitByPatients: existing?.limitByPatients !== undefined ? Boolean(existing.limitByPatients) : Boolean(seedItem.limitByPatients),
+      lastUpdated: new Date().toISOString(),
+    };
+  });
+
+  saveDbStock(restored, true);
+  saveDbProducts(restored);
+  return restored;
+}
+
+/**
  * Loads current warehouse stock
  */
 export function getDbStock(): Record<string, StockItem> {
@@ -70,7 +175,12 @@ export function getDbStock(): Record<string, StockItem> {
       saveDbStock(SEED_STOCK, false);
       return SEED_STOCK;
     }
-    return parsed;
+    const sanitized = sanitizeAndDeduplicateStock(parsed);
+    // If sanitization reduced duplicates, save sanitized version
+    if (Object.keys(sanitized).length !== Object.keys(parsed).length) {
+      saveDbStock(sanitized, false);
+    }
+    return sanitized;
   } catch (err) {
     console.warn('Failed to load stock from DB:', err);
     return SEED_STOCK;
@@ -83,10 +193,11 @@ export function getDbStock(): Record<string, StockItem> {
 export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean = true): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(DB_STORAGE_KEYS.STOCK, JSON.stringify(stock));
-    localStorage.setItem('storeprint_warehouse_stock_v1', JSON.stringify(stock));
-    localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(stock)));
-    saveDbProducts(stock);
+    const cleanStock = sanitizeAndDeduplicateStock(stock);
+    localStorage.setItem(DB_STORAGE_KEYS.STOCK, JSON.stringify(cleanStock));
+    localStorage.setItem('storeprint_warehouse_stock_v1', JSON.stringify(cleanStock));
+    localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(cleanStock)));
+    saveDbProducts(cleanStock);
     if (syncCloud) {
       let activeTenantId = 'tenant-main-01';
       try {
@@ -96,10 +207,10 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
           if (parsedAuth?.tenantId) activeTenantId = parsedAuth.tenantId;
         }
       } catch {}
-      pushStockToFirestore(stock, activeTenantId).catch(console.warn);
+      pushStockToFirestore(cleanStock, activeTenantId).catch(console.warn);
       const config = loadCloudConfig();
       if (config.enabled && config.endpointUrl) {
-        debouncedPushStockToCloud(stock, config, 1200).catch(console.warn);
+        debouncedPushStockToCloud(cleanStock, config, 1200).catch(console.warn);
       }
     }
   } catch (err) {
@@ -115,40 +226,26 @@ export function saveOrUpdateDbStockItem(
   oldNameOrId?: string
 ): Record<string, StockItem> {
   const current = getDbStock();
-  const next: Record<string, StockItem> = { ...current };
+  const next: Record<string, StockItem> = {};
 
-  // Collect all keys to remove (matching by ID, old name, normalized name)
-  const keysToRemove = new Set<string>();
+  const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
+  const normNew = normalizeProductName(savedItem.name);
   let preservedColIndex = savedItem.colIndex;
 
-  if (oldNameOrId && oldNameOrId.trim() !== '') {
-    const normOld = normalizeProductName(oldNameOrId);
-    Object.keys(next).forEach((k) => {
-      const item = next[k];
-      if (
-        k === oldNameOrId ||
-        item?.id === oldNameOrId ||
-        item?.name === oldNameOrId ||
-        normalizeProductName(k) === normOld ||
-        (item?.name && normalizeProductName(item.name) === normOld)
-      ) {
-        keysToRemove.add(k);
-        if (item?.colIndex) preservedColIndex = item.colIndex;
-      }
-    });
-  }
+  // Copy all non-matching items
+  Object.keys(current).forEach((k) => {
+    const item = current[k];
+    const isOldMatch =
+      (oldNameOrId && (k === oldNameOrId || item?.id === oldNameOrId || item?.name === oldNameOrId || normalizeProductName(k) === normOld || (item?.name && normalizeProductName(item.name) === normOld))) ||
+      (savedItem.id && item?.id === savedItem.id) ||
+      (k === savedItem.name || item?.name === savedItem.name || normalizeProductName(k) === normNew || (item?.name && normalizeProductName(item.name) === normNew));
 
-  if (savedItem.id) {
-    Object.keys(next).forEach((k) => {
-      if (next[k]?.id === savedItem.id) {
-        keysToRemove.add(k);
-        if (next[k]?.colIndex) preservedColIndex = next[k].colIndex;
-      }
-    });
-  }
-
-  // Remove old matching keys
-  keysToRemove.forEach((k) => delete next[k]);
+    if (isOldMatch) {
+      if (item?.colIndex) preservedColIndex = item.colIndex;
+    } else {
+      next[item.name || k] = item;
+    }
+  });
 
   const targetKey = savedItem.name.trim();
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
@@ -170,8 +267,7 @@ export function saveOrUpdateDbStockItem(
     lastUpdated: nowIso,
   };
 
-  saveDbStock(next);
-  saveDbProducts(next);
+  saveDbStock(next, true);
   return next;
 }
 
@@ -180,24 +276,24 @@ export function saveOrUpdateDbStockItem(
  */
 export function deleteDbStockItem(idOrName: string): Record<string, StockItem> {
   const current = getDbStock();
-  const next: Record<string, StockItem> = { ...current };
+  const next: Record<string, StockItem> = {};
   const normTarget = normalizeProductName(idOrName);
 
-  const keysToDelete = Object.keys(next).filter((k) => {
-    const item = next[k];
-    return (
+  Object.keys(current).forEach((k) => {
+    const item = current[k];
+    const isMatch =
       k === idOrName ||
       item?.id === idOrName ||
       item?.name === idOrName ||
       normalizeProductName(k) === normTarget ||
-      (item?.name && normalizeProductName(item.name) === normTarget)
-    );
+      (item?.name && normalizeProductName(item.name) === normTarget);
+
+    if (!isMatch) {
+      next[item.name || k] = item;
+    }
   });
 
-  keysToDelete.forEach((k) => delete next[k]);
-
-  saveDbStock(next);
-  saveDbProducts(next);
+  saveDbStock(next, true);
   return next;
 }
 
@@ -220,20 +316,17 @@ export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Rec
   const targetIndex = direction === 'up' ? index - 1 : index + 1;
   if (targetIndex < 0 || targetIndex >= items.length) return current;
 
-  // Swap colIndex between the two items only
-  const currentItem = items[index];
-  const targetItem = items[targetIndex];
-  const tempCol = currentItem.colIndex;
-  currentItem.colIndex = targetItem.colIndex;
-  targetItem.colIndex = tempCol;
+  const temp = items[index];
+  items[index] = items[targetIndex];
+  items[targetIndex] = temp;
 
   const next: Record<string, StockItem> = {};
-  items.forEach((item) => {
+  items.forEach((item, i) => {
+    item.colIndex = i + 4;
     next[item.name] = item;
   });
 
-  saveDbStock(next);
-  saveDbProducts(next);
+  saveDbStock(next, true);
   return next;
 }
 
@@ -250,15 +343,6 @@ export function insertDbStockItemAtPosition(
   const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
   const normNew = normalizeProductName(savedItem.name);
 
-  // Find if item already had an established colIndex
-  const existingItem = items.find(
-    (item) =>
-      (savedItem.id && item.id === savedItem.id) ||
-      (oldNameOrId && (item.name === oldNameOrId || normalizeProductName(item.name) === normOld)) ||
-      (item.name === savedItem.name || normalizeProductName(item.name) === normNew)
-  );
-
-  // Remove existing occurrences of this item
   items = items.filter((item) => {
     if (savedItem.id && item.id === savedItem.id) return false;
     if (oldNameOrId && (item.name === oldNameOrId || normalizeProductName(item.name) === normOld)) return false;
@@ -266,7 +350,6 @@ export function insertDbStockItemAtPosition(
     return true;
   });
 
-  // Calculate 0-based insert index clamped between 0 and items.length
   const insertIndex = Math.max(0, Math.min(items.length, targetPosition - 1));
 
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
@@ -276,13 +359,10 @@ export function insertDbStockItemAtPosition(
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
 
-  // If item already has a defined colIndex, preserve it. If new, assign a safe index
-  const safeColIndex = savedItem.colIndex || existingItem?.colIndex || (targetPosition > 0 ? targetPosition + 3 : 200);
-
   const itemToInsert: StockItem = {
     id: savedItem.id || `stock-${Date.now()}`,
     name: savedItem.name.trim(),
-    colIndex: safeColIndex,
+    colIndex: targetPosition + 3,
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,
@@ -294,12 +374,12 @@ export function insertDbStockItemAtPosition(
   items.splice(insertIndex, 0, itemToInsert);
 
   const next: Record<string, StockItem> = {};
-  items.forEach((item) => {
+  items.forEach((item, i) => {
+    item.colIndex = i + 4;
     next[item.name] = item;
   });
 
-  saveDbStock(next);
-  saveDbProducts(next);
+  saveDbStock(next, true);
   return next;
 }
 
@@ -329,27 +409,41 @@ export function updateDbStockItem(
   const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
   const cleanLimitByPatients = limitByPatients !== undefined ? limitByPatients : Boolean(existing?.limitByPatients);
   const nowIso = new Date().toISOString();
-  const finalName = existing?.name || nameOrId;
+  const finalName = (existing?.name || nameOrId).trim();
 
-  const updated: Record<string, StockItem> = {
-    ...current,
-    [targetKey]: {
-      ...(existing || {
-        id: `stock-${Date.now()}`,
-        name: finalName,
-        colIndex: Object.keys(current).length + 4,
-      }),
+  // Purge any duplicates sharing this name
+  const updated: Record<string, StockItem> = {};
+  Object.keys(current).forEach((k) => {
+    const it = current[k];
+    const isTarget =
+      k === targetKey ||
+      k === finalName ||
+      it?.id === nameOrId ||
+      it?.name === finalName ||
+      normalizeProductName(k) === normSearch ||
+      normalizeProductName(it?.name || '') === normSearch;
+
+    if (!isTarget) {
+      updated[it.name || k] = it;
+    }
+  });
+
+  updated[finalName] = {
+    ...(existing || {
+      id: `stock-${Date.now()}`,
       name: finalName,
-      currentStock: cleanStock,
-      minThreshold: cleanMin,
-      unit: cleanUnit,
-      isActive: cleanIsActive,
-      limitByPatients: cleanLimitByPatients,
-      lastUpdated: nowIso,
-    },
+      colIndex: Object.keys(updated).length + 4,
+    }),
+    name: finalName,
+    currentStock: cleanStock,
+    minThreshold: cleanMin,
+    unit: cleanUnit,
+    isActive: cleanIsActive,
+    limitByPatients: cleanLimitByPatients,
+    lastUpdated: nowIso,
   };
 
-  saveDbStock(updated);
+  saveDbStock(updated, true);
   return updated;
 }
 

@@ -124,6 +124,7 @@ export function syncStockWithProductHeaders(
     if (!cleanName) return;
 
     const normKey = normalizeProductName(cleanName);
+    const isPlaceholder = /^פריט\s*\d+$/i.test(cleanName) || /^item\s*\d+$/i.test(cleanName);
     const localFallback = localStored[cleanName] || localStored[header];
     const existing =
       existingStock[cleanName] ||
@@ -131,9 +132,8 @@ export function syncStockWithProductHeaders(
       existingByName[cleanName] ||
       existingByName[header.trim()] ||
       existingByNorm[normKey] ||
-      existingByName[`stock-${idx + 4}`] ||
-      existingByCol[idx + 4] ||
-      localFallback;
+      localFallback ||
+      (isPlaceholder ? (existingByName[`stock-${idx + 4}`] || existingByCol[idx + 4]) : undefined);
 
     const detectedUnit = detectPackagingUnitFromProductName(cleanName);
 

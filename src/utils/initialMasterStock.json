@@ -1628,7 +1628,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "CANOLA עם בלונית מס' 6": {
-    "id": "stock-38",
+    "id": "stock-152",
     "name": "CANOLA עם בלונית מס' 6",
     "colIndex": 152,
     "currentStock": 0,
@@ -1947,7 +1947,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פלסטר TRANSPORE אדום": {
-    "id": "stock-183",
+    "id": "stock-184",
     "name": "פלסטר TRANSPORE אדום",
     "colIndex": 184,
     "currentStock": 10,
@@ -1958,7 +1958,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כפפות ניילון חד פעמי- שקוף 100 יחידות": {
-    "id": "stock-184",
+    "id": "stock-185",
     "name": "כפפות ניילון חד פעמי- שקוף 100 יחידות",
     "colIndex": 185,
     "currentStock": 10,
@@ -1969,7 +1969,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "שקית לנעליים": {
-    "id": "stock-185",
+    "id": "stock-186",
     "name": "שקית לנעליים",
     "colIndex": 186,
     "currentStock": 10,
@@ -1980,7 +1980,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "כובעים לאחות לבידוד": {
-    "id": "stock-186",
+    "id": "stock-187",
     "name": "כובעים לאחות לבידוד",
     "colIndex": 187,
     "currentStock": 10,
@@ -1991,7 +1991,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "פנרוס (MIZRA MEDICAL ITD) L": {
-    "id": "stock-187",
+    "id": "stock-188",
     "name": "פנרוס (MIZRA MEDICAL ITD) L",
     "colIndex": 188,
     "currentStock": 10,
@@ -2002,7 +2002,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "הולדר לפרפר מחט רגילה 450263": {
-    "id": "stock-188",
+    "id": "stock-189",
     "name": "הולדר לפרפר מחט רגילה 450263",
     "colIndex": 189,
     "currentStock": 10,
@@ -2013,7 +2013,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מייצג לא סטרילי 40X20": {
-    "id": "stock-189",
+    "id": "stock-190",
     "name": "מייצג לא סטרילי 40X20",
     "colIndex": 190,
     "currentStock": 10,
@@ -2024,7 +2024,7 @@
     "lastUpdated": "2026-09-06T08:43:28.694Z"
   },
   "מייצג לא סטרילי 10X20 50 יחידות": {
-    "id": "stock-190",
+    "id": "stock-191",
     "name": "מייצג לא סטרילי 10X20 50 יחידות",
     "colIndex": 191,
     "currentStock": 40,
@@ -2054,7 +2054,7 @@
     "name": "ANTIGON מגבונים לחים לניקוי משטחים",
     "unit": "חבילה",
     "minThreshold": 10,
-    "id": "stock-15"
+    "id": "stock-201"
   },
   "1 דליים של מגבונים לחים לגוף": {
     "unit": "דלי",
@@ -2064,7 +2064,7 @@
     "limitByPatients": false,
     "lastUpdated": "2026-09-06T08:43:28.698Z",
     "colIndex": 202,
-    "id": "stock-14",
+    "id": "stock-202",
     "lastDeducted": "2026-09-06T05:48:56.825Z",
     "minThreshold": 12
   },
@@ -2109,7 +2109,7 @@
     "name": "קטטר סקשיין גדול 14 עם פינגרטיפ",
     "limitByPatients": false,
     "currentStock": 4,
-    "id": "stock-126",
+    "id": "stock-206",
     "colIndex": 206
   }
 }

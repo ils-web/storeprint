@@ -39,6 +39,8 @@ import {
   moveDbStockItem,
   insertDbStockItemAtPosition,
   deductOrdersFromDbStock,
+  resetDbStockToMasterCatalog,
+  sanitizeAndDeduplicateStock,
   getDbDepartments,
   CANONICAL_DEPARTMENTS,
   ingestGoogleFormsOrders,
@@ -637,6 +639,20 @@ export default function App() {
     };
   }, [activeTenantId, convertTenantOrderToAppOrder, printedOrderIds, deletedOrderIds]);
 
+  // Automated stock integrity & deduplication check on mount
+  useEffect(() => {
+    try {
+      const currentStock = getDbStock();
+      const sanitized = sanitizeAndDeduplicateStock(currentStock);
+      if (Object.keys(currentStock).length !== Object.keys(sanitized).length) {
+        setStock(sanitized);
+        saveDbStock(sanitized, true);
+        saveStoredStock(sanitized);
+        setProductHeaders(Object.keys(sanitized));
+      }
+    } catch {}
+  }, []);
+
   // Initial Load once on mount or tenant switch
   useEffect(() => {
     loadOrders(false);
@@ -854,6 +870,20 @@ export default function App() {
       localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
+  }, [departments, syncToMultiTenantDb]);
+
+  const handleResetMasterCatalog = useCallback(() => {
+    const cleanStock = resetDbStockToMasterCatalog(true);
+    setStock(cleanStock);
+    saveStoredStock(cleanStock);
+    const newHeaders = Object.keys(cleanStock);
+    setProductHeaders(newHeaders);
+    try {
+      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+    } catch {}
+    syncToMultiTenantDb(newHeaders, departments, cleanStock);
+    setSuccessMessage('קטלוג המחסן שוחזר בהצלחה ל-192 פריטים תקינים ללא כפילויות! 📦✨');
+    setTimeout(() => setSuccessMessage(null), 4000);
   }, [departments, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
@@ -1526,6 +1556,7 @@ export default function App() {
               onSaveFullItem={handleSaveFullItem}
               onDeleteItem={handleDeleteStockItem}
               onMoveItem={handleMoveStockItem}
+              onResetMasterCatalog={handleResetMasterCatalog}
             />
           )}
 

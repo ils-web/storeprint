@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
-import { exportStockToJson, importStockFromJson } from '../utils/stockManager';
+import { exportStockToJson, importStockFromJson, normalizeProductName } from '../utils/stockManager';
 import { PhoneQRModal } from './PhoneQRModal';
 import { ItemModal } from './ItemModal';
 
@@ -296,6 +296,7 @@ interface WarehouseViewProps {
   onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => void;
   onDeleteItem?: (idOrName: string) => void;
   onMoveItem?: (idOrName: string, direction: 'up' | 'down') => void;
+  onResetMasterCatalog?: () => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -315,6 +316,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onSaveFullItem,
   onDeleteItem,
   onMoveItem,
+  onResetMasterCatalog,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
@@ -323,12 +325,27 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [batchQtyInput, setBatchQtyInput] = useState<string>('50');
   const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
   const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
+  const [isResetMasterModalOpen, setIsResetMasterModalOpen] = useState(false);
 
+  // Strictly deduplicated stock list: guarantees no duplicate product names in UI
   const stockList = useMemo(() => {
     if (!stock || typeof stock !== 'object') return [];
-    return Object.values(stock).filter(
+    const seenNorms = new Set<string>();
+    const list: StockItem[] = [];
+
+    const rawList = Object.values(stock).filter(
       (it): it is StockItem => Boolean(it && typeof it === 'object' && 'name' in it && typeof (it as StockItem).name === 'string' && (it as StockItem).name.trim() !== '')
-    );
+    ).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+
+    rawList.forEach((item) => {
+      const norm = normalizeProductName(item.name);
+      if (!seenNorms.has(norm)) {
+        seenNorms.add(norm);
+        list.push(item);
+      }
+    });
+
+    return list;
   }, [stock]);
 
   // Helper to calculate effective threshold (x3 in emergency mode)
@@ -683,6 +700,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <PlusCircle className="w-3.5 h-3.5" />
                 <span>הוסף פריט למחסן 📦</span>
               </button>
+
+              {/* Reset / Restore Master Catalog (192 clean canonical items) */}
+              {onResetMasterCatalog && (
+                <button
+                  onClick={() => setIsResetMasterModalOpen(true)}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="שחזור קטלוג המלאי המקורי (192 פריטים נקיים ללא כפילויות)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                  <span>איפוס לקטלוג מקורי (192) 🔄</span>
+                </button>
+              )}
               {/* Emergency Mode Toggle Button */}
               {onOpenEmergencyConfirm && (
                 <button
@@ -1200,6 +1229,48 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>כן, מחק לצמיתות 🗑️</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog for Resetting to Master Catalog */}
+      {isResetMasterModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn" dir="rtl">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 space-y-4 text-slate-900">
+            <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto border-4 border-amber-50">
+              <RotateCcw className="w-7 h-7 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900">שחזור קטלוג המלאי המקורי?</h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                פעולה זו תאפס את רשימת המוצרים לקטלוג התקני המקורי של <strong>192 פריטים</strong>, תנקה לצמיתות כפילויות ושיבושים, ותסנכרן את הנתונים הנקיים ישירות לענן.
+              </p>
+              <p className="text-[11px] text-emerald-600 font-bold mt-2">
+                ✓ כמויות המלאי שהזנתם עבור פריטים קיימים יישמרו ללא שינוי.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsResetMasterModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onResetMasterCatalog) {
+                    onResetMasterCatalog();
+                    setIsResetMasterModalOpen(false);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-md shadow-amber-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>שחזר קטלוג תקין ✓</span>
               </button>
             </div>
           </div>

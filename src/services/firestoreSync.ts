@@ -39,10 +39,10 @@ export async function pushStockToFirestore(
     });
 
     const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
-    await setDoc(docRef, payload, { merge: true });
+    await setDoc(docRef, payload);
 
     const globalDocRef = doc(db, 'warehouse', 'master_stock');
-    await setDoc(globalDocRef, payload, { merge: true });
+    await setDoc(globalDocRef, payload);
     return true;
   } catch (err) {
     console.warn('Firestore pushStock error:', err);

@@ -398,7 +398,7 @@ async function syncInventoryToFirestore(tenantId: string, items: InventoryProduc
   try {
     if (!db) return;
     const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
-    await setDoc(docRef, { items, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, { items, updatedAt: new Date().toISOString() });
   } catch (e) {
     // Offline resilience
   }
