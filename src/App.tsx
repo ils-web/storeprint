@@ -142,7 +142,7 @@ export default function App() {
 
   // Spreadsheet state
   const [spreadsheetId, setSpreadsheetId] = useState<string>(activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID);
-  const [gid, setGid] = useState<string>(activeTenant?.spreadsheetGid || DEFAULT_GID);
+  const [gid, setGid] = useState<string>(activeTenant?.spreadsheetGid && activeTenant.spreadsheetGid !== '0' ? activeTenant.spreadsheetGid : DEFAULT_GID);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
@@ -405,7 +405,8 @@ export default function App() {
 
       try {
         const currentSpreadsheetId = spreadsheetId || activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID;
-        const currentGid = gid || activeTenant?.spreadsheetGid || DEFAULT_GID;
+        const rawGid = gid || activeTenant?.spreadsheetGid || DEFAULT_GID;
+        const currentGid = (!rawGid || rawGid === '0' || rawGid === 'null' || rawGid === 'undefined') ? DEFAULT_GID : rawGid;
         const rows = await fetchPublicCsvValues(currentSpreadsheetId, currentGid);
 
         if (!rows || rows.length < 2) {

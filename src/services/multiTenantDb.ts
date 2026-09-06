@@ -189,7 +189,19 @@ async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
 
 export function getTenants(): Tenant[] {
   initMultiTenantDb();
-  return getStoredJson<Tenant[]>(TENANTS_KEY, [DEFAULT_INITIAL_TENANT]);
+  const list = getStoredJson<Tenant[]>(TENANTS_KEY, [DEFAULT_INITIAL_TENANT]);
+  let changed = false;
+  const migrated = list.map((t) => {
+    if (t.id === 'tenant-main-01' && (!t.spreadsheetGid || t.spreadsheetGid === '0' || t.spreadsheetGid === 'null')) {
+      changed = true;
+      return { ...t, spreadsheetGid: DEFAULT_GID };
+    }
+    return t;
+  });
+  if (changed) {
+    setStoredJson(TENANTS_KEY, migrated);
+  }
+  return migrated;
 }
 
 export function getTenantById(tenantId: string): Tenant | null {

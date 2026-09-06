@@ -98,12 +98,14 @@ export async function fetchSheetValues(
  * Robust CSV Fetcher for public Google Sheets with CORS-enabled gviz endpoint and proxies
  */
 export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = DEFAULT_GID): Promise<string[][]> {
-  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
-  const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+  const effectiveGid = (!gid || gid === '0' || gid === 'null' || gid === 'undefined') ? DEFAULT_GID : gid;
+  const cacheBuster = Date.now();
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${effectiveGid}&_t=${cacheBuster}`;
+  const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${effectiveGid}&_t=${cacheBuster}`;
 
   // 1. Primary: Google Visualization CSV endpoint (CORS-friendly, no auth required for public sheets)
   try {
-    const response = await fetch(gvizUrl);
+    const response = await fetch(gvizUrl, { cache: 'no-store' });
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -116,7 +118,7 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
 
   // 2. Secondary: Direct CSV export endpoint
   try {
-    const response = await fetch(directCsvUrl);
+    const response = await fetch(directCsvUrl, { cache: 'no-store' });
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
@@ -129,8 +131,8 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
 
   // 3. Tertiary: AllOrigins proxy fallback
   try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrl)}`;
-    const response = await fetch(proxyUrl);
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(gvizUrl)}&_t=${cacheBuster}`;
+    const response = await fetch(proxyUrl, { cache: 'no-store' });
     if (response.ok) {
       const csvText = await response.text();
       if (csvText && csvText.length > 50) {
