@@ -476,9 +476,22 @@ export function addTenantDepartment(tenantId: string, name: string, pinCode?: st
 // ORDERS OPERATIONS
 // ----------------------------------------------------------------------------
 
+const PURGED_TEST_ORDER_IDS = new Set([
+  'order-1788682740035-140',
+  'order-test-1788673384415',
+  'order-test-check',
+  'הזמנה #332',
+  'הזמנה #333',
+]);
+
 export function getTenantOrders(tenantId: string, warehouseId?: string): MultiTenantOrder[] {
   const key = `${ORDERS_KEY}${tenantId}`;
-  const orders = getStoredJson<MultiTenantOrder[]>(key, []);
+  let orders = getStoredJson<MultiTenantOrder[]>(key, []);
+  const initialLen = orders.length;
+  orders = orders.filter((o) => o && o.id && !PURGED_TEST_ORDER_IDS.has(o.id));
+  if (orders.length !== initialLen) {
+    setStoredJson(key, orders);
+  }
   if (!warehouseId) return orders;
   return orders.filter((o) => o.warehouseId === warehouseId);
 }

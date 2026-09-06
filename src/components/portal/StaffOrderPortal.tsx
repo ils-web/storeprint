@@ -246,11 +246,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
         if ('caches' in window) {
           caches.keys().then((keys) => {
             Promise.all(keys.map((k) => caches.delete(k))).then(() => {
-              window.location.reload();
+              (window as any).location.reload();
             });
           });
         } else {
-          window.location.reload();
+          (window as any).location.reload();
         }
       });
     } else {
@@ -416,7 +416,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       };
     });
     setCart(newCart);
-    setActiveTab('catalog');
+    setIsHistoryModalOpen(false);
     setCategoryFilter('in_cart');
     setIsCartOpen(true);
   };

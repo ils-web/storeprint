@@ -63,6 +63,7 @@ import {
   deductOrdersFromStock,
   getLowStockItems,
   detectPackagingUnitFromProductName,
+  normalizeProductName,
 } from './utils/stockManager';
 import { parseSheetDate } from './utils/dateUtils';
 import {
@@ -174,16 +175,19 @@ export default function App() {
   // Orders & Fast Cached Departments State
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
-      const raw = localStorage.getItem('storeprint_orders_cache_v3');
+      const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const currentPrinted = getDbPrintedOrderIds();
-          return parsed.map((o: any) => ({
-            ...o,
-            parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
-            printed: currentPrinted.has(getOrderPrintKey(o)),
-          }));
+          const purgedSet = new Set(['order-1788682740035-140', 'order-test-1788673384415', 'order-test-check']);
+          return parsed
+            .filter((o: any) => o && o.id && !purgedSet.has(o.id))
+            .map((o: any) => ({
+              ...o,
+              parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+              printed: currentPrinted.has(getOrderPrintKey(o)),
+            }));
         }
       }
     } catch {}

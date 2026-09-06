@@ -327,7 +327,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const stockList = useMemo(() => {
     if (!stock || typeof stock !== 'object') return [];
     return Object.values(stock).filter(
-      (it): it is StockItem => Boolean(it && typeof it === 'object' && typeof it.name === 'string' && it.name.trim() !== '')
+      (it): it is StockItem => Boolean(it && typeof it === 'object' && 'name' in it && typeof (it as StockItem).name === 'string' && (it as StockItem).name.trim() !== '')
     );
   }, [stock]);
 

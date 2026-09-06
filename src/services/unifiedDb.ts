@@ -603,6 +603,7 @@ export function ingestGoogleFormsOrders(
     }
   }
   const headerRowIndex = bestHeaderRowIndex >= 0 ? bestHeaderRowIndex : 2;
+  const rawHeaders = rawRows[headerRowIndex] || [];
 
   const cleanHeaderName = (h: string, colIdx: number) => {
     let raw = (h || '').trim();
