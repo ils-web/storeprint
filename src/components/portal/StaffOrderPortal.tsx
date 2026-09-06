@@ -29,7 +29,6 @@ import {
   Minus,
   CheckCircle2,
   Clock,
-  Printer,
   ChevronRight,
   Package,
   Building2,
@@ -188,7 +187,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   });
 
   const [deptSearchTerm, setDeptSearchTerm] = useState('');
-  const [patientsCount, setPatientsCount] = useState<string>('');
+  const [patientsCount, setPatientsCount] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('storeprint_portal_patients_count') || '';
+    }
+    return '';
+  });
   const [requesterName, setRequesterName] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('storeprint_portal_requester_name') || '';
@@ -221,6 +225,13 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       localStorage.setItem('storeprint_portal_requester_name', requesterName);
     }
   }, [requesterName]);
+
+  // Save patients count
+  useEffect(() => {
+    if (patientsCount && typeof window !== 'undefined') {
+      localStorage.setItem('storeprint_portal_patients_count', patientsCount);
+    }
+  }, [patientsCount]);
 
   // Subscribe to real-time warehouse stock from Firestore
   useEffect(() => {
@@ -459,6 +470,10 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
       alert('נא להזין את שם המזמין/ה (איש קשר במחלקה)');
       return;
     }
+    if (!patientsCount.trim() || parseInt(patientsCount, 10) <= 0) {
+      alert('נא להזין את מספר המטופלים במחלקה כעת');
+      return;
+    }
     if (cartItemsList.length === 0) {
       alert('סל ההזמנה ריק. נא לבחור לפחות פריט אחד להזמנה.');
       return;
@@ -506,68 +521,6 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handlePrintSlip = (orderToPrint: any) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    const dateStr = new Date(orderToPrint.createdAt || Date.now()).toLocaleString('he-IL');
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="he">
-      <head>
-        <meta charset="utf-8">
-        <title>עותק הזמנה - ${orderToPrint.orderNumber}</title>
-        <style>
-          * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-          body { padding: 20px; color: #000; }
-          .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-          .title { font-size: 20px; font-weight: 900; }
-          .info { font-size: 14px; margin-top: 5px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-          th, td { border: 1px solid #000; padding: 6px 10px; font-size: 13px; text-align: right; }
-          th { background: #f0f0f0; }
-          .footer { margin-top: 20px; font-size: 12px; text-align: center; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="title">📋 טופס הזמנת אספקה למחלקה</div>
-          <div class="info"><strong>מחלקה:</strong> ${orderToPrint.departmentName} | <strong>מספר הזמנה:</strong> ${orderToPrint.orderNumber}</div>
-          <div class="info"><strong>תאריך ושעה:</strong> ${dateStr} ${orderToPrint.notes ? `| <strong>הערות:</strong> ${orderToPrint.notes}` : ''}</div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 40px; text-align: center;">#</th>
-              <th>שם הפריט</th>
-              <th style="width: 80px; text-align: center;">כמות</th>
-              <th style="width: 90px; text-align: center;">יחידת אריזה</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${orderToPrint.items
-              .map(
-                (item: any, idx: number) => `
-              <tr>
-                <td style="text-align: center;">${idx + 1}</td>
-                <td><strong>${item.name}</strong></td>
-                <td style="text-align: center; font-size: 15px; font-weight: bold;">${item.orderedQty}</td>
-                <td style="text-align: center;">${item.orderedUnit || "יח'"}</td>
-              </tr>
-            `
-              )
-              .join('')}
-          </tbody>
-        </table>
-        <div class="footer">הופק באמצעות מערכת StorePrint • לבירורים מול המחסן יש למסור מספר הזמנה</div>
-        <script>
-          window.onload = function() { window.print(); };
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
   };
 
   // Department's own past submissions
@@ -816,26 +769,15 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => handlePrintSlip(lastSubmittedOrder)}
-                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
-              >
-                <Printer className="w-4 h-4" />
-                <span>הדפס עותק הזמנה למחלקה</span>
-              </button>
+            <div>
               <button
                 onClick={() => {
                   setOrderSuccessNumber(null);
                   setLastSubmittedOrder(null);
                 }}
-                className={`py-2.5 px-4 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
-                  isLight
-                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                }`}
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-md cursor-pointer transition-colors text-center flex items-center justify-center gap-2"
               >
-                בצע הזמנה נוספת
+                <span>אישור וביצוע הזמנה נוספת ✓</span>
               </button>
             </div>
           </div>
@@ -1292,32 +1234,28 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                   />
                 </div>
 
-                {cartItemsList.some((it) => {
-                  const p = inventoryItems.find((prod) => prod.name === it.name);
-                  return p?.limitByPatients;
-                }) && (
-                  <div>
-                    <label
-                      className={`text-xs font-bold block mb-1.5 ${
-                        isLight ? 'text-amber-800' : 'text-amber-300'
-                      }`}
-                    >
-                      מספר מטופלים במחלקה כעת (נדרש לפריטים מוגבלים) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="לדוגמה: 36"
-                      value={patientsCount}
-                      onChange={(e) => setPatientsCount(e.target.value)}
-                      className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-amber-500/20 ${
-                        isLight
-                          ? 'bg-amber-50/50 border-amber-300 text-amber-950 placeholder-amber-400 focus:border-amber-600'
-                          : 'bg-slate-950 border-amber-600/40 text-white placeholder-slate-500 focus:border-amber-500'
-                      }`}
-                    />
-                  </div>
-                )}
+                <div>
+                  <label
+                    className={`text-xs font-bold block mb-1.5 ${
+                      isLight ? 'text-slate-800' : 'text-slate-300'
+                    }`}
+                  >
+                    מספר מטופלים במחלקה כעת <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="לדוגמה: 36"
+                    value={patientsCount}
+                    onChange={(e) => setPatientsCount(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
+                    }`}
+                  />
+                </div>
 
                 <div>
                   <label
@@ -1552,24 +1490,13 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                         ))}
                       </div>
 
-                      <div className={`flex gap-2 pt-1 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
-                        <button
-                          onClick={() => handlePrintSlip(order)}
-                          className={`flex-1 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                            isLight
-                              ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                          }`}
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>הדפס שובר</span>
-                        </button>
+                      <div className={`pt-2 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
                         <button
                           onClick={() => handleReorder(order)}
-                          className="flex-1 py-1.5 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
+                          className="w-full py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
-                          <span>הזמן שוב 🔁</span>
+                          <span>הזמן שוב (טען פריטים אלו לסל) 🔁</span>
                         </button>
                       </div>
                     </div>
