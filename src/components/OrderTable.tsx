@@ -29,6 +29,8 @@ import {
   isDateInCurrentMonth,
   isDateInCustomRange,
   formatIsraelDate,
+  coerceDate,
+  parseSheetDate,
 } from '../utils/dateUtils';
 
 type PeriodFilterType = 'week' | 'today' | 'last7' | 'last30' | 'month' | 'custom' | 'all';
@@ -177,22 +179,24 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     });
   };
 
-  // Filter orders by period, search, dept, status
-  const filteredOrders = useMemo(() => {
+  // 1. Base orders matching period, dept, search (BEFORE applying status tab filter)
+  const basePeriodOrders = useMemo(() => {
     return orders.filter((order) => {
+      const orderDate = coerceDate(order.parsedDate) || parseSheetDate(order.timestamp || order.rawDate);
+
       // 1. Period / Date filter
       if (periodFilter === 'today') {
-        if (!isDateToday(order.parsedDate)) return false;
+        if (!isDateToday(orderDate)) return false;
       } else if (periodFilter === 'week') {
-        if (!isDateInWeek(order.parsedDate, currentWeek)) return false;
+        if (!isDateInWeek(orderDate, currentWeek)) return false;
       } else if (periodFilter === 'last7') {
-        if (!isDateInLastDays(order.parsedDate, 7)) return false;
+        if (!isDateInLastDays(orderDate, 7)) return false;
       } else if (periodFilter === 'last30') {
-        if (!isDateInLastDays(order.parsedDate, 30)) return false;
+        if (!isDateInLastDays(orderDate, 30)) return false;
       } else if (periodFilter === 'month') {
-        if (!isDateInCurrentMonth(order.parsedDate)) return false;
+        if (!isDateInCurrentMonth(orderDate)) return false;
       } else if (periodFilter === 'custom') {
-        if (!isDateInCustomRange(order.parsedDate, customFromDate, customToDate)) return false;
+        if (!isDateInCustomRange(orderDate, customFromDate, customToDate)) return false;
       }
       // 'all' includes everything
 
@@ -201,11 +205,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
         return false;
       }
 
-      // 3. Printed status filter
-      if (statusFilter === 'unprinted' && order.printed) return false;
-      if (statusFilter === 'printed' && !order.printed) return false;
-
-      // 4. Search term filter
+      // 3. Search term filter
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase();
         const matchesId = order.id.toLowerCase().includes(query);
@@ -226,9 +226,30 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     customFromDate,
     customToDate,
     selectedDept,
-    statusFilter,
     searchTerm,
   ]);
+
+  // 2. Accurate counts for all, unprinted, printed in this period/dept/search
+  const counts = useMemo(() => {
+    let printed = 0;
+    let unprinted = 0;
+    basePeriodOrders.forEach((o) => {
+      if (o.printed) printed++;
+      else unprinted++;
+    });
+    return { all: basePeriodOrders.length, printed, unprinted };
+  }, [basePeriodOrders]);
+
+  // 3. Final filtered orders for display in table (applying status tab filter)
+  const filteredOrders = useMemo(() => {
+    if (statusFilter === 'unprinted') {
+      return basePeriodOrders.filter((o) => !o.printed);
+    }
+    if (statusFilter === 'printed') {
+      return basePeriodOrders.filter((o) => o.printed);
+    }
+    return basePeriodOrders;
+  }, [basePeriodOrders, statusFilter]);
 
   const safeSelectedOrderIds = useMemo(() => {
     return Array.isArray(selectedOrderIds) ? selectedOrderIds : [];
@@ -263,17 +284,6 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       .map((o) => o.id);
     onSelectAllOrders(deptOrderIds as any);
   };
-
-  // Count printed and pending for filtered set
-  const counts = useMemo(() => {
-    let printed = 0;
-    let unprinted = 0;
-    filteredOrders.forEach((o) => {
-      if (o.printed) printed++;
-      else unprinted++;
-    });
-    return { all: filteredOrders.length, printed, unprinted };
-  }, [filteredOrders]);
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden" dir="rtl">
@@ -367,7 +377,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               onClick={() => handleStatusChange('all')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-300/60 font-black'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -377,8 +387,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               onClick={() => handleStatusChange('unprinted')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'unprinted'
-                  ? 'bg-white text-amber-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-amber-500 text-white shadow-xs font-black'
+                  : 'text-amber-800 hover:text-amber-950 hover:bg-amber-100/50'
               }`}
             >
               ממתינים ({counts.unprinted})
@@ -387,8 +397,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               onClick={() => handleStatusChange('printed')}
               className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
                 statusFilter === 'printed'
-                  ? 'bg-white text-emerald-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-emerald-600 text-white shadow-xs font-black'
+                  : 'text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100/50'
               }`}
             >
               הודפסו ({counts.printed})
@@ -411,6 +421,30 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 {periodFilter === 'all' && `כל ההזמנות (${orders.length})`}
               </span>
             </span>
+
+            {/* Helpful Notice when orders are hidden by status tab */}
+            {statusFilter === 'unprinted' && counts.printed > 0 && (
+              <button
+                type="button"
+                onClick={() => handleStatusChange('all')}
+                className="text-[11px] text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-xl font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
+                title="לחץ להצגת כל ההזמנות כולל אלו שכבר הודפסו"
+              >
+                <span>מוצגות {counts.unprinted} ממתינות</span>
+                <span className="underline mr-1 font-black">• הצג גם {counts.printed} שהודפסו 👁️</span>
+              </button>
+            )}
+            {statusFilter === 'printed' && counts.unprinted > 0 && (
+              <button
+                type="button"
+                onClick={() => handleStatusChange('all')}
+                className="text-[11px] text-emerald-900 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2.5 py-1 rounded-xl font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
+                title="לחץ להצגת כל ההזמנות"
+              >
+                <span>מוצגות {counts.printed} שהודפסו</span>
+                <span className="underline mr-1 font-black">• הצג גם {counts.unprinted} ממתינות 👁️</span>
+              </button>
+            )}
 
             {/* Clear Test Orders Button */}
             {onClearTestOrders && (
@@ -793,8 +827,19 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
       {/* Footer Info */}
       <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{orders.length}</strong>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>
+            מוצגות הזמנות: <strong>{filteredOrders.length}</strong> מתוך <strong>{counts.all}</strong> בתקופה הנבחרת (סך הכל בכל הזמנים: <strong>{orders.length}</strong>)
+          </span>
+          {statusFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => handleStatusChange('all')}
+              className="text-sky-600 hover:text-sky-800 underline font-bold cursor-pointer"
+            >
+              הצג את כל ההזמנות בתקופה ({counts.all})
+            </button>
+          )}
         </div>
         <div className="text-slate-400">
           * בלחיצה על «הדפסה» נפתח חלון אישור ובקרת מלאי. בלחיצה על «העתק» מודפסת העתקה ללא שום קיזוז מהמלאי

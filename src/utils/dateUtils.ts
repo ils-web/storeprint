@@ -48,9 +48,27 @@ export function getCurrentWeekRange(referenceDate: Date = new Date()): WeekRange
 }
 
 /**
+ * Safely converts any Date, string, number, or null into a valid Date object.
+ */
+export function coerceDate(value: any): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const fromSheet = parseSheetDate(value);
+    if (fromSheet && !isNaN(fromSheet.getTime())) return fromSheet;
+    const direct = new Date(value);
+    if (!isNaN(direct.getTime())) return direct;
+  }
+  return null;
+}
+
+/**
  * Checks if a date falls on today (in local time)
  */
-export function isDateToday(date: Date | null): boolean {
+export function isDateToday(dateInput: Date | string | null | undefined): boolean {
+  const date = coerceDate(dateInput);
   if (!date) return false;
   const now = new Date();
   return (
@@ -63,7 +81,8 @@ export function isDateToday(date: Date | null): boolean {
 /**
  * Checks if a date is within the last N days
  */
-export function isDateInLastDays(date: Date | null, days: number = 7): boolean {
+export function isDateInLastDays(dateInput: Date | string | null | undefined, days: number = 7): boolean {
+  const date = coerceDate(dateInput);
   if (!date) return false;
   const now = new Date();
   const cutoff = new Date();
@@ -75,7 +94,8 @@ export function isDateInLastDays(date: Date | null, days: number = 7): boolean {
 /**
  * Checks if a date is in the current month
  */
-export function isDateInCurrentMonth(date: Date | null): boolean {
+export function isDateInCurrentMonth(dateInput: Date | string | null | undefined): boolean {
+  const date = coerceDate(dateInput);
   if (!date) return false;
   const now = new Date();
   return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
@@ -85,10 +105,11 @@ export function isDateInCurrentMonth(date: Date | null): boolean {
  * Checks if a date falls within a custom from..to range
  */
 export function isDateInCustomRange(
-  date: Date | null,
+  dateInput: Date | string | null | undefined,
   fromDateStr: string,
   toDateStr: string
 ): boolean {
+  const date = coerceDate(dateInput);
   if (!date) return false;
   const time = date.getTime();
 
@@ -191,7 +212,8 @@ export function parseSheetDate(value: string | number | null | undefined): Date 
 /**
  * Checks if date is within a week range
  */
-export function isDateInWeek(date: Date | null, weekRange: WeekRange): boolean {
+export function isDateInWeek(dateInput: Date | string | null | undefined, weekRange: WeekRange): boolean {
+  const date = coerceDate(dateInput);
   if (!date) return false;
   const time = date.getTime();
   return time >= weekRange.startDate.getTime() && time <= weekRange.endDate.getTime();
@@ -200,7 +222,8 @@ export function isDateInWeek(date: Date | null, weekRange: WeekRange): boolean {
 /**
  * Formats a date for display (Israeli format: DD/MM/YYYY)
  */
-export function formatIsraelDate(date: Date | null, includeTime: boolean = false): string {
+export function formatIsraelDate(dateInput: Date | string | null | undefined, includeTime: boolean = false): string {
+  const date = coerceDate(dateInput);
   if (!date) return '—';
   return date.toLocaleDateString('he-IL', {
     day: '2-digit',

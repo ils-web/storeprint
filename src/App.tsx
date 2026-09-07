@@ -68,7 +68,7 @@ import {
   detectPackagingUnitFromProductName,
   normalizeProductName,
 } from './utils/stockManager';
-import { parseSheetDate } from './utils/dateUtils';
+import { parseSheetDate, coerceDate } from './utils/dateUtils';
 import {
   loadCloudConfig,
   saveCloudConfig,
@@ -188,7 +188,7 @@ export default function App() {
             .filter((o: any) => o && o.id && !purgedSet.has(o.id))
             .map((o: any) => ({
               ...o,
-              parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+              parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
               printed: currentPrinted.has(getOrderPrintKey(o)),
             }));
         }
@@ -464,8 +464,10 @@ export default function App() {
         );
 
         mergedOrders.sort((a, b) => {
-          const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
-          const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+          const dateA = coerceDate(a.parsedDate);
+          const dateB = coerceDate(b.parsedDate);
+          const timeA = dateA ? dateA.getTime() : 0;
+          const timeB = dateB ? dateB.getTime() : 0;
           return timeB - timeA;
         });
 
@@ -507,7 +509,7 @@ export default function App() {
             if (Array.isArray(parsed) && parsed.length > 0) {
               const cleanCached = parsed.map((o: any) => ({
                 ...o,
-                parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+                parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
                 printed: currentPrinted.has(getOrderPrintKey(o)),
               }));
               setOrders(cleanCached);
@@ -592,7 +594,7 @@ export default function App() {
                     if (o && o.id && !allMap.has(o.id)) {
                       allMap.set(o.id, {
                         ...o,
-                        parsedDate: parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+                        parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
                         printed: isOrderPrintedInSet(o, currentPrinted),
                       });
                     }
@@ -618,8 +620,10 @@ export default function App() {
           );
 
           merged.sort((a, b) => {
-            const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
-            const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+            const dateA = coerceDate(a.parsedDate);
+            const dateB = coerceDate(b.parsedDate);
+            const timeA = dateA ? dateA.getTime() : 0;
+            const timeB = dateB ? dateB.getTime() : 0;
             return timeB - timeA;
           });
 
