@@ -50,6 +50,7 @@ import {
   saveDbDeletedOrderIds,
   getOrderPrintKey,
   isOrderPrintedInSet,
+  isOrderInSet,
   sanitizePrintedOrderIds,
 } from './services/unifiedDb';
 import {
@@ -460,7 +461,7 @@ export default function App() {
         deletedOrderIds.forEach((id) => deletedSet.add(id));
 
         const mergedOrders = Array.from(allOrdersMap.values()).filter(
-          (o) => !isOrderPrintedInSet(o, deletedSet)
+          (o) => !isOrderInSet(o, deletedSet)
         );
 
         mergedOrders.sort((a, b) => {
@@ -616,7 +617,7 @@ export default function App() {
           });
 
           const merged = Array.from(allMap.values()).filter(
-            (o) => !isOrderPrintedInSet(o, deletedSet)
+            (o) => !isOrderInSet(o, deletedSet)
           );
 
           merged.sort((a, b) => {

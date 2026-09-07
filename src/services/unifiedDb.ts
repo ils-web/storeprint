@@ -560,6 +560,38 @@ export function getOrderPrintKey(order: {
 }
 
 /**
+ * Deterministically checks whether an order's ID or key exists in a given ID set (e.g. deletedSet, selectedSet)
+ */
+export function isOrderInSet(
+  order: { id?: string; department?: string; timestamp?: string; rawDate?: string },
+  idSet: Set<string>
+): boolean {
+  if (!idSet || idSet.size === 0) return false;
+  const primaryKey = getOrderPrintKey(order);
+  if (idSet.has(primaryKey)) return true;
+  const id = (order.id || '').trim();
+  if (id && idSet.has(id)) return true;
+
+  const dept = (order.department || '').trim().replace(/\s+/g, ' ');
+  const ts = (order.timestamp || '').trim().replace(/\s+/g, ' ');
+  const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
+
+  if (dept && ts && idSet.has(`forms_order_${dept}:::${ts}`)) return true;
+  if (dept && rawDate && idSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
+
+  // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
+  if (ts.includes(' ')) {
+    const parts = ts.split(' ');
+    if (parts.length === 2) {
+      const reversedTs = `${parts[1]} ${parts[0]}`;
+      if (dept && idSet.has(`forms_order_${dept}:::${reversedTs}`)) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Deterministically checks whether an order has been marked as printed across all composite key variants
  */
 export function isOrderPrintedInSet(
@@ -575,25 +607,8 @@ export function isOrderPrintedInSet(
   }
 
   // Check if explicitly marked as printed
-  if (printedSet && printedSet.size > 0) {
-    if (printedSet.has(primaryKey)) return true;
-    if (id && printedSet.has(id)) return true;
-
-    const dept = (order.department || '').trim().replace(/\s+/g, ' ');
-    const ts = (order.timestamp || '').trim().replace(/\s+/g, ' ');
-    const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
-
-    if (dept && ts && printedSet.has(`forms_order_${dept}:::${ts}`)) return true;
-    if (dept && rawDate && printedSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
-
-    // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
-    if (ts.includes(' ')) {
-      const parts = ts.split(' ');
-      if (parts.length === 2) {
-        const reversedTs = `${parts[1]} ${parts[0]}`;
-        if (dept && printedSet.has(`forms_order_${dept}:::${reversedTs}`)) return true;
-      }
-    }
+  if (isOrderInSet(order, printedSet)) {
+    return true;
   }
 
   // All historical orders before September 1, 2026 (August and earlier) are automatically marked as printed!
