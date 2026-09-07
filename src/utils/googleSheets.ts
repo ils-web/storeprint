@@ -100,11 +100,24 @@ export async function fetchSheetValues(
 export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = DEFAULT_GID): Promise<string[][]> {
   const effectiveGid = (!gid || gid === '0' || gid === 'null' || gid === 'undefined') ? DEFAULT_GID : gid;
   const cacheBuster = Date.now();
-  const gvizUrlA3 = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${effectiveGid}&range=A3:ZZ&_t=${cacheBuster}`;
   const directCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${effectiveGid}&_t=${cacheBuster}`;
+  const gvizUrlA3 = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${effectiveGid}&range=A3:ZZ&_t=${cacheBuster}`;
   const gvizUrlAll = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${effectiveGid}&_t=${cacheBuster}`;
 
-  // 1. Primary: GVIZ with range=A3:ZZ (100% CORS-friendly in browser, no 307 redirects, clean Row 0 with all 189 headers)
+  // 1. Primary: Direct CSV export endpoint (100% exact raw cells with text like "1 חבילה", "2 דלי", preserves all non-numeric cells)
+  try {
+    const response = await fetch(directCsvUrl);
+    if (response.ok) {
+      const csvText = await response.text();
+      if (csvText && csvText.length > 50) {
+        return parseCsvString(csvText);
+      }
+    }
+  } catch (err) {
+    console.warn('Direct CSV fetch failed, trying GVIZ range=A3:ZZ fallback...', err);
+  }
+
+  // 2. Secondary: GVIZ with range=A3:ZZ
   try {
     const response = await fetch(gvizUrlA3);
     if (response.ok) {
@@ -117,7 +130,7 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
     console.warn('GVIZ range=A3:ZZ fetch failed, trying standard GVIZ fallback...', err);
   }
 
-  // 2. Secondary: Standard GVIZ without range
+  // 3. Tertiary: Standard GVIZ without range
   try {
     const response = await fetch(gvizUrlAll);
     if (response.ok) {
@@ -127,20 +140,7 @@ export async function fetchPublicCsvValues(spreadsheetId: string, gid: string = 
       }
     }
   } catch (err) {
-    console.warn('Standard GVIZ fetch failed, trying direct CSV export...', err);
-  }
-
-  // 3. Tertiary: Direct CSV export endpoint
-  try {
-    const response = await fetch(directCsvUrl);
-    if (response.ok) {
-      const csvText = await response.text();
-      if (csvText && csvText.length > 50) {
-        return parseCsvString(csvText);
-      }
-    }
-  } catch (err) {
-    console.warn('Direct CSV fetch failed, attempting proxy fallback...', err);
+    console.warn('Standard GVIZ fetch failed, attempting proxy fallback...', err);
   }
 
   // 4. Quaternary: AllOrigins proxy fallback

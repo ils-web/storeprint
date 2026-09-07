@@ -2,7 +2,7 @@ import { Order, OrderItem, StockItem } from '../types';
 import initialMasterStock from '../utils/initialMasterStock.json';
 import { normalizeProductName, detectPackagingUnitFromProductName } from '../utils/stockManager';
 import { loadCloudConfig, debouncedPushStockToCloud } from '../utils/cloudSync';
-import { parseSheetDate } from '../utils/dateUtils';
+import { parseSheetDate, coerceDate } from '../utils/dateUtils';
 import { pushStockToFirestore } from './firestoreSync';
 
 // Database Storage Keys
@@ -563,37 +563,50 @@ export function getOrderPrintKey(order: {
  * Deterministically checks whether an order has been marked as printed across all composite key variants
  */
 export function isOrderPrintedInSet(
-  order: { id?: string; department?: string; timestamp?: string; rawDate?: string },
+  order: { id?: string; department?: string; timestamp?: string; rawDate?: string; parsedDate?: Date | null },
   printedSet: Set<string>
 ): boolean {
-  if (!printedSet || printedSet.size === 0) return false;
   const primaryKey = getOrderPrintKey(order);
-  if (printedSet.has(primaryKey)) return true;
-
   const id = (order.id || '').trim();
-  if (id && printedSet.has(id)) return true;
 
-  const dept = (order.department || '').trim().replace(/\s+/g, ' ');
-  const ts = (order.timestamp || '').trim().replace(/\s+/g, ' ');
-  const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
+  // Check if explicitly marked unprinted
+  if (printedSet && (printedSet.has(`unprinted_${primaryKey}`) || (id && printedSet.has(`unprinted_${id}`)))) {
+    return false;
+  }
 
-  if (dept && ts && printedSet.has(`forms_order_${dept}:::${ts}`)) return true;
-  if (dept && rawDate && printedSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
+  // Check if explicitly marked as printed
+  if (printedSet && printedSet.size > 0) {
+    if (printedSet.has(primaryKey)) return true;
+    if (id && printedSet.has(id)) return true;
 
-  // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
-  if (ts.includes(' ')) {
-    const parts = ts.split(' ');
-    if (parts.length === 2) {
-      const reversedTs = `${parts[1]} ${parts[0]}`;
-      if (dept && printedSet.has(`forms_order_${dept}:::${reversedTs}`)) return true;
+    const dept = (order.department || '').trim().replace(/\s+/g, ' ');
+    const ts = (order.timestamp || '').trim().replace(/\s+/g, ' ');
+    const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
+
+    if (dept && ts && printedSet.has(`forms_order_${dept}:::${ts}`)) return true;
+    if (dept && rawDate && printedSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
+
+    // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
+    if (ts.includes(' ')) {
+      const parts = ts.split(' ');
+      if (parts.length === 2) {
+        const reversedTs = `${parts[1]} ${parts[0]}`;
+        if (dept && printedSet.has(`forms_order_${dept}:::${reversedTs}`)) return true;
+      }
     }
+  }
+
+  // All historical orders before September 1, 2026 (August and earlier) are automatically marked as printed!
+  const orderDate = coerceDate(order.parsedDate) || parseSheetDate(order.timestamp || order.rawDate);
+  if (orderDate && orderDate.getTime() < new Date(2026, 8, 1, 0, 0, 0).getTime()) {
+    return true;
   }
 
   return false;
 }
 
 /**
- * Sanitizes printed order IDs by purging legacy row numbers and relative labels ("1", "5", "הזמנה #4")
+ * Sanitizes printed order IDs by purging legacy pure row numbers ("1", "5", "42")
  */
 export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
   const clean = new Set<string>();
@@ -602,10 +615,7 @@ export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
     const trimmed = id.trim();
     // Discard pure numbers (e.g. "5", "42", "1")
     if (/^\d+$/.test(trimmed)) continue;
-    // Discard generic row labels (e.g. "הזמנה #5", "הזמנה 5", "שורה 5")
-    if (/^הזמנה\s*#?\s*\d+$/i.test(trimmed)) continue;
     if (/^שורה\s*\d+$/i.test(trimmed)) continue;
-    if (trimmed.length < 5) continue;
     clean.add(trimmed);
   }
   return clean;
@@ -798,12 +808,11 @@ export function ingestGoogleFormsOrders(
 
     if (orderItems.length > 0) {
       const orderId = `הזמנה #${r - headerRowIndex}`;
+      const parsedDate = parseSheetDate(timestamp || rawDate) || new Date();
       const isPrinted = isOrderPrintedInSet(
-        { id: orderId, department, timestamp, rawDate },
+        { id: orderId, department, timestamp, rawDate, parsedDate },
         cleanPrintedSet
       );
-
-      const parsedDate = parseSheetDate(timestamp || rawDate) || new Date();
 
       orders.push({
         id: orderId,

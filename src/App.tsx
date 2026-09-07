@@ -1215,24 +1215,36 @@ export default function App() {
       newStatus = !isCurrentlyPrinted;
       if (isCurrentlyPrinted) {
         next.delete(key);
+        next.add(`unprinted_${key}`);
         if (targetOrder) {
-          if (targetOrder.id) next.delete(targetOrder.id);
+          if (targetOrder.id) {
+            next.delete(targetOrder.id);
+            next.add(`unprinted_${targetOrder.id}`);
+          }
           if (targetOrder.department && targetOrder.timestamp) {
             next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
+            next.add(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
           }
           if (targetOrder.department && targetOrder.rawDate) {
             next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
+            next.add(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
           }
         }
       } else {
         next.add(key);
+        next.delete(`unprinted_${key}`);
         if (targetOrder) {
-          if (targetOrder.id) next.add(targetOrder.id);
+          if (targetOrder.id) {
+            next.add(targetOrder.id);
+            next.delete(`unprinted_${targetOrder.id}`);
+          }
           if (targetOrder.department && targetOrder.timestamp) {
             next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
+            next.delete(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
           }
           if (targetOrder.department && targetOrder.rawDate) {
             next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
+            next.delete(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
           }
         }
       }
