@@ -554,8 +554,12 @@ export default function App() {
   // Real-Time Master Warehouse Stock Sync via Firestore
   useEffect(() => {
     const unsubStock = subscribeToFirestoreStock((liveStock) => {
-      setStock(liveStock);
-      setProductHeaders(Object.keys(liveStock));
+      if (liveStock && Object.keys(liveStock).length > 0) {
+        setStock(liveStock);
+        saveDbStock(liveStock, false);
+        saveStoredStock(liveStock);
+        setProductHeaders(Object.keys(liveStock));
+      }
     }, activeTenantId);
 
     return () => {
@@ -741,10 +745,14 @@ export default function App() {
           const safeIsActive = localItem?.isActive !== undefined ? localItem.isActive : (cloudIsActive !== undefined ? cloudIsActive : true);
           const safeLimit = localItem?.limitByPatients !== undefined ? localItem.limitByPatients : Boolean(cloudLimitByPatients);
 
+          const safeCol = (typeof rawVal === 'object' && typeof rawVal.colIndex === 'number' && rawVal.colIndex > 0)
+            ? rawVal.colIndex
+            : (localItem?.colIndex ?? (Object.keys(mergedWithLocal).length + 4));
+
           mergedWithLocal[itemName] = {
             id: localItem?.id || (typeof rawVal === 'object' && rawVal.id ? String(rawVal.id) : `stock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
             name: itemName,
-            colIndex: localItem?.colIndex ?? (typeof rawVal === 'object' && typeof rawVal.colIndex === 'number' ? rawVal.colIndex : undefined) ?? (Object.keys(mergedWithLocal).length + 4),
+            colIndex: safeCol,
             currentStock: safeStock,
             minThreshold: safeMin,
             unit: safeUnit,
