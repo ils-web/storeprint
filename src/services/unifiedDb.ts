@@ -18,6 +18,14 @@ const DB_STORAGE_KEYS = {
 // Initial Master Stock Seed
 const SEED_STOCK: Record<string, StockItem> = initialMasterStock as Record<string, StockItem>;
 
+// Canonical ID lookup to protect real names from being overwritten by placeholder headers
+const MASTER_STOCK_BY_ID: Record<string, StockItem> = {};
+Object.values(SEED_STOCK || {}).forEach((item) => {
+  if (item && item.id) {
+    MASTER_STOCK_BY_ID[item.id] = item;
+  }
+});
+
 /**
  * Loads or initializes the master product catalog
  */
@@ -69,8 +77,16 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
 
   Object.entries(rawStock).forEach(([key, rawItem]) => {
     if (!rawItem || typeof rawItem !== 'object') return;
-    const name = String(rawItem.name || key).trim();
+    let name = String(rawItem.name || key).trim();
     if (!name) return;
+
+    // Self-healing: if an item was saved as a placeholder "פריט 123", resolve its canonical name from master stock
+    if (name.startsWith('פריט ') && rawItem.id && MASTER_STOCK_BY_ID[rawItem.id]) {
+      const canonical = MASTER_STOCK_BY_ID[rawItem.id];
+      if (canonical && canonical.name && !canonical.name.startsWith('פריט ')) {
+        name = canonical.name;
+      }
+    }
 
     const normKey = normalizeProductName(name);
     const existingKey = normMap[normKey];
@@ -717,19 +733,11 @@ export function ingestGoogleFormsOrders(
     return { orders: [], departments: [], productHeaders: [] };
   }
 
-  // 1. Build Master Column map from DB stock and SEED_STOCK
+  // 1. Build Master Column map strictly from SEED_STOCK (canonical Google Sheets columns 4..192)
   const colMap: Record<number, string> = {};
-  const currentStock = getDbStock();
-  Object.values(currentStock || {}).forEach((item) => {
-    if (item && typeof item.colIndex === 'number' && item.name && !item.name.startsWith('פריט ')) {
-      colMap[item.colIndex] = item.name;
-    }
-  });
   Object.values(SEED_STOCK || {}).forEach((item) => {
     if (item && typeof item.colIndex === 'number' && item.name && !item.name.startsWith('פריט ')) {
-      if (!colMap[item.colIndex]) {
-        colMap[item.colIndex] = item.name;
-      }
+      colMap[item.colIndex] = item.name;
     }
   });
 

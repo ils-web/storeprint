@@ -301,19 +301,21 @@ export default function App() {
     const warehouses = getWarehouses(activeTenant.id);
     const primaryWhId = warehouses[0]?.id || 'wh-main-01';
 
-    const allProductNames = Array.from(new Set([...Object.keys(currentStockMap), ...prods]));
+    const cleanProds = (prods || []).filter((p) => p && !p.startsWith('פריט '));
+    const allProductNames = Array.from(new Set([...Object.keys(currentStockMap), ...cleanProds]));
 
     // Build Inventory Products with preserved packaging units and active status
     const items: InventoryProduct[] = allProductNames.map((name, idx) => {
       const existing = currentStockMap[name] || Object.values(currentStockMap).find((v) => v.name === name);
-      const detectedUnit = detectPackagingUnitFromProductName(name);
+      const realName = existing?.name || name;
+      const detectedUnit = detectPackagingUnitFromProductName(realName);
       const safeQty = typeof existing?.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0;
       const safeMin = typeof existing?.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : 10;
       return {
-        id: existing?.id || `prod-${idx}-${encodeURIComponent(name.slice(0, 10))}`,
+        id: existing?.id || `prod-${idx}-${encodeURIComponent(realName.slice(0, 10))}`,
         tenantId: activeTenant.id,
         warehouseId: primaryWhId,
-        name,
+        name: realName,
         colIndex: existing?.colIndex || idx + 4,
         currentStock: safeQty,
         minThreshold: safeMin,

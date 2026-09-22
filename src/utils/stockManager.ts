@@ -143,11 +143,16 @@ export function syncStockWithProductHeaders(
           ? existing.isActive
           : (localFallback?.isActive !== undefined ? localFallback.isActive : true);
 
+      // CRITICAL FIX: NEVER overwrite a real product name with a generic placeholder (פריט X)
+      const hasRealExistingName = Boolean(existing.name && !existing.name.startsWith('פריט '));
+      const finalName = (isPlaceholder && hasRealExistingName) ? existing.name : cleanName;
+      const finalColIndex = (typeof existing.colIndex === 'number' && existing.colIndex > 0) ? existing.colIndex : idx + 4;
+
       // PRESERVE user custom values without overwriting with default
-      result[cleanName] = {
+      result[finalName] = {
         id: existing.id || `stock-${idx + 4}`,
-        name: cleanName,
-        colIndex: idx + 4,
+        name: finalName,
+        colIndex: finalColIndex,
         currentStock: typeof existing.currentStock === 'number' && !isNaN(existing.currentStock) ? existing.currentStock : 0,
         minThreshold: typeof existing.minThreshold === 'number' && !isNaN(existing.minThreshold) ? existing.minThreshold : DEFAULT_MIN_THRESHOLD,
         unit: existing.unit || detectedUnit,
