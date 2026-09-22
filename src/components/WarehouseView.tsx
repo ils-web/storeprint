@@ -46,8 +46,10 @@ export const PACKAGING_UNITS = [
   { value: "גליל", label: "גליל (גלילים)" },
   { value: "בקבוק", label: "בקבוק (בקבוקים)" },
   { value: "דלי", label: "דלי (דליים)" },
+  { value: "מטר", label: "מטר (מטרים)" },
   { value: "סט", label: "סט (ערכות)" },
   { value: "זוג", label: "זוג (זוגות)" },
+  { value: "ק״ג", label: "ק״ג (קילוגרם)" },
 ];
 
 interface StockRowInputProps {
@@ -335,7 +337,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     const rawList = Object.values(stock).filter(
       (it): it is StockItem => Boolean(it && typeof it === 'object' && 'name' in it && typeof (it as StockItem).name === 'string' && (it as StockItem).name.trim() !== '')
-    ).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+    ).sort((a, b) => {
+      const aInactive = a.isActive === false;
+      const bInactive = b.isActive === false;
+      if (aInactive !== bInactive) return aInactive ? 1 : -1;
+      return (a.colIndex || 0) - (b.colIndex || 0);
+    });
 
     rawList.forEach((item) => {
       const norm = normalizeProductName(item.name);
@@ -425,6 +432,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       if (filterType === 'low' || filterType === 'out') {
         return (a.currentStock || 0) - (b.currentStock || 0);
       }
+      const aInactive = a.isActive === false;
+      const bInactive = b.isActive === false;
+      if (aInactive !== bInactive) return aInactive ? 1 : -1;
       return (a.colIndex || 0) - (b.colIndex || 0);
     });
   }, [stockList, filterType, searchTerm, getEffectiveTh]);

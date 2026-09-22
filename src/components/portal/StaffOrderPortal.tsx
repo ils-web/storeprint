@@ -307,7 +307,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
           id: item.id || item.name,
           warehouseId: activeWarehouse?.id || 'wh-default',
           name: item.name,
-          unit: (item.unit as PackagingUnit) || "יח'",
+          unit: (!item.unit || item.unit === 'ליטר' ? "יח'" : (item.unit as PackagingUnit)),
           currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
           minThreshold: item.minThreshold || 10,
           colIndex: item.colIndex || idx + 1,

@@ -39,7 +39,6 @@ export function detectPackagingUnitFromProductName(name: string): string {
   if (n.includes('סט') || n.includes('ערכה') || n.includes('set')) return 'סט';
   if (n.includes('זוג') || n.includes('pair')) return 'זוג';
   if (n.includes('ק״ג') || n.includes('ק"ג') || n.includes('kg')) return 'ק״ג';
-  if (n.includes('ליטר') || n.includes('liter')) return 'ליטר';
   return "יח'";
 }
 

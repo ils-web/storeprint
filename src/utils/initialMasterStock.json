@@ -1468,7 +1468,7 @@
     "colIndex": 137,
     "currentStock": 131,
     "minThreshold": 750,
-    "unit": "ליטר",
+    "unit": "יח'",
     "isActive": true,
     "limitByPatients": false,
     "lastUpdated": "2026-09-06T08:43:28.694Z"

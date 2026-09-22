@@ -2,6 +2,7 @@ import {
   doc,
   collection,
   setDoc,
+  getDoc,
   deleteDoc,
   getDocs,
   onSnapshot,
@@ -294,5 +295,86 @@ export async function deleteOrderFromFirestore(
   } catch (err) {
     console.warn('Firestore deleteOrderFromFirestore error:', err);
     return false;
+  }
+}
+
+/**
+ * Pushes the full set of printed order keys to Firestore so printed status survives
+ * across different computers, browsers, and reloads.
+ */
+export async function pushPrintedOrderKeysToFirestore(
+  keys: string[],
+  tenantId: string = 'tenant-main-01'
+): Promise<boolean> {
+  if (!isFirebaseReady || !db) return false;
+  try {
+    const payload = sanitizeForFirestore({
+      keys: Array.from(new Set(keys.filter((k) => k && typeof k === 'string' && !k.startsWith('unprinted_')))),
+      totalPrinted: keys.length,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
+    await setDoc(tenantRef, payload, { merge: true });
+
+    const globalRef = doc(db, 'warehouse', 'printed_orders');
+    await setDoc(globalRef, payload, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn('Firestore pushPrintedOrderKeys error:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetches printed order keys from Firestore
+ */
+export async function fetchPrintedOrderKeysFromFirestore(
+  tenantId: string = 'tenant-main-01'
+): Promise<string[]> {
+  if (!isFirebaseReady || !db) return [];
+  try {
+    const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
+    const snap = await getDoc(tenantRef);
+    if (snap.exists() && Array.isArray(snap.data()?.keys)) {
+      return snap.data()?.keys;
+    }
+    const globalRef = doc(db, 'warehouse', 'printed_orders');
+    const snapG = await getDoc(globalRef);
+    if (snapG.exists() && Array.isArray(snapG.data()?.keys)) {
+      return snapG.data()?.keys;
+    }
+    return [];
+  } catch (err) {
+    console.warn('Firestore fetchPrintedOrderKeys error:', err);
+    return [];
+  }
+}
+
+/**
+ * Subscribes to real-time printed order keys from Firestore
+ */
+export function subscribeToFirestorePrintedOrderKeys(
+  onKeysUpdated: (keys: string[]) => void,
+  tenantId: string = 'tenant-main-01'
+): Unsubscribe | null {
+  if (!isFirebaseReady || !db) return null;
+  try {
+    const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
+    return onSnapshot(
+      tenantRef,
+      (snap) => {
+        if (snap.exists()) {
+          const keys = snap.data()?.keys;
+          if (Array.isArray(keys)) {
+            onKeysUpdated(keys);
+          }
+        }
+      },
+      (err) => console.warn('Firestore printed order keys subscription error:', err)
+    );
+  } catch (err) {
+    console.warn('Failed to start printed order keys subscription:', err);
+    return null;
   }
 }

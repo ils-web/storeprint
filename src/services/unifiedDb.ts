@@ -283,8 +283,19 @@ export function saveOrUpdateDbStockItem(
     lastUpdated: nowIso,
   };
 
-  saveDbStock(next, true);
-  return next;
+  // Ensure active items are grouped first, and frozen items are placed at the end
+  const allItems = Object.values(next);
+  const activeItems = allItems.filter((it) => it.isActive !== false).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+  const frozenItems = allItems.filter((it) => it.isActive === false).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+  const reordered = [...activeItems, ...frozenItems];
+  const reorderedMap: Record<string, StockItem> = {};
+  reordered.forEach((it, idx) => {
+    it.colIndex = idx + 4;
+    reorderedMap[it.name] = it;
+  });
+
+  saveDbStock(reorderedMap, true);
+  return reorderedMap;
 }
 
 /**
@@ -318,7 +329,12 @@ export function deleteDbStockItem(idOrName: string): Record<string, StockItem> {
  */
 export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Record<string, StockItem> {
   const current = getDbStock();
-  const items = Object.values(current).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+  const items = Object.values(current).sort((a, b) => {
+    const aInactive = a.isActive === false;
+    const bInactive = b.isActive === false;
+    if (aInactive !== bInactive) return aInactive ? 1 : -1;
+    return (a.colIndex || 0) - (b.colIndex || 0);
+  });
   const normTarget = normalizeProductName(idOrName);
 
   const index = items.findIndex((item) =>
@@ -331,6 +347,11 @@ export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Rec
 
   const targetIndex = direction === 'up' ? index - 1 : index + 1;
   if (targetIndex < 0 || targetIndex >= items.length) return current;
+
+  // Prevent moving an active item into the frozen section or vice-versa with arrows
+  if (Boolean(items[index].isActive !== false) !== Boolean(items[targetIndex].isActive !== false)) {
+    return current;
+  }
 
   const temp = items[index];
   items[index] = items[targetIndex];
@@ -444,6 +465,9 @@ export function updateDbStockItem(
     }
   });
 
+  const wasActive = existing?.isActive !== false;
+  const isNowActive = cleanIsActive;
+
   updated[finalName] = {
     ...(existing || {
       id: `stock-${Date.now()}`,
@@ -458,6 +482,36 @@ export function updateDbStockItem(
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
   };
+
+  // When active/frozen status changes, automatically reorder:
+  // Active items first (1..K), frozen items at the bottom (K+1..N)
+  if (wasActive !== isNowActive) {
+    const allItems = Object.values(updated);
+    const activeItems = allItems
+      .filter((it) => it.name !== finalName && it.isActive !== false)
+      .sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+    const frozenItems = allItems
+      .filter((it) => it.name !== finalName && it.isActive === false)
+      .sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+
+    let reordered: StockItem[];
+    if (isNowActive) {
+      // Returned from frozen to active: put at the end of active items
+      reordered = [...activeItems, updated[finalName], ...frozenItems];
+    } else {
+      // Newly frozen: automatically move to the very end of the list
+      reordered = [...activeItems, ...frozenItems, updated[finalName]];
+    }
+
+    const reorderedMap: Record<string, StockItem> = {};
+    reordered.forEach((it, idx) => {
+      it.colIndex = idx + 4;
+      reorderedMap[it.name] = it;
+    });
+
+    saveDbStock(reorderedMap, true);
+    return reorderedMap;
+  }
 
   saveDbStock(updated, true);
   return updated;
@@ -616,15 +670,14 @@ export function isOrderPrintedInSet(
 ): boolean {
   const primaryKey = getOrderPrintKey(order);
   const id = (order.id || '').trim();
-
-  // Check if explicitly marked unprinted
-  if (printedSet && (printedSet.has(`unprinted_${primaryKey}`) || (id && printedSet.has(`unprinted_${id}`)))) {
-    return false;
-  }
-
-  // Check if explicitly marked as printed
+  // 1. Check if explicitly marked as printed (highest priority)
   if (isOrderInSet(order, printedSet)) {
     return true;
+  }
+
+  // 2. Check if explicitly marked unprinted
+  if (printedSet && (printedSet.has(`unprinted_${primaryKey}`) || (id && printedSet.has(`unprinted_${id}`)))) {
+    return false;
   }
 
   // All historical orders before September 1, 2026 (August and earlier) are automatically marked as printed!

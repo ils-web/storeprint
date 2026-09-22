@@ -59,6 +59,9 @@ import {
   fetchOrdersFromFirestore,
   updateOrderPrintedInFirestore,
   deleteOrderFromFirestore,
+  pushPrintedOrderKeysToFirestore,
+  fetchPrintedOrderKeysFromFirestore,
+  subscribeToFirestorePrintedOrderKeys,
 } from './services/firestoreSync';
 import {
   loadStoredStock,
@@ -405,10 +408,16 @@ export default function App() {
       const tenantOrders = Array.from(allTenantMap.values());
       const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
-      // Combine stored printed IDs with live state
+      // Combine stored printed IDs with live state and Firestore cloud keys
       const currentPrinted = new Set<string>();
       getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
       printedOrderIds.forEach((id) => currentPrinted.add(id));
+      try {
+        const remotePrinted = await fetchPrintedOrderKeysFromFirestore(activeTenantId || 'tenant-main-01');
+        remotePrinted.forEach((k) => {
+          if (k && !k.startsWith('unprinted_')) currentPrinted.add(k);
+        });
+      } catch {}
 
       try {
         const currentSpreadsheetId = spreadsheetId || activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID;
@@ -474,10 +483,23 @@ export default function App() {
           return timeB - timeA;
         });
 
-        setOrders(mergedOrders);
-        try {
-          localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(mergedOrders));
-        } catch {}
+        setOrders((prev) => {
+          const prevPrintedSet = new Set(prev.filter((p) => p.printed).map((p) => p.id));
+          prev.filter((p) => p.printed).forEach((p) => prevPrintedSet.add(getOrderPrintKey(p)));
+
+          const finalOrders = mergedOrders.map((o) => {
+            // Strict protection: If an order was already printed, it can NEVER revert to unprinted!
+            if (o.printed || prevPrintedSet.has(o.id) || prevPrintedSet.has(getOrderPrintKey(o))) {
+              return { ...o, printed: true };
+            }
+            return o;
+          });
+
+          try {
+            localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(finalOrders));
+          } catch {}
+          return finalOrders;
+        });
 
         if (result.departments.length > 0) {
           setDepartments(() => {
@@ -649,6 +671,36 @@ export default function App() {
       if (unsubOrders) unsubOrders();
     };
   }, [activeTenantId, convertTenantOrderToAppOrder, printedOrderIds, deletedOrderIds]);
+
+  // Real-Time Printed Orders Sync via Firestore (Synchronizes across all devices and browsers)
+  useEffect(() => {
+    const unsubPrinted = subscribeToFirestorePrintedOrderKeys((remoteKeys) => {
+      if (remoteKeys && Array.isArray(remoteKeys) && remoteKeys.length > 0) {
+        setPrintedOrderIds((prev) => {
+          const next = new Set<string>(prev);
+          remoteKeys.forEach((k) => {
+            if (k && !k.startsWith('unprinted_')) next.add(k);
+          });
+          const clean = sanitizePrintedOrderIds(next);
+          saveDbPrintedOrderIds(clean);
+          return clean;
+        });
+
+        setOrders((prev) => {
+          const keysSet = new Set(remoteKeys);
+          return prev.map((o) => {
+            if (o.printed) return o;
+            const isPrintedNow = isOrderPrintedInSet(o, keysSet);
+            return isPrintedNow ? { ...o, printed: true } : o;
+          });
+        });
+      }
+    }, activeTenantId);
+
+    return () => {
+      if (unsubPrinted) unsubPrinted();
+    };
+  }, [activeTenantId]);
 
   // Automated stock integrity & deduplication check on mount
   useEffect(() => {
@@ -1158,17 +1210,26 @@ export default function App() {
       ordersToPrint.forEach((o) => {
         const key = getOrderPrintKey(o);
         newPrinted.add(key);
-        if (o.id) newPrinted.add(o.id);
+        newPrinted.delete(`unprinted_${key}`);
+        if (o.id) {
+          newPrinted.add(o.id);
+          newPrinted.delete(`unprinted_${o.id}`);
+        }
         if (o.department && o.timestamp) {
-          newPrinted.add(`forms_order_${o.department.trim()}:::${o.timestamp.trim()}`);
+          const k1 = `forms_order_${o.department.trim()}:::${o.timestamp.trim()}`;
+          newPrinted.add(k1);
+          newPrinted.delete(`unprinted_${k1}`);
         }
         if (o.department && o.rawDate) {
-          newPrinted.add(`forms_order_${o.department.trim()}:::${o.rawDate.trim()}`);
+          const k2 = `forms_order_${o.department.trim()}:::${o.rawDate.trim()}`;
+          newPrinted.add(k2);
+          newPrinted.delete(`unprinted_${k2}`);
         }
       });
       const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
       setPrintedOrderIds(cleanPrinted);
       saveDbPrintedOrderIds(cleanPrinted);
+      pushPrintedOrderKeysToFirestore(Array.from(cleanPrinted), activeTenantId).catch(console.warn);
 
       // Also update multiTenantDb and Firestore printed status
       try {
@@ -1261,6 +1322,7 @@ export default function App() {
       }
       const clean = sanitizePrintedOrderIds(next);
       saveDbPrintedOrderIds(clean);
+      pushPrintedOrderKeysToFirestore(Array.from(clean), activeTenantId).catch(console.warn);
 
       // Update Firestore
       const targetId = targetOrder ? targetOrder.id : orderId;

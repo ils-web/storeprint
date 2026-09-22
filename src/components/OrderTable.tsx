@@ -90,23 +90,23 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'unprinted' | 'printed'>(() => {
     try {
-      const saved = localStorage.getItem(STATUS_FILTER_KEY);
-      return saved === 'unprinted' || saved === 'printed' ? saved : 'all';
+      const saved = sessionStorage.getItem(STATUS_FILTER_KEY);
+      return saved === 'all' || saved === 'printed' ? saved : 'unprinted';
     } catch {
-      return 'all';
+      return 'unprinted';
     }
   });
 
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>(() => {
     try {
-      const saved = localStorage.getItem(PERIOD_FILTER_KEY);
+      const saved = sessionStorage.getItem(PERIOD_FILTER_KEY);
       const valid: PeriodFilterType[] = ['all', 'today', 'week', 'last7', 'last30', 'month', 'custom'];
-      if (saved && ['all', 'last30', 'last7', 'month'].includes(saved)) {
+      if (saved && valid.includes(saved as any)) {
         return saved as PeriodFilterType;
       }
-      return 'last30';
+      return 'last7';
     } catch {
-      return 'last30';
+      return 'last7';
     }
   });
 
@@ -129,6 +129,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const handlePeriodChange = (val: PeriodFilterType) => {
     setPeriodFilter(val);
     try {
+      sessionStorage.setItem(PERIOD_FILTER_KEY, val);
       localStorage.setItem(PERIOD_FILTER_KEY, val);
     } catch {}
   };
@@ -143,6 +144,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const handleStatusChange = (val: 'all' | 'unprinted' | 'printed') => {
     setStatusFilter(val);
     try {
+      sessionStorage.setItem(STATUS_FILTER_KEY, val);
       localStorage.setItem(STATUS_FILTER_KEY, val);
     } catch {}
   };
@@ -675,21 +677,33 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                         </span>
                       </td>
 
-                      {/* Print Status Badge with Manual Toggle */}
+                      {/* Print Status Badge with Protected Manual Toggle */}
                       <td className="py-3.5 px-4 text-center">
                         <button
-                          onClick={() => onTogglePrintedStatus(order.id)}
+                          onClick={() => {
+                            if (order.printed) {
+                              const confirmed = window.confirm(
+                                '⚠️ זהירות: הזמנה זו כבר הודפסה והמלאי שלה קוזז מהמחסן!\n\nשינוי הסטטוס ל-"ממתין להדפסה" עלול לגרום להדפסה חוזרת ולקיזוז כפול של המלאי.\n\nהאם אתה בטוח לחלוטין שברצונך לבטל את סטטוס ההדפסה?'
+                              );
+                              if (!confirmed) return;
+                            }
+                            onTogglePrintedStatus(order.id);
+                          }}
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
                             order.printed
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-2xs'
+                              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                           }`}
-                          title="לחץ לשינוי סטטוס הדפסה"
+                          title={
+                            order.printed
+                              ? 'הזמנה זו הודפסה והמלאי קוזז (סטטוס מוגן 🔒)'
+                              : 'הזמנה ממתינה להדפסה ולקיזוז מהמחסן'
+                          }
                         >
                           {order.printed ? (
                             <>
                               <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>הודפס וקוזז ✓</span>
+                              <span>הודפס וקוזז ✓ 🔒</span>
                             </>
                           ) : (
                             <>
