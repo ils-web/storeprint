@@ -196,8 +196,8 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* SuperAdmin Panel link */}
-            {onOpenSuperadmin && (
+            {/* SuperAdmin Panel link - ONLY for SuperAdmin role */}
+            {onOpenSuperadmin && authSession?.userRole === 'superadmin' && (
               <button
                 onClick={onOpenSuperadmin}
                 className="bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all border border-purple-500/30 cursor-pointer"

@@ -82,6 +82,7 @@ import {
   deleteTenantOrder,
   saveInventory,
   saveTenantDepartments,
+  getTenantDepartments,
   fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
@@ -107,6 +108,15 @@ export default function App() {
     authSession?.tenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
   );
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
+
+  // Security enforcement: regular tenant users are strictly pinned to their own tenantId
+  useEffect(() => {
+    if (authSession && authSession.userRole !== 'superadmin' && authSession.tenantId) {
+      if (activeTenantId !== authSession.tenantId) {
+        setActiveTenantId(authSession.tenantId);
+      }
+    }
+  }, [authSession, activeTenantId]);
 
   // Deep Link Routing (URL params ?view=... &dept=...)
   useEffect(() => {
@@ -188,8 +198,22 @@ export default function App() {
     return [];
   });
   const [departments, setDepartments] = useState<string[]>(() => {
+    const tenantDepts = getTenantDepartments(activeTenantId);
+    if (tenantDepts.length > 0) return tenantDepts.map((d) => d.name);
     return getDbDepartments();
   });
+
+  // Sync departments when activeTenantId changes
+  useEffect(() => {
+    const tenantDepts = getTenantDepartments(activeTenantId);
+    if (tenantDepts.length > 0) {
+      setDepartments(tenantDepts.map((d) => d.name));
+    } else if (activeTenantId === 'tenant-main-01') {
+      setDepartments(getDbDepartments());
+    } else {
+      setDepartments([]);
+    }
+  }, [activeTenantId]);
   const [productHeaders, setProductHeaders] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(PRODUCTS_CACHE_KEY);
@@ -1500,19 +1524,25 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-indigo-400" />
             <span className="font-bold">סניף פעיל:</span>
-            <select
-              value={activeTenantId}
-              onChange={(e) => {
-                setActiveTenantId(e.target.value);
-              }}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
-            >
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.plan.toUpperCase()})
-                </option>
-              ))}
-            </select>
+            {authSession?.userRole === 'superadmin' ? (
+              <select
+                value={activeTenantId}
+                onChange={(e) => {
+                  setActiveTenantId(e.target.value);
+                }}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
+              >
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.plan.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-white font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
+                {activeTenant?.name}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

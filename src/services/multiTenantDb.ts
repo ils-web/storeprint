@@ -242,6 +242,7 @@ export function createTenant(data: {
   spreadsheetGid?: string;
   allowSelfWarehouseCreation?: boolean;
   cloneBaseCatalog?: boolean;
+  initialDepartments?: string[];
 }): Tenant {
   const tenants = getTenants();
   const plan = data.plan || 'starter';
@@ -296,10 +297,22 @@ export function createTenant(data: {
     address: newTenant.address || 'בניין ראשי',
   });
 
-  // Automatically clone the base catalog template (186 items) and departments to this branch!
+  // 1. If custom initial departments are provided, save them right away
+  const hasCustomDepts = Array.isArray(data.initialDepartments) && data.initialDepartments.length > 0;
+  if (hasCustomDepts) {
+    const customDepts: TenantDepartment[] = (data.initialDepartments || []).map((dName, idx) => ({
+      id: `dept-${newTenantId}-${idx}-${Date.now()}`,
+      tenantId: newTenantId,
+      name: dName.trim(),
+      pinCode: '1234',
+    }));
+    saveTenantDepartments(newTenantId, customDepts);
+  }
+
+  // 2. Automatically clone the base catalog template (186 items)
   if (data.cloneBaseCatalog !== false) {
     try {
-      cloneBaseCatalogToNewTenant(newTenantId, primaryWh.id, 'tenant-main-01');
+      cloneBaseCatalogToNewTenant(newTenantId, primaryWh.id, 'tenant-main-01', !hasCustomDepts);
     } catch (e) {
       console.warn('Failed to clone base catalog to new tenant:', e);
     }
@@ -310,12 +323,13 @@ export function createTenant(data: {
 
 /**
  * Clones the Base Master Catalog (all 186 items, order, packaging, and thresholds)
- * and canonical departments into a newly created branch/tenant.
+ * and optionally departments into a newly created branch/tenant.
  */
 export function cloneBaseCatalogToNewTenant(
   targetTenantId: string,
   targetWarehouseId: string,
-  sourceTenantId: string = 'tenant-main-01'
+  sourceTenantId: string = 'tenant-main-01',
+  cloneDepartments: boolean = true
 ): InventoryProduct[] {
   // 1. Get base inventory items from source tenant or fallback to local db stock
   let baseItems = getInventory(sourceTenantId);
@@ -348,19 +362,22 @@ export function cloneBaseCatalogToNewTenant(
 
   saveInventory(targetTenantId, newTenantItems);
 
-  // 3. Clone departments for the new branch
-  const sourceDepts = getTenantDepartments(sourceTenantId);
-  const baseDepts: TenantDepartment[] =
-    sourceDepts.length > 0
-      ? sourceDepts
-      : CANONICAL_DEPARTMENTS.map((d, i) => ({ id: `dept-${i}`, tenantId: sourceTenantId, name: d, pinCode: '1234' }));
-  const newDepts: TenantDepartment[] = baseDepts.map((d, i) => ({
-    id: `dept-${targetTenantId}-${i}`,
-    tenantId: targetTenantId,
-    name: d.name,
-    pinCode: d.pinCode || '1234',
-  }));
-  saveTenantDepartments(targetTenantId, newDepts);
+  // 3. Clone departments for the new branch ONLY if requested and target has no departments yet
+  const existingTargetDepts = getTenantDepartments(targetTenantId);
+  if (cloneDepartments && existingTargetDepts.length === 0) {
+    const sourceDepts = getTenantDepartments(sourceTenantId);
+    const baseDepts: TenantDepartment[] =
+      sourceDepts.length > 0
+        ? sourceDepts
+        : CANONICAL_DEPARTMENTS.map((d, i) => ({ id: `dept-${i}`, tenantId: sourceTenantId, name: d, pinCode: '1234' }));
+    const newDepts: TenantDepartment[] = baseDepts.map((d, i) => ({
+      id: `dept-${targetTenantId}-${i}`,
+      tenantId: targetTenantId,
+      name: d.name,
+      pinCode: d.pinCode || '1234',
+    }));
+    saveTenantDepartments(targetTenantId, newDepts);
+  }
 
   // 4. Also seed master_stock directly in Firestore for real-time syncing
   if (db) {
@@ -549,30 +566,30 @@ export function updateInventoryStock(
 export function getTenantDepartments(tenantId: string): TenantDepartment[] {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
   const stored = getStoredJson<TenantDepartment[]>(key, []);
-  const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-  const filtered = stored.filter((d) => d && d.name && canonicalSet.has(d.name));
-  if (filtered.length === CANONICAL_DEPARTMENTS.length) {
-    return filtered;
+
+  // For main hospital tenant, preserve canonical 9 departments
+  if (tenantId === 'tenant-main-01') {
+    if (stored.length > 0) {
+      return stored;
+    }
+    const defaultList: TenantDepartment[] = CANONICAL_DEPARTMENTS.map((dName, idx) => ({
+      id: `dept-${idx}`,
+      tenantId,
+      name: dName,
+      pinCode: '1234',
+    }));
+    saveTenantDepartments(tenantId, defaultList);
+    return defaultList;
   }
-  const defaultList: TenantDepartment[] = CANONICAL_DEPARTMENTS.map((dName, idx) => ({
-    id: `dept-${idx}`,
-    tenantId,
-    name: dName,
-    pinCode: '1234',
-  }));
-  saveTenantDepartments(tenantId, defaultList);
-  return defaultList;
+
+  // For other tenants, return their stored custom departments without canonical restriction
+  return stored || [];
 }
 
 export function saveTenantDepartments(tenantId: string, departments: TenantDepartment[]): void {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
-  const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-  const cleaned = (departments || []).filter((d) => d && d.name && canonicalSet.has(d.name));
-  const finalDepts =
-    cleaned.length > 0
-      ? cleaned
-      : CANONICAL_DEPARTMENTS.map((d, i) => ({ id: `dept-${i}`, tenantId, name: d }));
-  setStoredJson(key, finalDepts);
+  const cleaned = (departments || []).filter((d) => d && d.name && d.name.trim().length > 0);
+  setStoredJson(key, cleaned);
 }
 
 export function addTenantDepartment(tenantId: string, name: string, pinCode?: string): TenantDepartment {

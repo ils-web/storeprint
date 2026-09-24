@@ -154,28 +154,42 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   const warehouses = getWarehouses(selectedTenantId);
   const activeWarehouse = warehouses[0] || null;
 
-  // Departments List (Strictly 9 Canonical Departments)
+  // Departments List (Loaded dynamically for active tenant)
   const departmentsList = useMemo(() => {
-    return CANONICAL_DEPARTMENTS;
-  }, []);
+    const tenantDepts = getTenantDepartments(selectedTenantId);
+    if (tenantDepts && tenantDepts.length > 0) {
+      return tenantDepts.map((d) => d.name);
+    }
+    if (selectedTenantId === 'tenant-main-01') {
+      return CANONICAL_DEPARTMENTS;
+    }
+    return [];
+  }, [selectedTenantId]);
 
   const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>(() => {
-    if (initialDepartment && CANONICAL_DEPARTMENTS.includes(initialDepartment.trim())) {
+    if (initialDepartment) {
       return initialDepartment.trim();
     }
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const d = urlParams.get('dept');
-      if (d && CANONICAL_DEPARTMENTS.includes(decodeURIComponent(d).trim())) {
+      if (d) {
         return decodeURIComponent(d).trim();
       }
-      const saved = localStorage.getItem('storeprint_portal_saved_dept');
-      if (saved && CANONICAL_DEPARTMENTS.includes(saved.trim())) {
+      const saved = localStorage.getItem(`storeprint_portal_saved_dept_${selectedTenantId}`);
+      if (saved) {
         return saved.trim();
       }
     }
-    return CANONICAL_DEPARTMENTS[4] || "ג' 1 סיעוד מורכב";
+    return selectedTenantId === 'tenant-main-01' ? CANONICAL_DEPARTMENTS[4] : '';
   });
+
+  // Keep selected department in sync if tenant changes or departments list updates
+  useEffect(() => {
+    if (departmentsList.length > 0 && !departmentsList.includes(selectedDepartmentName)) {
+      setSelectedDepartmentName(departmentsList[0]);
+    }
+  }, [departmentsList, selectedDepartmentName]);
 
   const [deptSearchTerm, setDeptSearchTerm] = useState('');
   const [patientsCount, setPatientsCount] = useState<string>(() => {

@@ -5,6 +5,7 @@ import {
   PlanType,
   TenantStatus,
   AuthSession,
+  TenantDepartment,
 } from '../../types/multiTenant';
 import {
   getTenants,
@@ -16,6 +17,8 @@ import {
   updateWarehouse,
   BILLING_PLANS,
   saveAuthSession,
+  getTenantDepartments,
+  saveTenantDepartments,
 } from '../../services/multiTenantDb';
 import {
   Building2,
@@ -72,6 +75,7 @@ export function SuperAdminDashboard({
     spreadsheetGid: '',
     allowSelfWarehouseCreation: false,
     cloneBaseCatalog: true,
+    departmentsText: '',
   });
 
   // Edit Tenant Form State
@@ -85,6 +89,7 @@ export function SuperAdminDashboard({
     phone: '',
     address: '',
     allowSelfWarehouseCreation: false,
+    departmentsText: '',
   });
 
   // New Warehouse Form for Tenant
@@ -121,7 +126,18 @@ export function SuperAdminDashboard({
     }
 
     try {
-      createTenant(formData);
+      const parsedDepts = formData.departmentsText
+        ? formData.departmentsText
+            .split('\n')
+            .map((d) => d.trim())
+            .filter((d) => d.length > 0)
+        : [];
+
+      createTenant({
+        ...formData,
+        initialDepartments: parsedDepts.length > 0 ? parsedDepts : undefined,
+      });
+
       refreshTenants();
       setIsCreateModalOpen(false);
       setFormData({
@@ -135,6 +151,8 @@ export function SuperAdminDashboard({
         spreadsheetId: '',
         spreadsheetGid: '',
         allowSelfWarehouseCreation: false,
+        cloneBaseCatalog: true,
+        departmentsText: '',
       });
     } catch (err: any) {
       alert(err.message || 'שגיאה ביצירת סניף');
@@ -142,6 +160,7 @@ export function SuperAdminDashboard({
   };
 
   const handleOpenEdit = (tenant: Tenant) => {
+    const tenantDepts = getTenantDepartments(tenant.id);
     setSelectedTenant(tenant);
     setEditFormData({
       name: tenant.name,
@@ -153,6 +172,7 @@ export function SuperAdminDashboard({
       phone: tenant.phone || '',
       address: tenant.address || '',
       allowSelfWarehouseCreation: tenant.limits.allowSelfWarehouseCreation,
+      departmentsText: tenantDepts.map((d) => d.name).join('\n'),
     });
     setIsEditModalOpen(true);
   };
@@ -175,6 +195,20 @@ export function SuperAdminDashboard({
         allowSelfWarehouseCreation: editFormData.allowSelfWarehouseCreation,
       },
     });
+
+    // Save customized departments for this tenant
+    const parsedDepts = editFormData.departmentsText
+      .split('\n')
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0);
+
+    const newDeptItems: TenantDepartment[] = parsedDepts.map((name, idx) => ({
+      id: `dept-${selectedTenant.id}-${idx}`,
+      tenantId: selectedTenant.id,
+      name,
+      pinCode: '1234',
+    }));
+    saveTenantDepartments(selectedTenant.id, newDeptItems);
 
     refreshTenants();
     setIsEditModalOpen(false);
@@ -459,6 +493,12 @@ export function SuperAdminDashboard({
                             {tenant.limits.allowSelfWarehouseCreation ? 'מאושר' : 'מרכזי (סופר-אדמין)'}
                           </span>
                         </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">מחלקות / נקודות הזמנה:</span>
+                          <span className="font-semibold text-indigo-300">
+                            {getTenantDepartments(tenant.id).length} מחלקה(ות)
+                          </span>
+                        </div>
                         {tenant.contactPerson && (
                           <div className="flex items-center justify-between">
                             <span className="text-slate-400">איש קשר:</span>
@@ -490,7 +530,7 @@ export function SuperAdminDashboard({
                       <button
                         onClick={() => handleOpenEdit(tenant)}
                         className="p-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl transition-colors cursor-pointer"
-                        title="עריכת פרטים וסיסמה"
+                        title="עריכת פרטים ומחלקות הסניף"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -716,9 +756,29 @@ export function SuperAdminDashboard({
                   className="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                 />
                 <label htmlFor="cloneBaseCatalogCheck" className="text-xs text-emerald-200 cursor-pointer">
-                  <strong className="text-white block font-bold">שכפל קטלוג בסיסי (186 פריטים) ומחלקות מהסניף הראשי</strong>
-                  הסניף יוקם מיד עם כל 186 המוצרים, סדר המדפים והמחלקות התקניות. כל סניף יוכל לשנות כמויות, להוסיף מוצרים ולהקפיא פריטים באופן עצמאי.
+                  <strong className="text-white block font-bold">שכפל קטלוג בסיסי (186 פריטים) מהסניף הראשי</strong>
+                  הסניף יוקם מיד עם כל 186 המוצרים וסדר המדפים. כל סניף יוכל לשנות כמויות ולהתאים פריטים באופן עצמאי.
                 </label>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1.5 flex items-center justify-between">
+                  <span>מחלקות / נקודות הזמנה בסניף (אחת בכל שורה)</span>
+                  <span className="text-[11px] text-indigo-400 font-normal">
+                    {formData.departmentsText.split('\n').filter((d) => d.trim()).length > 0
+                      ? `${formData.departmentsText.split('\n').filter((d) => d.trim()).length} מחלקות הוזנו`
+                      : 'אופציונלי'}
+                  </span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder={`הזן שמות מחלקות לקבלת הזמנות (אחת בכל שורה), לדוגמה:\nמרפאת שיניים\nמעבדה מרכזית\nחדר טיפולים\nסניף תל אביב`}
+                  value={formData.departmentsText}
+                  onChange={(e) => setFormData({ ...formData, departmentsText: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 font-sans"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  הזן את שמות המחלקות עבור סניף זה. אם יושאר ריק עם קטלוג בסיסי, יועתקו המחלקות התקניות.
+                </p>
               </div>
 
               <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
@@ -755,7 +815,7 @@ export function SuperAdminDashboard({
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase mb-1.5">
                   שם הסניף
@@ -826,6 +886,25 @@ export function SuperAdminDashboard({
                     <option value="enterprise">Enterprise</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1.5 flex items-center justify-between">
+                  <span>מחלקות / נקודות הזמנה בסניף (אחת בכל שורה)</span>
+                  <span className="text-[11px] text-indigo-400 font-mono">
+                    {editFormData.departmentsText.split('\n').filter((d) => d.trim()).length} מחלקות
+                  </span>
+                </label>
+                <textarea
+                  rows={5}
+                  placeholder="הזן שמות מחלקות, כל מחלקה בשורה נפרדת..."
+                  value={editFormData.departmentsText}
+                  onChange={(e) => setEditFormData({ ...editFormData, departmentsText: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 font-sans"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  שמות המחלקות שיופיעו בפורטל ההזמנות של סניף זה בלבד. ניתן להוסיף, למחוק או לשנות בחופשיות.
+                </p>
               </div>
 
               <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
