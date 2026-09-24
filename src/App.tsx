@@ -900,6 +900,28 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 4000);
   }, [departments, syncToMultiTenantDb]);
 
+  const handleSaveCloudBackup = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('./services/firebase');
+      if (!db) throw new Error('Firebase לא מחובר');
+      const docRef = doc(db, 'tenants', activeTenantId, 'warehouse', 'stock_backup');
+      await setDoc(docRef, {
+        stock,
+        savedAt: new Date().toISOString(),
+        itemCount: Object.keys(stock).length,
+      });
+      setSuccessMessage('הסדר והמלאי הנוכחי נשמרו בהצלחה כגיבוי ענן קבוע ב-Firestore! 🛡️💾');
+      setTimeout(() => setSuccessMessage(null), 4500);
+    } catch (e: any) {
+      setErrorMessage(`שגיאה בשמירת גיבוי: ${e?.message || e}`);
+      setTimeout(() => setErrorMessage(null), 5000);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeTenantId, stock]);
+
   const handleRestoreCloudBackup = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -1624,6 +1646,7 @@ export default function App() {
               onResetMasterCatalog={handleResetMasterCatalog}
               onOrganizeLogically={handleOrganizeLogically}
               onRestoreBackup={handleRestoreCloudBackup}
+              onSaveBackup={handleSaveCloudBackup}
             />
           )}
 

@@ -302,6 +302,7 @@ interface WarehouseViewProps {
   onResetMasterCatalog?: () => void;
   onOrganizeLogically?: () => void;
   onRestoreBackup?: () => void;
+  onSaveBackup?: () => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -324,6 +325,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onResetMasterCatalog,
   onOrganizeLogically,
   onRestoreBackup,
+  onSaveBackup,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
@@ -333,6 +335,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
   const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
   const [isResetMasterModalOpen, setIsResetMasterModalOpen] = useState(false);
+  const [isOrganizeConfirmOpen, setIsOrganizeConfirmOpen] = useState(false);
+  const [isRestoreBackupModalOpen, setIsRestoreBackupModalOpen] = useState(false);
 
   // Strictly deduplicated stock list: guarantees no duplicate product names in UI
   const stockList = useMemo(() => {
@@ -673,27 +677,39 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן'}</span>
               </button>
 
-              {/* Smart Medical Grouping Button */}
-              {onOrganizeLogically && (
+              {/* Save Current Layout to Cloud Backup */}
+              {onSaveBackup && (
                 <button
-                  onClick={onOrganizeLogically}
-                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                  title="קיבוץ וארגון אוטומטי של המחסן לפי קטגוריות רפואיות מסודרות (כפפות, מיגון, מזרקים, חבישות...)"
+                  onClick={onSaveBackup}
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="שמירת סידור המחסן והמלאי הנוכחי כגיבוי קבוע בענן Firestore"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>ארגון חכם לפי קטגוריות 🩺</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>שמור גיבוי ענן 💾</span>
                 </button>
               )}
 
               {/* Restore from Cloud Backup */}
               {onRestoreBackup && (
                 <button
-                  onClick={onRestoreBackup}
+                  onClick={() => setIsRestoreBackupModalOpen(true)}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                   title="שחזור המחסן מגיבוי הענן האחרון שנשמר ב-Firestore"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
                   <span>שחזור מגיבוי ענן 🛡️</span>
+                </button>
+              )}
+
+              {/* Smart Medical Grouping Button (With Safe Confirmation Modal) */}
+              {onOrganizeLogically && (
+                <button
+                  onClick={() => setIsOrganizeConfirmOpen(true)}
+                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="קיבוץ וארגון אוטומטי של המחסן לפי קטגוריות רפואיות מסודרות (דורש אישור)"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>ארגון חכם לפי קטגוריות 🩺</span>
                 </button>
               )}
 
@@ -1297,6 +1313,94 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>שחזר קטלוג תקין ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog for Smart Category Organization */}
+      {isOrganizeConfirmOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn" dir="rtl">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 space-y-4 text-slate-900">
+            <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto border-4 border-indigo-50">
+              <Sparkles className="w-7 h-7 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900">סידור מחדש לפי קטגוריות רפואיות?</h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                פעולה זו תסדר מחדש באופן אוטומטי את כל הפריטים במחסן לפי קטגוריות רפואיות מסודרות (כפפות, מיגון, מזרקים, מחטים, חבישות, עירויים...).
+              </p>
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-2xl mt-3 text-right">
+                <div className="font-bold flex items-center gap-1.5 mb-1">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>שימו לב: הסדר הידני שלכם ישתנה!</span>
+                </div>
+                <span>אם סידרתם את המחסן בסדר ידני מותאם אישית, פעולה זו תחליף את הסדר הנוכחי. מומלץ לוודא ששמרתם גיבוי ענן לפני כן.</span>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsOrganizeConfirmOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
+              >
+                ביטול — שמור על הסדר הנוכחי שלי
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOrganizeLogically) {
+                    onOrganizeLogically();
+                    setIsOrganizeConfirmOpen(false);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white font-bold text-xs shadow-md shadow-indigo-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>כן, סדר מחדש לפי קטגוריות ✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog for Restore from Cloud Backup */}
+      {isRestoreBackupModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn" dir="rtl">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 space-y-4 text-slate-900">
+            <div className="w-14 h-14 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center mx-auto border-4 border-sky-50">
+              <RotateCcw className="w-7 h-7 text-sky-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900">שחזור סידור המחסן מגיבוי ענן?</h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                פעולה זו תשחזר את סידור הפריטים והמלאי מהגיבוי האחרון שנשמר בענן Firestore.
+              </p>
+              <p className="text-[11px] text-slate-500 mt-2">
+                כל שינוי במיקומי הפריטים שנעשה מאז הגיבוי האחרון יוחלף בסדר שנשמר בגיבוי.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsRestoreBackupModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onRestoreBackup) {
+                    onRestoreBackup();
+                    setIsRestoreBackupModalOpen(false);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-sky-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>שחזר מגיבוי ענן ✓</span>
               </button>
             </div>
           </div>
