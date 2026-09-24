@@ -42,8 +42,11 @@ export async function pushStockToFirestore(
     const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
     await setDoc(docRef, payload);
 
-    const globalDocRef = doc(db, 'warehouse', 'master_stock');
-    await setDoc(globalDocRef, payload);
+    // Only main tenant maintains legacy root backup for backwards compatibility
+    if (tenantId === 'tenant-main-01') {
+      const globalDocRef = doc(db, 'warehouse', 'master_stock');
+      await setDoc(globalDocRef, payload);
+    }
     return true;
   } catch (err) {
     console.warn('Firestore pushStock error:', err);
@@ -115,9 +118,11 @@ export async function pushOrderToFirestore(
     const orderDocRef = doc(db, 'tenants', tenantId, 'orders', order.id);
     await setDoc(orderDocRef, cleanPayload);
 
-    // Also write to global orders collection
-    const globalOrderRef = doc(db, 'orders', order.id);
-    await setDoc(globalOrderRef, cleanPayload);
+    // Only main tenant maintains legacy root orders collection for backwards compatibility
+    if (tenantId === 'tenant-main-01') {
+      const globalOrderRef = doc(db, 'orders', order.id);
+      await setDoc(globalOrderRef, cleanPayload);
+    }
 
     console.log('✅ Order pushed to Firestore successfully:', order.id, order.departmentName);
     return true;
