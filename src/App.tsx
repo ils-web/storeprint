@@ -83,6 +83,7 @@ import {
   saveInventory,
   saveTenantDepartments,
   getTenantDepartments,
+  getInventory,
   fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
@@ -176,17 +177,49 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Orders & Fast Cached Departments State
+  // Multi-Tenant Orders Cache Key Helper
+  const getTenantOrdersCacheKey = (tId: string) =>
+    tId === 'tenant-main-01' ? 'storeprint_orders_cache_v3' : `storeprint_orders_cache_${tId}`;
+
+  // Helper to load base stock for active tenant
+  const getInitialStockForTenant = (tId: string): Record<string, StockItem> => {
+    if (tId === 'tenant-main-01') {
+      return getDbStock();
+    }
+    const inv = getInventory(tId);
+    const stockMap: Record<string, StockItem> = {};
+    inv.forEach((item, idx) => {
+      stockMap[item.name] = {
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        currentStock: item.currentStock || 0,
+        minThreshold: item.minThreshold || 10,
+        colIndex: item.colIndex || idx + 1,
+        isActive: item.isActive !== false,
+        limitByPatients: Boolean(item.limitByPatients),
+      };
+    });
+    return stockMap;
+  };
+
+  // Orders & Fast Cached Departments State (Strictly isolated by active tenant)
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
-      const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
+      const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+      const raw = localStorage.getItem(cacheKey) || (activeTenantId === 'tenant-main-01' ? localStorage.getItem('storeprint_orders_cache_v2') : null);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const currentPrinted = getDbPrintedOrderIds();
           const purgedSet = new Set(['order-1788682740035-140', 'order-test-1788673384415', 'order-test-check']);
           return parsed
-            .filter((o: any) => o && o.id && !purgedSet.has(o.id))
+            .filter((o: any) =>
+              o &&
+              o.id &&
+              !purgedSet.has(o.id) &&
+              (activeTenantId === 'tenant-main-01' ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId)
+            )
             .map((o: any) => ({
               ...o,
               parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
@@ -200,20 +233,8 @@ export default function App() {
   const [departments, setDepartments] = useState<string[]>(() => {
     const tenantDepts = getTenantDepartments(activeTenantId);
     if (tenantDepts.length > 0) return tenantDepts.map((d) => d.name);
-    return getDbDepartments();
+    return activeTenantId === 'tenant-main-01' ? getDbDepartments() : [];
   });
-
-  // Sync departments when activeTenantId changes
-  useEffect(() => {
-    const tenantDepts = getTenantDepartments(activeTenantId);
-    if (tenantDepts.length > 0) {
-      setDepartments(tenantDepts.map((d) => d.name));
-    } else if (activeTenantId === 'tenant-main-01') {
-      setDepartments(getDbDepartments());
-    } else {
-      setDepartments([]);
-    }
-  }, [activeTenantId]);
   const [productHeaders, setProductHeaders] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(PRODUCTS_CACHE_KEY);
@@ -239,8 +260,8 @@ export default function App() {
     return getDbDeletedOrderIds();
   });
 
-  // Warehouse Stock State (Initialized from Unified DB)
-  const [stock, setStock] = useState<Record<string, StockItem>>(() => getDbStock());
+  // Warehouse Stock State (Initialized from Tenant DB)
+  const [stock, setStock] = useState<Record<string, StockItem>>(() => getInitialStockForTenant(activeTenantId));
 
   // Cloud Sync State
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
@@ -342,15 +363,17 @@ export default function App() {
 
     saveInventory(activeTenant.id, items);
 
-    // Build Departments
-    const deptList = getDbDepartments();
-    const allDepts = Array.from(new Set([...deptList, ...depts]));
-    const deptItems: TenantDepartment[] = allDepts.map((dName, idx) => ({
-      id: `dept-${idx}`,
-      tenantId: activeTenant.id,
-      name: dName,
-    }));
-    saveTenantDepartments(activeTenant.id, deptItems);
+    // Build Departments strictly for main hospital tenant
+    if (activeTenant.id === 'tenant-main-01') {
+      const deptList = getDbDepartments();
+      const allDepts = Array.from(new Set([...deptList, ...depts]));
+      const deptItems: TenantDepartment[] = allDepts.map((dName, idx) => ({
+        id: `dept-${idx}`,
+        tenantId: activeTenant.id,
+        name: dName,
+      }));
+      saveTenantDepartments(activeTenant.id, deptItems);
+    }
   }, [activeTenant]);
 
   // Helper to convert a PWA MultiTenantOrder into a printable Order object
@@ -373,11 +396,27 @@ export default function App() {
       .filter(Boolean)
       .join(' • ');
 
-    const dbStock = getDbStock();
+    const orderTenantId = to.tenantId || activeTenantId;
+    const isMain = orderTenantId === 'tenant-main-01';
+    const dbStock = isMain ? getDbStock() : {};
+    let tenantStockMap: Record<string, number> = {};
+    if (!isMain) {
+      const inv = getInventory(orderTenantId);
+      inv.forEach((item, i) => {
+        tenantStockMap[item.name] = item.colIndex || i + 1;
+      });
+    }
 
     const orderItems = (to.items || []).map((item, itemIdx) => {
-      const stockItem = dbStock[item.name] || Object.values(dbStock).find((s) => s.name === item.name || s.id === item.productId);
-      const colIndex = (item as any).colIndex || (stockItem ? stockItem.colIndex : itemIdx + 4);
+      let colIndex = (item as any).colIndex;
+      if (colIndex === undefined) {
+        if (isMain) {
+          const stockItem = dbStock[item.name] || Object.values(dbStock).find((s) => s.name === item.name || s.id === item.productId);
+          colIndex = stockItem ? stockItem.colIndex : itemIdx + 4;
+        } else {
+          colIndex = tenantStockMap[item.name] || itemIdx + 1;
+        }
+      }
       return {
         id: item.id || `item-${itemIdx}-${item.productId || itemIdx}`,
         name: item.name,
@@ -395,6 +434,7 @@ export default function App() {
 
     return {
       id: to.id || `order-${idx}-${to.orderNumber}`,
+      tenantId: orderTenantId,
       rowNumber: to.rawGoogleSheetRow || (idx + 1),
       timestamp: fullTimestamp,
       rawDate: dateStr,
@@ -407,7 +447,60 @@ export default function App() {
       printedAt: to.printedAt,
       rawRow: {},
     };
-  }, []);
+  }, [activeTenantId]);
+
+  // Sync departments, stock, and orders when activeTenantId changes
+  useEffect(() => {
+    // 1. Departments
+    const tenantDepts = getTenantDepartments(activeTenantId);
+    if (tenantDepts.length > 0) {
+      setDepartments(tenantDepts.map((d) => d.name));
+    } else if (activeTenantId === 'tenant-main-01') {
+      setDepartments(getDbDepartments());
+    } else {
+      setDepartments([]);
+    }
+
+    // 2. Stock & Product headers
+    const newStock = getInitialStockForTenant(activeTenantId);
+    setStock(newStock);
+    setProductHeaders(Object.keys(newStock));
+
+    // 3. Orders: immediately switch to active tenant cache or local tenant orders (never keep other tenant's orders!)
+    try {
+      const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+      const raw = localStorage.getItem(cacheKey) || (activeTenantId === 'tenant-main-01' ? localStorage.getItem('storeprint_orders_cache_v2') : null);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const currentPrinted = getDbPrintedOrderIds();
+          const purgedSet = new Set(['order-1788682740035-140', 'order-test-1788673384415', 'order-test-check']);
+          const filtered = parsed
+            .filter((o: any) =>
+              o &&
+              o.id &&
+              !purgedSet.has(o.id) &&
+              (activeTenantId === 'tenant-main-01' ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId)
+            )
+            .map((o: any) => ({
+              ...o,
+              parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+              printed: currentPrinted.has(getOrderPrintKey(o)),
+            }));
+          setOrders(filtered);
+          return;
+        }
+      }
+      const localTenantOrders = getTenantOrders(activeTenantId);
+      if (localTenantOrders.length > 0) {
+        setOrders(localTenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i)));
+      } else {
+        setOrders([]);
+      }
+    } catch {
+      setOrders([]);
+    }
+  }, [activeTenantId, convertTenantOrderToAppOrder]);
 
   const isFetchingOrdersRef = useRef<boolean>(false);
 
@@ -443,8 +536,17 @@ export default function App() {
         }
         const localTenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
         const allTenantMap = new Map<string, MultiTenantOrder>();
-        localTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
-        remoteTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
+        const isMain = (activeTenantId || 'tenant-main-01') === 'tenant-main-01';
+        localTenantOrders.forEach((to) => {
+          if (to && to.id && (isMain ? (!to.tenantId || to.tenantId === 'tenant-main-01') : to.tenantId === activeTenantId)) {
+            allTenantMap.set(to.id, to);
+          }
+        });
+        remoteTenantOrders.forEach((to) => {
+          if (to && to.id && (isMain ? (!to.tenantId || to.tenantId === 'tenant-main-01') : to.tenantId === activeTenantId)) {
+            allTenantMap.set(to.id, to);
+          }
+        });
         const tenantOrders = Array.from(allTenantMap.values());
         const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
@@ -484,25 +586,35 @@ export default function App() {
           });
 
           try {
-            localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(finalOrders));
+            const cacheKey = getTenantOrdersCacheKey(activeTenantId || 'tenant-main-01');
+            localStorage.setItem(cacheKey, JSON.stringify(finalOrders));
           } catch {}
           return finalOrders;
         });
 
         // 3. Extract unique departments and merge with canonical list
-        const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
-        setDepartments(() => {
-          const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-          const valid = distinctDepts.filter((d) => canonicalSet.has(d));
-          const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
-          localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
-          return merged;
-        });
-
-        // 4. Update product headers from DB stock
-        const dbStock = getDbStock();
-        if (Object.keys(dbStock).length > 0) {
-          setProductHeaders(Object.keys(dbStock));
+        if (isMain) {
+          const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
+          setDepartments(() => {
+            const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+            const valid = distinctDepts.filter((d) => canonicalSet.has(d));
+            const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
+            localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
+            return merged;
+          });
+          const dbStock = getDbStock();
+          if (Object.keys(dbStock).length > 0) {
+            setProductHeaders(Object.keys(dbStock));
+          }
+        } else {
+          const tenantDepts = getTenantDepartments(activeTenantId);
+          if (tenantDepts.length > 0) {
+            setDepartments(tenantDepts.map((d) => d.name));
+          }
+          const inv = getInventory(activeTenantId);
+          if (inv.length > 0) {
+            setProductHeaders(inv.map((p) => p.name));
+          }
         }
 
         setLastUpdated(new Date());
@@ -514,7 +626,9 @@ export default function App() {
       } catch (err: any) {
         console.warn('Firestore orders fetch error, checking cached orders:', err);
         try {
-          const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
+          const cacheKey = getTenantOrdersCacheKey(activeTenantId || 'tenant-main-01');
+          const isMain = (activeTenantId || 'tenant-main-01') === 'tenant-main-01';
+          const raw = localStorage.getItem(cacheKey) || (isMain ? localStorage.getItem('storeprint_orders_cache_v2') : null);
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
@@ -522,11 +636,17 @@ export default function App() {
               getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
               printedOrderIds.forEach((id) => currentPrinted.add(id));
 
-              const cleanCached = parsed.map((o: any) => ({
-                ...o,
-                parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
-                printed: isOrderPrintedInSet(o, currentPrinted),
-              }));
+              const cleanCached = parsed
+                .filter((o: any) =>
+                  o &&
+                  o.id &&
+                  (isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId)
+                )
+                .map((o: any) => ({
+                  ...o,
+                  parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
+                  printed: isOrderPrintedInSet(o, currentPrinted),
+                }));
               setOrders(cleanCached);
             }
           }
@@ -555,8 +675,25 @@ export default function App() {
     const unsubStock = subscribeToFirestoreStock((liveStock) => {
       if (liveStock && Object.keys(liveStock).length > 0) {
         setStock(liveStock);
-        saveDbStock(liveStock, false);
-        saveStoredStock(liveStock);
+        if (activeTenantId === 'tenant-main-01') {
+          saveDbStock(liveStock, false);
+          saveStoredStock(liveStock);
+        } else {
+          const items: InventoryProduct[] = Object.values(liveStock).map((item, idx) => ({
+            id: item.id || `prod-${activeTenantId}-${idx}`,
+            tenantId: activeTenantId,
+            warehouseId: 'wh-01',
+            name: item.name,
+            colIndex: item.colIndex || idx + 1,
+            currentStock: item.currentStock || 0,
+            minThreshold: item.minThreshold || 10,
+            unit: item.unit || "יח'",
+            isActive: item.isActive !== false,
+            limitByPatients: Boolean(item.limitByPatients),
+            updatedAt: item.lastUpdated || new Date().toISOString(),
+          }));
+          saveInventory(activeTenantId, items);
+        }
         setProductHeaders(Object.keys(liveStock));
       }
     }, activeTenantId);
@@ -570,7 +707,11 @@ export default function App() {
   useEffect(() => {
     const unsubOrders = subscribeToFirestoreOrders((liveOrders) => {
       if (liveOrders && Array.isArray(liveOrders)) {
-        saveTenantOrders(activeTenantId, liveOrders);
+        const isMain = activeTenantId === 'tenant-main-01';
+        const filteredLiveOrders = liveOrders.filter((o) =>
+          isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId
+        );
+        saveTenantOrders(activeTenantId, filteredLiveOrders);
 
         setOrders((prev) => {
           const currentPrinted = new Set<string>();
@@ -581,11 +722,14 @@ export default function App() {
           getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
           deletedOrderIds.forEach((id) => deletedSet.add(id));
 
-          const convertedLive = liveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
+          const convertedLive = filteredLiveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
           const allMap = new Map<string, Order>();
 
+          // CRITICAL: Only retain prev orders that belong strictly to THIS active tenant!
           (prev || []).forEach((o) => {
-            if (o && o.id) allMap.set(o.id, o);
+            if (o && o.id && (isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId)) {
+              allMap.set(o.id, o);
+            }
           });
 
           // Overlay with fresh live orders from Firestore
@@ -612,9 +756,8 @@ export default function App() {
           });
 
           try {
-            if (merged.length >= (prev || []).length) {
-              localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(merged));
-            }
+            const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+            localStorage.setItem(cacheKey, JSON.stringify(merged));
           } catch {}
 
           return merged;
@@ -637,7 +780,9 @@ export default function App() {
             if (k && !k.startsWith('unprinted_')) next.add(k);
           });
           const clean = sanitizePrintedOrderIds(next);
-          saveDbPrintedOrderIds(clean);
+          if (activeTenantId === 'tenant-main-01') {
+            saveDbPrintedOrderIds(clean);
+          }
           return clean;
         });
 
@@ -657,8 +802,9 @@ export default function App() {
     };
   }, [activeTenantId]);
 
-  // Automated stock integrity & deduplication check on mount
+  // Automated stock integrity & deduplication check on mount ONLY for main tenant
   useEffect(() => {
+    if (activeTenantId !== 'tenant-main-01') return;
     try {
       const currentStock = getDbStock();
       const sanitized = sanitizeAndDeduplicateStock(currentStock);
@@ -669,7 +815,7 @@ export default function App() {
         setProductHeaders(Object.keys(sanitized));
       }
     } catch {}
-  }, []);
+  }, [activeTenantId]);
 
   // Initial Load once on mount or tenant switch
   useEffect(() => {
@@ -824,8 +970,10 @@ export default function App() {
                 };
               }
             });
-            saveDbStock(updated, false);
-            saveStoredStock(updated);
+            if (activeTenantId === 'tenant-main-01') {
+              saveDbStock(updated, false);
+              saveStoredStock(updated);
+            }
             return updated;
           });
         }
@@ -842,87 +990,167 @@ export default function App() {
     isActive?: boolean,
     limitByPatients?: boolean
   ) => {
-    const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients);
-    setStock(updated);
-    saveStoredStock(updated);
-    syncToMultiTenantDb(productHeaders, departments, updated);
-  }, [productHeaders, departments, syncToMultiTenantDb]);
+    if (activeTenantId === 'tenant-main-01') {
+      const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients);
+      setStock(updated);
+      saveStoredStock(updated);
+      syncToMultiTenantDb(productHeaders, departments, updated);
+    } else {
+      setStock((prev) => {
+        const next = { ...prev };
+        const target = next[itemIdOrName] || (Object.values(next) as StockItem[]).find((it) => it.id === itemIdOrName || it.name === itemIdOrName);
+        if (target) {
+          next[target.name] = {
+            ...target,
+            currentStock: Math.max(0, newStock),
+            ...(minThreshold !== undefined ? { minThreshold } : {}),
+            ...(unit ? { unit } : {}),
+            ...(isActive !== undefined ? { isActive } : {}),
+            ...(limitByPatients !== undefined ? { limitByPatients } : {}),
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+        syncToMultiTenantDb(productHeaders, departments, next);
+        return next;
+      });
+    }
+  }, [activeTenantId, productHeaders, departments, syncToMultiTenantDb]);
 
   const handleSaveFullItem = useCallback((savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => {
     let updated: Record<string, StockItem>;
-    if (typeof targetPosition === 'number' && targetPosition > 0) {
-      updated = insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
+    if (activeTenantId === 'tenant-main-01') {
+      if (typeof targetPosition === 'number' && targetPosition > 0) {
+        updated = insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
+      } else {
+        updated = saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+      }
+      saveStoredStock(updated);
     } else {
-      updated = saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+      const current = { ...stock };
+      if (oldNameOrId && current[oldNameOrId] && oldNameOrId !== savedItem.name) {
+        delete current[oldNameOrId];
+      }
+      current[savedItem.name] = {
+        ...savedItem,
+        lastUpdated: new Date().toISOString(),
+      };
+      updated = current;
     }
     setStock(updated);
-    saveStoredStock(updated);
     const newHeaders = Object.keys(updated);
     setProductHeaders(newHeaders);
     try {
-      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      if (activeTenantId === 'tenant-main-01') {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
     setSuccessMessage(`הפריט "${savedItem.name}" נשמר בהצלחה במחסן ובקטלוג! 📦✅`);
     setTimeout(() => setSuccessMessage(null), 3500);
-  }, [departments, syncToMultiTenantDb]);
+  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
 
   const handleDeleteStockItem = useCallback((idOrName: string) => {
-    const updated = deleteDbStockItem(idOrName);
+    let updated: Record<string, StockItem>;
+    if (activeTenantId === 'tenant-main-01') {
+      updated = deleteDbStockItem(idOrName);
+      saveStoredStock(updated);
+    } else {
+      const current = { ...stock };
+      const norm = normalizeProductName(idOrName);
+      Object.keys(current).forEach((k) => {
+        if (k === idOrName || current[k]?.id === idOrName || normalizeProductName(k) === norm) {
+          delete current[k];
+        }
+      });
+      updated = current;
+    }
     setStock(updated);
-    saveStoredStock(updated);
     const newHeaders = Object.keys(updated);
     setProductHeaders(newHeaders);
     try {
-      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      if (activeTenantId === 'tenant-main-01') {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
     setSuccessMessage(`הפריט נמחק לצמיתות מהמחסן ומהקטלוג 🗑️`);
     setTimeout(() => setSuccessMessage(null), 3500);
-  }, [departments, syncToMultiTenantDb]);
+  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
 
   const handleMoveStockItem = useCallback((idOrName: string, direction: 'up' | 'down') => {
-    const updated = moveDbStockItem(idOrName, direction);
+    let updated: Record<string, StockItem>;
+    if (activeTenantId === 'tenant-main-01') {
+      updated = moveDbStockItem(idOrName, direction);
+      saveStoredStock(updated);
+    } else {
+      const items = (Object.values(stock) as StockItem[]).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+      const idx = items.findIndex((it) => it.id === idOrName || it.name === idOrName);
+      if (idx !== -1) {
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx >= 0 && targetIdx < items.length) {
+          const temp = items[idx];
+          items[idx] = items[targetIdx];
+          items[targetIdx] = temp;
+          const reordered: Record<string, StockItem> = {};
+          items.forEach((it, i) => {
+            it.colIndex = i + 1;
+            reordered[it.name] = it;
+          });
+          updated = reordered;
+        } else {
+          updated = stock;
+        }
+      } else {
+        updated = stock;
+      }
+    }
     setStock(updated);
-    saveStoredStock(updated);
     const newHeaders = Object.keys(updated);
     setProductHeaders(newHeaders);
     try {
-      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      if (activeTenantId === 'tenant-main-01') {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
-  }, [departments, syncToMultiTenantDb]);
+  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
 
   const handleResetMasterCatalog = useCallback(() => {
-    const cleanStock = resetDbStockToMasterCatalog(true);
-    setStock(cleanStock);
-    saveStoredStock(cleanStock);
-    const newHeaders = Object.keys(cleanStock);
-    setProductHeaders(newHeaders);
-    try {
-      localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
-    } catch {}
-    syncToMultiTenantDb(newHeaders, departments, cleanStock);
-    setSuccessMessage('קטלוג המחסן שוחזר בהצלחה ל-192 פריטים תקינים ללא כפילויות! 📦✨');
-    setTimeout(() => setSuccessMessage(null), 4000);
-  }, [departments, syncToMultiTenantDb]);
+    if (activeTenantId === 'tenant-main-01') {
+      const cleanStock = resetDbStockToMasterCatalog(true);
+      setStock(cleanStock);
+      saveStoredStock(cleanStock);
+      const newHeaders = Object.keys(cleanStock);
+      setProductHeaders(newHeaders);
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      } catch {}
+      syncToMultiTenantDb(newHeaders, departments, cleanStock);
+      setSuccessMessage('קטלוג המחסן שוחזר בהצלחה ל-192 פריטים תקינים ללא כפילויות! 📦✨');
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleOrganizeLogically = useCallback(() => {
     setStock((prev) => {
       const organized = organizeStockLogically(prev);
-      saveDbStock(organized, true);
-      saveStoredStock(organized);
+      if (activeTenantId === 'tenant-main-01') {
+        saveDbStock(organized, true);
+        saveStoredStock(organized);
+      }
       const newHeaders = Object.keys(organized);
       setProductHeaders(newHeaders);
       try {
-        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+        if (activeTenantId === 'tenant-main-01') {
+          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+        }
       } catch {}
       syncToMultiTenantDb(newHeaders, departments, organized);
       return organized;
     });
     setSuccessMessage('המחסן אורגן וסודר בהצלחה לפי קטגוריות רפואיות! 🩺📦✨');
     setTimeout(() => setSuccessMessage(null), 4000);
-  }, [departments, syncToMultiTenantDb]);
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleSaveCloudBackup = useCallback(async () => {
     try {
@@ -957,12 +1185,16 @@ export default function App() {
       if (snap.exists() && snap.data()?.stock) {
         const backupStock = snap.data().stock as Record<string, StockItem>;
         setStock(backupStock);
-        saveDbStock(backupStock, true);
-        saveStoredStock(backupStock);
+        if (activeTenantId === 'tenant-main-01') {
+          saveDbStock(backupStock, true);
+          saveStoredStock(backupStock);
+        }
         const newHeaders = Object.keys(backupStock);
         setProductHeaders(newHeaders);
         try {
-          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+          if (activeTenantId === 'tenant-main-01') {
+            localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+          }
         } catch {}
         syncToMultiTenantDb(newHeaders, departments, backupStock);
         setSuccessMessage('המלאי שוחזר בהצלחה מגיבוי הענן המאובטח! 🛡️✨');
@@ -1151,20 +1383,23 @@ export default function App() {
       const next = new Set<string>(prev);
       next.delete(orderId);
       next.delete(key);
-      saveDbPrintedOrderIds(next);
+      if (activeTenantId === 'tenant-main-01') {
+        saveDbPrintedOrderIds(next);
+      }
       return next;
     });
 
     // 5. Update local cache
     try {
-      const currentCached = localStorage.getItem('storeprint_orders_cache_v3');
+      const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+      const currentCached = localStorage.getItem(cacheKey);
       if (currentCached) {
         const parsed = JSON.parse(currentCached);
         if (Array.isArray(parsed)) {
           const updatedCache = parsed.filter(
             (o: any) => o.id !== orderId && getOrderPrintKey(o) !== key && (!targetOrder || o.id !== targetOrder.id)
           );
-          localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updatedCache));
+          localStorage.setItem(cacheKey, JSON.stringify(updatedCache));
         }
       }
     } catch {}
@@ -1189,11 +1424,8 @@ export default function App() {
   const handleClearTestOrders = () => {
     const testOrders = orders.filter((o) => {
       const id = (o.id || '').toLowerCase();
-      const notes = (o.notes || '').toLowerCase();
+      const notes = (o.patientsCount || '').toLowerCase();
       return (
-        id.startsWith('order-') ||
-        id.startsWith('pwa-') ||
-        id.startsWith('tenant-') ||
         id.includes('test') ||
         notes.includes('בדיקה') ||
         notes.includes('טסט') ||
@@ -1260,7 +1492,9 @@ export default function App() {
         });
         const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
         setPrintedOrderIds(cleanPrinted);
-        saveDbPrintedOrderIds(cleanPrinted);
+        if (activeTenantId === 'tenant-main-01') {
+          saveDbPrintedOrderIds(cleanPrinted);
+        }
         pushPrintedOrderKeysToFirestore(Array.from(cleanPrinted), activeTenantId).catch(console.warn);
 
         // Also update multiTenantDb and Firestore printed status
@@ -1284,11 +1518,33 @@ export default function App() {
           saveTenantOrders(activeTenantId, updatedTenantOrders);
         } catch {}
 
-        const { updatedStock } = deductOrdersFromDbStock(genuinelyNewOrders);
-        setStock(updatedStock);
-        saveDbStock(updatedStock);
-        saveStoredStock(updatedStock);
-        syncToMultiTenantDb(productHeaders, departments, updatedStock);
+        let nextStock: Record<string, StockItem>;
+        if (activeTenantId === 'tenant-main-01') {
+          const { updatedStock } = deductOrdersFromDbStock(genuinelyNewOrders);
+          nextStock = updatedStock;
+          saveDbStock(updatedStock);
+          saveStoredStock(updatedStock);
+        } else {
+          nextStock = { ...stock };
+          genuinelyNewOrders.forEach((order) => {
+            order.items.forEach((item) => {
+              const targetKey = nextStock[item.name]
+                ? item.name
+                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+              if (nextStock[targetKey]) {
+                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+                const prevQty = nextStock[targetKey].currentStock || 0;
+                nextStock[targetKey] = {
+                  ...nextStock[targetKey],
+                  currentStock: Math.max(0, prevQty - itemQty),
+                  lastDeducted: new Date().toISOString(),
+                };
+              }
+            });
+          });
+        }
+        setStock(nextStock);
+        syncToMultiTenantDb(productHeaders, departments, nextStock);
 
         const updatedOrders = orders.map((o) =>
           isOrderPrintedInSet(o, cleanPrinted) || genuinelyNewOrders.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o) || p.id === o.id)
@@ -1297,7 +1553,8 @@ export default function App() {
         );
         setOrders(updatedOrders);
         try {
-          localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updatedOrders));
+          const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+          localStorage.setItem(cacheKey, JSON.stringify(updatedOrders));
         } catch {}
       }
     }
@@ -1354,7 +1611,9 @@ export default function App() {
         }
       }
       const clean = sanitizePrintedOrderIds(next);
-      saveDbPrintedOrderIds(clean);
+      if (activeTenantId === 'tenant-main-01') {
+        saveDbPrintedOrderIds(clean);
+      }
       pushPrintedOrderKeysToFirestore(Array.from(clean), activeTenantId).catch(console.warn);
 
       // Update Firestore
@@ -1388,7 +1647,8 @@ export default function App() {
           : o
       );
       try {
-        localStorage.setItem('storeprint_orders_cache_v3', JSON.stringify(updated));
+        const cacheKey = getTenantOrdersCacheKey(activeTenantId);
+        localStorage.setItem(cacheKey, JSON.stringify(updated));
       } catch {}
       return updated;
     });

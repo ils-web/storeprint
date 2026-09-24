@@ -20,7 +20,7 @@ import {
   clearAllTenantOrders,
 } from '../../services/multiTenantDb';
 import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
-import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore } from '../../services/firestoreSync';
+import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
 import { isFirebaseReady, db } from '../../services/firebase';
 import { StockItem } from '../../types';
 import { InstallAppModal } from './InstallAppModal';
@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
+  key?: React.Key;
   initialTenantId?: string;
   initialDepartment?: string;
 }
@@ -146,9 +147,21 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   const isLight = theme === 'light';
 
   const tenants = getTenants();
-  const [selectedTenantId] = useState<string>(
-    initialTenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
-  );
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(() => {
+    if (initialTenantId) return initialTenantId;
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const t = urlParams.get('tenant');
+      if (t) return t;
+    }
+    return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
+  });
+
+  useEffect(() => {
+    if (initialTenantId && initialTenantId !== selectedTenantId) {
+      setSelectedTenantId(initialTenantId);
+    }
+  }, [initialTenantId, selectedTenantId]);
 
   const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
   const warehouses = getWarehouses(selectedTenantId);
@@ -215,7 +228,35 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
   const [orderSuccessNumber, setOrderSuccessNumber] = useState<string | null>(null);
   const [lastSubmittedOrder, setLastSubmittedOrder] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getDbStock());
+
+  // Helper to load base stock for active tenant
+  const getInitialStockForTenant = (tId: string): Record<string, StockItem> => {
+    if (tId === 'tenant-main-01') {
+      return getDbStock();
+    }
+    const inv = getInventory(tId);
+    const stockMap: Record<string, StockItem> = {};
+    inv.forEach((item, idx) => {
+      stockMap[item.name] = {
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        currentStock: item.currentStock || 0,
+        minThreshold: item.minThreshold || 10,
+        colIndex: item.colIndex || idx + 1,
+        isActive: item.isActive !== false,
+        limitByPatients: Boolean(item.limitByPatients),
+      };
+    });
+    return stockMap;
+  };
+
+  const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getInitialStockForTenant(selectedTenantId));
+
+  // Sync initial stock when tenant changes
+  useEffect(() => {
+    setLiveStock(getInitialStockForTenant(selectedTenantId));
+  }, [selectedTenantId]);
 
   // Save selected department
   useEffect(() => {
@@ -238,7 +279,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
     }
   }, [patientsCount]);
 
-  // Subscribe to real-time warehouse stock from Firestore
+  // Subscribe to real-time warehouse stock from Firestore strictly for active tenant
   useEffect(() => {
     const unsub = subscribeToFirestoreStock((newStock) => {
       setLiveStock(newStock);
@@ -304,8 +345,26 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   // RULE 1: Catalog strictly matches active warehouse stock and EXCLUDES frozen/inactive items
   const inventoryItems = useMemo(() => {
-    const dbStock = getDbStock();
-    const mergedStock: Record<string, StockItem> = { ...dbStock, ...(liveStock || {}) };
+    let baseStock: Record<string, StockItem> = {};
+    if (selectedTenantId === 'tenant-main-01') {
+      baseStock = getDbStock();
+    } else {
+      const inv = getInventory(selectedTenantId);
+      inv.forEach((item, idx) => {
+        baseStock[item.name] = {
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          currentStock: item.currentStock || 0,
+          minThreshold: item.minThreshold || 10,
+          colIndex: item.colIndex || idx + 1,
+          isActive: item.isActive !== false,
+          limitByPatients: Boolean(item.limitByPatients),
+        };
+      });
+    }
+
+    const mergedStock: Record<string, StockItem> = { ...baseStock, ...(liveStock || {}) };
 
     const stockList = Object.values(mergedStock);
 
@@ -335,7 +394,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
     return getInventory(activeTenant.id, activeWarehouse.id)
       .filter((p) => p.isActive !== false)
       .map((p) => ({ ...p, category: detectItemCategory(p.name) }));
-  }, [liveStock, activeTenant, activeWarehouse]);
+  }, [liveStock, selectedTenantId, activeTenant, activeWarehouse]);
 
   // Filtered Products by Category & Search Query
   const filteredProducts = useMemo(() => {
@@ -530,10 +589,19 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   const [orderHistoryVersion, setOrderHistoryVersion] = useState(0);
 
-  // Department's own past submissions
+  // Sync tenant orders from Firestore on load and on tenant change
+  useEffect(() => {
+    fetchOrdersFromFirestore(selectedTenantId)
+      .then(() => setOrderHistoryVersion((v) => v + 1))
+      .catch(console.warn);
+  }, [selectedTenantId]);
+
+  // Department's own past submissions (strictly isolated to active tenant)
   const myDeptOrders = useMemo(() => {
     return getTenantOrders(selectedTenantId).filter(
-      (o) => o.departmentName === selectedDepartmentName
+      (o) =>
+        o.departmentName === selectedDepartmentName &&
+        (selectedTenantId === 'tenant-main-01' ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === selectedTenantId)
     );
   }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber, orderHistoryVersion]);
 

@@ -9,6 +9,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  tenantId?: string;
   rowNumber: number;
   timestamp: string;       // Column A (חותמת זמן, e.g. 20/07/2026 09:37:32)
   rawDate: string;         // Column B (תאריך, e.g. 20/07/2026)

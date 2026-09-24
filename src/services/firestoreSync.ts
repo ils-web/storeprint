@@ -153,8 +153,10 @@ export async function updateOrderPrintedInFirestore(
     const docRef = doc(db, 'tenants', tenantId, 'orders', orderId);
     await setDoc(docRef, patch, { merge: true });
 
-    const globalRef = doc(db, 'orders', orderId);
-    await setDoc(globalRef, patch, { merge: true });
+    if (tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'orders', orderId);
+      await setDoc(globalRef, patch, { merge: true });
+    }
 
     return true;
   } catch (err) {
@@ -164,7 +166,7 @@ export async function updateOrderPrintedInFirestore(
 }
 
 /**
- * Subscribes to real-time orders from Firestore across both tenant and global collections
+ * Subscribes to real-time orders from Firestore strictly for the specified tenant
  */
 export function subscribeToFirestoreOrders(
   onOrdersUpdated: (orders: MultiTenantOrder[]) => void,
@@ -179,16 +181,18 @@ export function subscribeToFirestoreOrders(
       snapshot.forEach((docSnap: any) => {
         const data = docSnap.data() as MultiTenantOrder;
         if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          ordersMap.set(docSnap.id, data);
+          if (!data.tenantId || data.tenantId === tenantId) {
+            ordersMap.set(docSnap.id, data);
+          }
         }
       });
 
-      const liveOrders = Array.from(ordersMap.values());
-      if (liveOrders.length > 0) {
-        liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        saveTenantOrders(tenantId, liveOrders);
-        onOrdersUpdated(liveOrders);
-      }
+      const liveOrders = Array.from(ordersMap.values()).filter(
+        (o) => !o.tenantId || o.tenantId === tenantId
+      );
+      liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      saveTenantOrders(tenantId, liveOrders);
+      onOrdersUpdated(liveOrders);
     };
 
     // 1. Subscribe to tenant collection
@@ -200,22 +204,27 @@ export function subscribeToFirestoreOrders(
       (err) => console.warn('Firestore tenant orders subscription error:', err)
     );
 
-    // 2. Subscribe to global collection
-    const globalCol = collection(db, 'orders');
-    const q2 = query(globalCol, limit(1000));
-    const unsub2 = onSnapshot(
-      q2,
-      handleSnapshot,
-      (err) => console.warn('Firestore global orders subscription error:', err)
-    );
+    // 2. Subscribe to global collection ONLY for main hospital tenant
+    let unsub2: (() => void) | null = null;
+    if (tenantId === 'tenant-main-01') {
+      const globalCol = collection(db, 'orders');
+      const q2 = query(globalCol, limit(1000));
+      unsub2 = onSnapshot(
+        q2,
+        handleSnapshot,
+        (err) => console.warn('Firestore global orders subscription error:', err)
+      );
+    }
 
     return () => {
       try {
         unsub1();
       } catch {}
-      try {
-        unsub2();
-      } catch {}
+      if (unsub2) {
+        try {
+          unsub2();
+        } catch {}
+      }
     };
   } catch (err) {
     console.warn('Failed to start Firestore orders subscription:', err);
@@ -224,7 +233,7 @@ export function subscribeToFirestoreOrders(
 }
 
 /**
- * Fetches all orders directly from Firestore across both tenant and global collections
+ * Fetches all orders directly from Firestore strictly for the specified tenant
  */
 export async function fetchOrdersFromFirestore(
   tenantId: string = 'tenant-main-01'
@@ -233,7 +242,7 @@ export async function fetchOrdersFromFirestore(
   try {
     const ordersMap = new Map<string, MultiTenantOrder>();
 
-    // Fetch tenant collection
+    // 1. Fetch tenant collection
     try {
       const ordersCol = collection(db, 'tenants', tenantId, 'orders');
       const q = query(ordersCol, limit(1000));
@@ -241,33 +250,39 @@ export async function fetchOrdersFromFirestore(
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          ordersMap.set(docSnap.id, data as MultiTenantOrder);
+          if (!data.tenantId || data.tenantId === tenantId) {
+            ordersMap.set(docSnap.id, data as MultiTenantOrder);
+          }
         }
       });
     } catch (e) {
       console.warn('Error fetching tenant orders:', e);
     }
 
-    // Fetch global collection
-    try {
-      const globalCol = collection(db, 'orders');
-      const qG = query(globalCol, limit(1000));
-      const snapG = await getDocs(qG);
-      snapG.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          ordersMap.set(docSnap.id, data as MultiTenantOrder);
-        }
-      });
-    } catch (e) {
-      console.warn('Error fetching global orders:', e);
+    // 2. Fetch global collection ONLY for main hospital tenant
+    if (tenantId === 'tenant-main-01') {
+      try {
+        const globalCol = collection(db, 'orders');
+        const qG = query(globalCol, limit(1000));
+        const snapG = await getDocs(qG);
+        snapG.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+            if (!data.tenantId || data.tenantId === tenantId) {
+              ordersMap.set(docSnap.id, data as MultiTenantOrder);
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('Error fetching global orders:', e);
+      }
     }
 
-    const orders = Array.from(ordersMap.values());
-    if (orders.length > 0) {
-      orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      saveTenantOrders(tenantId, orders);
-    }
+    const orders = Array.from(ordersMap.values()).filter(
+      (o) => !o.tenantId || o.tenantId === tenantId
+    );
+    orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    saveTenantOrders(tenantId, orders);
     return orders;
   } catch (err) {
     console.warn('Firestore fetchOrdersFromFirestore error:', err);
@@ -291,9 +306,11 @@ export async function deleteOrderFromFirestore(
     const docRef = doc(db, 'tenants', tenantId, 'orders', cleanId);
     await deleteDoc(docRef);
 
-    // 2. Delete from global collection
-    const globalRef = doc(db, 'orders', cleanId);
-    await deleteDoc(globalRef);
+    // 2. Delete from global collection ONLY for main hospital tenant
+    if (tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'orders', cleanId);
+      await deleteDoc(globalRef);
+    }
 
     console.log('✅ Order deleted from Firestore permanently:', cleanId);
     return true;
@@ -322,8 +339,10 @@ export async function pushPrintedOrderKeysToFirestore(
     const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
     await setDoc(tenantRef, payload, { merge: true });
 
-    const globalRef = doc(db, 'warehouse', 'printed_orders');
-    await setDoc(globalRef, payload, { merge: true });
+    if (tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'warehouse', 'printed_orders');
+      await setDoc(globalRef, payload, { merge: true });
+    }
     return true;
   } catch (err) {
     console.warn('Firestore pushPrintedOrderKeys error:', err);
@@ -344,10 +363,12 @@ export async function fetchPrintedOrderKeysFromFirestore(
     if (snap.exists() && Array.isArray(snap.data()?.keys)) {
       return snap.data()?.keys;
     }
-    const globalRef = doc(db, 'warehouse', 'printed_orders');
-    const snapG = await getDoc(globalRef);
-    if (snapG.exists() && Array.isArray(snapG.data()?.keys)) {
-      return snapG.data()?.keys;
+    if (tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'warehouse', 'printed_orders');
+      const snapG = await getDoc(globalRef);
+      if (snapG.exists() && Array.isArray(snapG.data()?.keys)) {
+        return snapG.data()?.keys;
+      }
     }
     return [];
   } catch (err) {

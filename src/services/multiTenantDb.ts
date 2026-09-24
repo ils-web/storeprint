@@ -184,8 +184,10 @@ async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
     const docRef = doc(db, 'tenants', order.tenantId, 'orders', order.id);
     await setDoc(docRef, cleanPayload, { merge: true });
 
-    const globalRef = doc(db, 'orders', order.id);
-    await setDoc(globalRef, cleanPayload, { merge: true });
+    if (order.tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'orders', order.id);
+      await setDoc(globalRef, cleanPayload, { merge: true });
+    }
   } catch (e) {
     console.warn('syncOrderToFirestore warning:', e);
   }
@@ -621,7 +623,16 @@ export function getTenantOrders(tenantId: string, warehouseId?: string): MultiTe
   const key = `${ORDERS_KEY}${tenantId}`;
   let orders = getStoredJson<MultiTenantOrder[]>(key, []);
   const initialLen = orders.length;
-  orders = orders.filter((o) => o && o.id && !PURGED_TEST_ORDER_IDS.has(o.id));
+
+  // Strict tenant isolation: ensure orders strictly belong to this tenant
+  if (tenantId === 'tenant-main-01') {
+    // For main hospital, orders can be explicitly tenant-main-01 or legacy orders without tenantId
+    orders = orders.filter((o) => o && o.id && !PURGED_TEST_ORDER_IDS.has(o.id) && (!o.tenantId || o.tenantId === 'tenant-main-01'));
+  } else {
+    // For any other tenant, orders MUST explicitly have this tenant's tenantId!
+    orders = orders.filter((o) => o && o.id && !PURGED_TEST_ORDER_IDS.has(o.id) && o.tenantId === tenantId);
+  }
+
   if (orders.length !== initialLen) {
     setStoredJson(key, orders);
   }
@@ -631,7 +642,15 @@ export function getTenantOrders(tenantId: string, warehouseId?: string): MultiTe
 
 export function saveTenantOrders(tenantId: string, orders: MultiTenantOrder[]): void {
   const key = `${ORDERS_KEY}${tenantId}`;
-  setStoredJson(key, orders);
+  // Ensure we only save orders that belong to this tenant
+  const cleaned = (orders || []).filter((o) => {
+    if (!o || !o.id) return false;
+    if (tenantId === 'tenant-main-01') {
+      return !o.tenantId || o.tenantId === 'tenant-main-01';
+    }
+    return o.tenantId === tenantId;
+  });
+  setStoredJson(key, cleaned);
 }
 
 export function createTenantOrder(tenantId: string, orderData: Omit<MultiTenantOrder, 'id' | 'createdAt' | 'orderNumber'>): MultiTenantOrder {
