@@ -20,10 +20,10 @@ import { BILLING_PLANS } from '../../services/multiTenantDb';
 
 interface LandingPageProps {
   onLoginSuccess: (session: AuthSession) => void;
-  onOpenOrderPortal: () => void;
+  onOpenOrderPortal?: () => void;
 }
 
-export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPageProps) {
+export function LandingPage({ onLoginSuccess }: LandingPageProps) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   return (
@@ -44,14 +44,6 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={onOpenOrderPortal}
-              className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-700/80 transition-all cursor-pointer"
-            >
-              <Smartphone className="w-4 h-4 text-purple-400" />
-              <span>פורטל הזמנות (PWA)</span>
-            </button>
-
             <button
               onClick={() => setIsLoginOpen(true)}
               className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl shadow-lg shadow-indigo-500/25 transition-all cursor-pointer"
@@ -86,21 +78,14 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
             בקרה מלאה על יתרות מלאי בסניפים, תמיכה מלאה בסוגי אריזות (יחידות, חבילות, קופסאות, קרטונים), פורטל הזמנות PWA לצוותי המחלקות והדפסת טפסי ניפוק בלחיצה אחת.
           </p>
 
-          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="pt-4 flex items-center justify-center">
             <button
               onClick={() => setIsLoginOpen(true)}
               className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-base font-bold shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
               <Building2 className="w-5 h-5" />
-              <span>כניסה לסניפים וסופר-אדמין</span>
-            </button>
-
-            <button
-              onClick={onOpenOrderPortal}
-              className="w-full sm:w-auto px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-2xl text-base font-semibold border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <Smartphone className="w-5 h-5 text-purple-400" />
-              <span>פורטל הזמנות מחלקות (PWA)</span>
+              <span>כניסה למערכת (סניפים וסופר-אדמין)</span>
+              <ArrowLeft className="w-5 h-5 mr-1" />
             </button>
           </div>
         </div>
@@ -129,11 +114,11 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
 
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all text-right">
               <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
-                <FileSpreadsheet className="w-6 h-6" />
+                <Smartphone className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Google Forms במקביל</h3>
+              <h3 className="text-lg font-bold text-white mb-2">פורטל הזמנות מאובטח</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                עבודה מקבילה: טפסי גוגל ממשיכים לפעול כרגיל, והנתונים נקלטים ומוצגים ישירות במערכת המחסן.
+                מערכת דיגיטלית מלאה למחלקות: הזמנות מסווגות, שילוט QR מחלקתי מוגן, ללא תלות בטפסים חיצוניים.
               </p>
             </div>
 
@@ -226,7 +211,6 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         onSuccess={onLoginSuccess}
-        onOpenOrderPortal={onOpenOrderPortal}
       />
     </div>
   );
