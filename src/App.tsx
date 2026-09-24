@@ -94,6 +94,7 @@ import {
   fetchInventoryFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
+import { organizeStockLogically } from './utils/stockGrouper';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download } from 'lucide-react';
 
@@ -789,7 +790,7 @@ export default function App() {
           }
 
           const itemName = localItem?.name || (typeof rawVal === 'object' && rawVal.name ? String(rawVal.name) : key);
-          if (!itemName || typeof itemName !== 'string') return;
+          if (!itemName || typeof itemName !== 'string' || itemName.startsWith('פריט ') || itemName.startsWith('item ')) return;
 
           const safeStock = cloudQty !== undefined ? Math.max(0, cloudQty) : (localItem?.currentStock ?? 0);
           const safeMin = cloudMin !== undefined ? Math.max(1, cloudMin) : (localItem?.minThreshold ?? 10);
@@ -797,9 +798,8 @@ export default function App() {
           const safeIsActive = localItem?.isActive !== undefined ? localItem.isActive : (cloudIsActive !== undefined ? cloudIsActive : true);
           const safeLimit = localItem?.limitByPatients !== undefined ? localItem.limitByPatients : Boolean(cloudLimitByPatients);
 
-          const safeCol = (typeof rawVal === 'object' && typeof rawVal.colIndex === 'number' && rawVal.colIndex > 0)
-            ? rawVal.colIndex
-            : (localItem?.colIndex ?? (Object.keys(mergedWithLocal).length + 4));
+          // Strictly preserve local warehouse position (colIndex); external webhook must NEVER scramble manual order
+          const safeCol = localItem?.colIndex ?? (typeof rawVal === 'object' && typeof rawVal.colIndex === 'number' && rawVal.colIndex > 0 ? rawVal.colIndex : (Object.keys(mergedWithLocal).length + 4));
 
           mergedWithLocal[itemName] = {
             id: localItem?.id || (typeof rawVal === 'object' && rawVal.id ? String(rawVal.id) : `stock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
@@ -952,6 +952,56 @@ export default function App() {
     setSuccessMessage('קטלוג המחסן שוחזר בהצלחה ל-192 פריטים תקינים ללא כפילויות! 📦✨');
     setTimeout(() => setSuccessMessage(null), 4000);
   }, [departments, syncToMultiTenantDb]);
+
+  const handleOrganizeLogically = useCallback(() => {
+    setStock((prev) => {
+      const organized = organizeStockLogically(prev);
+      saveDbStock(organized, true);
+      saveStoredStock(organized);
+      const newHeaders = Object.keys(organized);
+      setProductHeaders(newHeaders);
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+      } catch {}
+      syncToMultiTenantDb(newHeaders, departments, organized);
+      return organized;
+    });
+    setSuccessMessage('המחסן אורגן וסודר בהצלחה לפי קטגוריות רפואיות! 🩺📦✨');
+    setTimeout(() => setSuccessMessage(null), 4000);
+  }, [departments, syncToMultiTenantDb]);
+
+  const handleRestoreCloudBackup = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { doc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('./services/firebase');
+      if (!db) throw new Error('Firebase לא מחובר');
+      const docRef = doc(db, 'tenants', activeTenantId, 'warehouse', 'stock_backup');
+      const snap = await getDoc(docRef);
+      if (snap.exists() && snap.data()?.stock) {
+        const backupStock = snap.data().stock as Record<string, StockItem>;
+        setStock(backupStock);
+        saveDbStock(backupStock, true);
+        saveStoredStock(backupStock);
+        const newHeaders = Object.keys(backupStock);
+        setProductHeaders(newHeaders);
+        try {
+          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
+        } catch {}
+        syncToMultiTenantDb(newHeaders, departments, backupStock);
+        setSuccessMessage('המלאי שוחזר בהצלחה מגיבוי הענן המאובטח! 🛡️✨');
+        setTimeout(() => setSuccessMessage(null), 4000);
+      } else {
+        setErrorMessage('לא נמצא גיבוי ענן זמין לשחזור.');
+        setTimeout(() => setErrorMessage(null), 4000);
+      }
+    } catch (e: any) {
+      setErrorMessage(`שגיאה בשחזור גיבוי: ${e?.message || e}`);
+      setTimeout(() => setErrorMessage(null), 5000);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
     setStock((prev) => {
@@ -1646,6 +1696,8 @@ export default function App() {
               onDeleteItem={handleDeleteStockItem}
               onMoveItem={handleMoveStockItem}
               onResetMasterCatalog={handleResetMasterCatalog}
+              onOrganizeLogically={handleOrganizeLogically}
+              onRestoreBackup={handleRestoreCloudBackup}
             />
           )}
 

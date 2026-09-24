@@ -11,6 +11,7 @@ import {
   Upload,
   Layers,
   Sparkles,
+  ShieldCheck,
   Sliders,
   RotateCcw,
   Cloud,
@@ -299,6 +300,8 @@ interface WarehouseViewProps {
   onDeleteItem?: (idOrName: string) => void;
   onMoveItem?: (idOrName: string, direction: 'up' | 'down') => void;
   onResetMasterCatalog?: () => void;
+  onOrganizeLogically?: () => void;
+  onRestoreBackup?: () => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -319,6 +322,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onDeleteItem,
   onMoveItem,
   onResetMasterCatalog,
+  onOrganizeLogically,
+  onRestoreBackup,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
@@ -668,16 +673,27 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן'}</span>
               </button>
 
-              {/* Direct Fetch / Pull Stock from Cloud */}
-              {cloudConfig.enabled && (
+              {/* Smart Medical Grouping Button */}
+              {onOrganizeLogically && (
                 <button
-                  onClick={onSyncWithCloud}
-                  disabled={isSyncingCloud}
-                  className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="משיכת נתוני המלאי העדכניים מטבלת ה-Google Sheets"
+                  onClick={onOrganizeLogically}
+                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="קיבוץ וארגון אוטומטי של המחסן לפי קטגוריות רפואיות מסודרות (כפפות, מיגון, מזרקים, חבישות...)"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingCloud ? 'מושך...' : 'טען מהענן'}</span>
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>ארגון חכם לפי קטגוריות 🩺</span>
+                </button>
+              )}
+
+              {/* Restore from Cloud Backup */}
+              {onRestoreBackup && (
+                <button
+                  onClick={onRestoreBackup}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="שחזור המחסן מגיבוי הענן האחרון שנשמר ב-Firestore"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>שחזור מגיבוי ענן 🛡️</span>
                 </button>
               )}
 

@@ -3,11 +3,11 @@ import { StockItem, CloudSyncConfig } from '../types';
 const CLOUD_CONFIG_STORAGE_KEY = 'storeprint_cloud_config_v1';
 
 export const DEFAULT_CLOUD_CONFIG: CloudSyncConfig = {
-  enabled: true,
+  enabled: false,
   syncType: 'webhook',
-  endpointUrl: 'https://script.google.com/macros/s/AKfycbw9WnCTi0kc-lzRHVGZtNRW6KXgfEhGdBsKK1WW7PQKqPlhOFfAdz1xNSGKzsoSnjO2/exec',
+  endpointUrl: '',
   apiKey: '',
-  autoSyncOnPrint: true,
+  autoSyncOnPrint: false,
   lastSyncedAt: undefined,
 };
 
@@ -33,7 +33,16 @@ export function loadCloudConfig(): CloudSyncConfig {
   try {
     const raw = localStorage.getItem(CLOUD_CONFIG_STORAGE_KEY);
     if (!raw) return DEFAULT_CLOUD_CONFIG;
-    return { ...DEFAULT_CLOUD_CONFIG, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    // Neutralize legacy dangerous test endpoint that overwrites warehouse catalog
+    if (parsed.endpointUrl && parsed.endpointUrl.includes('AKfycbw9WnCTi0kc-lzRHVGZtNRW6KXgfEhGdBsKK1WW7PQKqPlhOFfAdz1xNSGKzsoSnjO2')) {
+      parsed.enabled = false;
+      parsed.endpointUrl = '';
+      try {
+        localStorage.setItem(CLOUD_CONFIG_STORAGE_KEY, JSON.stringify({ ...DEFAULT_CLOUD_CONFIG, ...parsed, enabled: false, endpointUrl: '' }));
+      } catch {}
+    }
+    return { ...DEFAULT_CLOUD_CONFIG, ...parsed };
   } catch (err) {
     console.warn('Failed to load cloud config:', err);
     return DEFAULT_CLOUD_CONFIG;

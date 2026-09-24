@@ -81,12 +81,6 @@ export function MobileStockManager({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Auto-sync on initial mount
-  useEffect(() => {
-    if (onSyncWithCloud) {
-      onSyncWithCloud();
-    }
-  }, []);
 
   const stockList = useMemo(() => Object.values(stock), [stock]);
 
