@@ -23,14 +23,6 @@ import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
 import { AuthSession, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
 import {
-  DEFAULT_SPREADSHEET_ID,
-  DEFAULT_GID,
-  DEFAULT_SPREADSHEET_URL,
-  fetchPublicCsvValues,
-  processRawRowsToOrders,
-  getMockCurrentWeekOrders,
-} from './utils/googleSheets';
-import {
   getDbStock,
   saveDbStock,
   updateDbStockItem,
@@ -43,7 +35,6 @@ import {
   sanitizeAndDeduplicateStock,
   getDbDepartments,
   CANONICAL_DEPARTMENTS,
-  ingestGoogleFormsOrders,
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
   getDbDeletedOrderIds,
@@ -150,11 +141,6 @@ export default function App() {
       }
     }
   }, []);
-
-  // Spreadsheet state
-  const [spreadsheetId, setSpreadsheetId] = useState<string>(activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID);
-  const [gid, setGid] = useState<string>(activeTenant?.spreadsheetGid && activeTenant.spreadsheetGid !== '0' ? activeTenant.spreadsheetGid : DEFAULT_GID);
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(DEFAULT_SPREADSHEET_URL);
 
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
   const ACTIVE_TAB_KEY = 'storeprint_active_tab_v1';
@@ -345,7 +331,13 @@ export default function App() {
 
   // Helper to convert a PWA MultiTenantOrder into a printable Order object
   const convertTenantOrderToAppOrder = useCallback((to: MultiTenantOrder, idx: number): Order => {
-    const dateObj = to.createdAt ? new Date(to.createdAt) : new Date();
+    let dateObj: Date;
+    try {
+      dateObj = to.createdAt ? new Date(to.createdAt) : new Date();
+      if (isNaN(dateObj.getTime())) dateObj = new Date();
+    } catch {
+      dateObj = new Date();
+    }
     const dateStr = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
     const timeStr = `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}:${String(dateObj.getSeconds()).padStart(2, '0')}`;
     const fullTimestamp = `${dateStr} ${timeStr}`;
@@ -357,25 +349,36 @@ export default function App() {
       .filter(Boolean)
       .join(' • ');
 
-    return {
-      id: to.id || `pwa-order-${idx}-${to.orderNumber}`,
-      rowNumber: to.rawGoogleSheetRow || (9000 + idx),
-      timestamp: fullTimestamp,
-      rawDate: dateStr,
-      parsedDate: dateObj,
-      department: to.departmentName,
-      patientsCount: rawNotesOrPatients || to.patientsCount || '',
-      items: (to.items || []).map((item, itemIdx) => ({
+    const dbStock = getDbStock();
+
+    const orderItems = (to.items || []).map((item, itemIdx) => {
+      const stockItem = dbStock[item.name] || Object.values(dbStock).find((s) => s.name === item.name || s.id === item.productId);
+      const colIndex = (item as any).colIndex || (stockItem ? stockItem.colIndex : itemIdx + 4);
+      return {
         id: item.id || `item-${itemIdx}-${item.productId || itemIdx}`,
         name: item.name,
         qty: item.orderedUnit && item.orderedUnit !== "יח'"
           ? `${item.orderedQty} ${item.orderedUnit}`
           : String(item.orderedQty),
         numericQty: item.orderedQty,
-        colIndex: 0,
+        colIndex,
         checked: item.checked,
-      })),
-      totalItemsCount: to.totalItemsCount || (to.items || []).length,
+      };
+    });
+
+    // Sort items by warehouse shelf colIndex
+    orderItems.sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
+
+    return {
+      id: to.id || `order-${idx}-${to.orderNumber}`,
+      rowNumber: to.rawGoogleSheetRow || (idx + 1),
+      timestamp: fullTimestamp,
+      rawDate: dateStr,
+      parsedDate: dateObj,
+      department: to.departmentName || (to as any).department || 'כללי',
+      patientsCount: rawNotesOrPatients || to.patientsCount || '',
+      items: orderItems,
+      totalItemsCount: to.totalItemsCount || orderItems.length,
       printed: Boolean(to.printed),
       printedAt: to.printedAt,
       rawRow: {},
@@ -384,7 +387,7 @@ export default function App() {
 
   const isFetchingOrdersRef = useRef<boolean>(false);
 
-  // Load and Process Google Sheet Orders + PWA Multi-Tenant Orders
+  // Load and Process Orders directly from Cloud Firestore (100% independent from Google Sheets/Forms)
   const loadOrders = useCallback(
     async (isManualRefresh = false) => {
       if (isFetchingOrdersRef.current) return;
@@ -395,88 +398,48 @@ export default function App() {
         setErrorMessage(null);
       }
 
-      // Load both remote Firestore orders and local PWA orders for current active tenant
-      let remoteTenantOrders: MultiTenantOrder[] = [];
       try {
-        remoteTenantOrders = await fetchOrdersFromFirestore(activeTenantId || 'tenant-main-01');
-      } catch (e) {
-        console.warn('Could not fetch remote Firestore orders:', e);
-      }
-      const localTenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
-      const allTenantMap = new Map<string, MultiTenantOrder>();
-      localTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
-      remoteTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
-      const tenantOrders = Array.from(allTenantMap.values());
-      const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
+        // 1. Fetch printed order keys from local DB and remote Firestore
+        const currentPrinted = new Set<string>();
+        getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+        printedOrderIds.forEach((id) => currentPrinted.add(id));
+        try {
+          const remotePrinted = await fetchPrintedOrderKeysFromFirestore(activeTenantId || 'tenant-main-01');
+          remotePrinted.forEach((k) => {
+            if (k && !k.startsWith('unprinted_')) currentPrinted.add(k);
+          });
+        } catch {}
 
-      // Combine stored printed IDs with live state and Firestore cloud keys
-      const currentPrinted = new Set<string>();
-      getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
-      printedOrderIds.forEach((id) => currentPrinted.add(id));
-      try {
-        const remotePrinted = await fetchPrintedOrderKeysFromFirestore(activeTenantId || 'tenant-main-01');
-        remotePrinted.forEach((k) => {
-          if (k && !k.startsWith('unprinted_')) currentPrinted.add(k);
-        });
-      } catch {}
-
-      try {
-        const currentSpreadsheetId = spreadsheetId || activeTenant?.spreadsheetId || DEFAULT_SPREADSHEET_ID;
-        const rawGid = gid || activeTenant?.spreadsheetGid || DEFAULT_GID;
-        const currentGid = (!rawGid || rawGid === '0' || rawGid === 'null' || rawGid === 'undefined') ? DEFAULT_GID : rawGid;
-        const rows = await fetchPublicCsvValues(currentSpreadsheetId, currentGid);
-
-        if (!rows || rows.length < 2) {
-          throw new Error('קובץ הטבלה ריק או שאין בו מספיק נתונים');
+        // 2. Fetch orders from Firestore (and merge with local store if offline)
+        let remoteTenantOrders: MultiTenantOrder[] = [];
+        try {
+          remoteTenantOrders = await fetchOrdersFromFirestore(activeTenantId || 'tenant-main-01');
+        } catch (e) {
+          console.warn('Could not fetch remote Firestore orders:', e);
         }
-
-        const result = ingestGoogleFormsOrders(rows, currentPrinted);
+        const localTenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
+        const allTenantMap = new Map<string, MultiTenantOrder>();
+        localTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
+        remoteTenantOrders.forEach((to) => { if (to && to.id) allTenantMap.set(to.id, to); });
+        const tenantOrders = Array.from(allTenantMap.values());
+        const convertedTenantOrders = tenantOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
 
         const checkOrderPrinted = (o: Order) => {
-          return isOrderPrintedInSet(o, currentPrinted);
+          return Boolean(o.printed) || isOrderPrintedInSet(o, currentPrinted) || currentPrinted.has(o.id) || currentPrinted.has(getOrderPrintKey(o));
         };
-
-        const syncedOrders = result.orders.map((o) => ({
-          ...o,
-          printed: checkOrderPrinted(o),
-        }));
-
-        // Merge PWA orders with Sheet orders (PWA orders first so latest submitted orders appear at the very top!)
-        const allOrdersMap = new Map<string, Order>();
-        convertedTenantOrders.forEach((o) => {
-          const isPrinted = checkOrderPrinted(o);
-          allOrdersMap.set(o.id, {
-            ...o,
-            printed: isPrinted,
-          });
-        });
-        syncedOrders.forEach((o) => {
-          const isPrinted = checkOrderPrinted(o);
-          if (!allOrdersMap.has(o.id)) {
-            allOrdersMap.set(o.id, {
-              ...o,
-              printed: isPrinted,
-            });
-          } else {
-            const existing = allOrdersMap.get(o.id)!;
-            allOrdersMap.set(o.id, {
-              ...existing,
-              ...o, // Fresh Google Sheet data ALWAYS overrides stale cached items
-              printed: existing.printed || isPrinted,
-              printedAt: existing.printedAt || o.printedAt,
-            });
-          }
-        });
 
         const deletedSet = new Set<string>();
         getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
         deletedOrderIds.forEach((id) => deletedSet.add(id));
 
-        const mergedOrders = Array.from(allOrdersMap.values()).filter(
-          (o) => !isOrderInSet(o, deletedSet)
-        );
+        const filteredOrders = convertedTenantOrders
+          .filter((o) => !isOrderInSet(o, deletedSet))
+          .map((o) => ({
+            ...o,
+            printed: checkOrderPrinted(o),
+          }));
 
-        mergedOrders.sort((a, b) => {
+        filteredOrders.sort((a, b) => {
           const dateA = coerceDate(a.parsedDate);
           const dateB = coerceDate(b.parsedDate);
           const timeA = dateA ? dateA.getTime() : 0;
@@ -488,7 +451,7 @@ export default function App() {
           const prevPrintedSet = new Set(prev.filter((p) => p.printed).map((p) => p.id));
           prev.filter((p) => p.printed).forEach((p) => prevPrintedSet.add(getOrderPrintKey(p)));
 
-          const finalOrders = mergedOrders.map((o) => {
+          const finalOrders = filteredOrders.map((o) => {
             // Strict protection: If an order was already printed, it can NEVER revert to unprinted!
             if (o.printed || prevPrintedSet.has(o.id) || prevPrintedSet.has(getOrderPrintKey(o))) {
               return { ...o, printed: true };
@@ -502,65 +465,54 @@ export default function App() {
           return finalOrders;
         });
 
-        if (result.departments.length > 0) {
-          setDepartments(() => {
-            const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-            const valid = result.departments.filter((d) => canonicalSet.has(d));
-            const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
-            localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
-            return merged;
-          });
+        // 3. Extract unique departments and merge with canonical list
+        const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
+        setDepartments(() => {
+          const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
+          const valid = distinctDepts.filter((d) => canonicalSet.has(d));
+          const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
+          localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
+          return merged;
+        });
+
+        // 4. Update product headers from DB stock
+        const dbStock = getDbStock();
+        if (Object.keys(dbStock).length > 0) {
+          setProductHeaders(Object.keys(dbStock));
         }
-        if (result.productHeaders.length > 0) {
-          setProductHeaders((prev) => {
-            const dbStock = getDbStock();
-            const merged = Array.from(new Set([...Object.keys(dbStock), ...result.productHeaders, ...prev]));
-            localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(merged));
-            return merged;
-          });
-        }
+
         setLastUpdated(new Date());
 
         if (isManualRefresh) {
-          setSuccessMessage('הנתונים נטענו בהצלחה!');
+          setSuccessMessage('כל ההזמנות סונכרנו מול ענן Firestore בהצלחה! 🟢');
           setTimeout(() => setSuccessMessage(null), 3500);
         }
       } catch (err: any) {
-        console.warn('Live fetch error, checking cached orders:', err);
-        let cachedLoaded = false;
+        console.warn('Firestore orders fetch error, checking cached orders:', err);
         try {
           const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
+              const currentPrinted = new Set<string>();
+              getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+              printedOrderIds.forEach((id) => currentPrinted.add(id));
+
               const cleanCached = parsed.map((o: any) => ({
                 ...o,
                 parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
-                printed: currentPrinted.has(getOrderPrintKey(o)),
+                printed: isOrderPrintedInSet(o, currentPrinted),
               }));
               setOrders(cleanCached);
-              cachedLoaded = true;
             }
           }
         } catch {}
-
-        if (!cachedLoaded) {
-          setOrders((prev) => {
-            if (prev.length > 0) return prev;
-            const mockOrders = getMockCurrentWeekOrders();
-            const cleanMock = mockOrders.map((o) => ({
-              ...o,
-              printed: currentPrinted.has(getOrderPrintKey(o)),
-            }));
-            return convertedTenantOrders.length > 0 ? convertedTenantOrders : cleanMock;
-          });
-        }
       } finally {
         setIsLoading(false);
         isFetchingOrdersRef.current = false;
       }
     },
-    [spreadsheetId, gid, activeTenantId, activeTenant, convertTenantOrderToAppOrder]
+    [activeTenantId, convertTenantOrderToAppOrder, printedOrderIds, deletedOrderIds]
   );
 
   // Auto-reload only on custom order creation events
@@ -608,36 +560,14 @@ export default function App() {
           const convertedLive = liveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
           const allMap = new Map<string, Order>();
 
-          // First put existing orders (from Sheet and cache)
           (prev || []).forEach((o) => {
             if (o && o.id) allMap.set(o.id, o);
           });
 
-          // If allMap has few items (race condition before Sheet loads), preserve cached Sheet orders
-          if (allMap.size <= 5) {
-            try {
-              const raw = localStorage.getItem('storeprint_orders_cache_v3') || localStorage.getItem('storeprint_orders_cache_v2');
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed) && parsed.length > 5) {
-                  parsed.forEach((o: any) => {
-                    if (o && o.id && !allMap.has(o.id)) {
-                      allMap.set(o.id, {
-                        ...o,
-                        parsedDate: coerceDate(o.parsedDate) || parseSheetDate(o.timestamp || o.rawDate) || new Date(o.parsedDate || Date.now()),
-                        printed: isOrderPrintedInSet(o, currentPrinted),
-                      });
-                    }
-                  });
-                }
-              }
-            } catch {}
-          }
-
           // Overlay with fresh live orders from Firestore
           convertedLive.forEach((o) => {
             if (o && o.id) {
-              const isPrinted = isOrderPrintedInSet(o, currentPrinted);
+              const isPrinted = Boolean(o.printed) || isOrderPrintedInSet(o, currentPrinted) || currentPrinted.has(o.id) || currentPrinted.has(getOrderPrintKey(o));
               allMap.set(o.id, {
                 ...o,
                 printed: isPrinted,
@@ -1550,8 +1480,6 @@ export default function App() {
               value={activeTenantId}
               onChange={(e) => {
                 setActiveTenantId(e.target.value);
-                const t = tenants.find((item) => item.id === e.target.value);
-                if (t?.spreadsheetId) setSpreadsheetId(t.spreadsheetId);
               }}
               className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
             >

@@ -613,8 +613,8 @@ export function getOrderPrintKey(order: {
   rawDate?: string;
 }): string {
   const id = (order.id || '').trim();
-  // PWA or Tenant Order format (e.g. order-1724900000000, pwa-...)
-  if (id.startsWith('order-') || id.startsWith('pwa-') || id.startsWith('tenant-')) {
+  // PWA or Tenant Order format (e.g. order-1724900000000, pwa-..., sheet-...)
+  if (id.startsWith('order-') || id.startsWith('pwa-') || id.startsWith('tenant-') || id.startsWith('sheet-')) {
     return id;
   }
   const dept = (order.department || '').trim().replace(/\s+/g, ' ');

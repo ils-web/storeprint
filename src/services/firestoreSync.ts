@@ -188,7 +188,7 @@ export function subscribeToFirestoreOrders(
 
     // 1. Subscribe to tenant collection
     const tenantCol = collection(db, 'tenants', tenantId, 'orders');
-    const q1 = query(tenantCol, limit(200));
+    const q1 = query(tenantCol, limit(1000));
     const unsub1 = onSnapshot(
       q1,
       handleSnapshot,
@@ -197,7 +197,7 @@ export function subscribeToFirestoreOrders(
 
     // 2. Subscribe to global collection
     const globalCol = collection(db, 'orders');
-    const q2 = query(globalCol, limit(200));
+    const q2 = query(globalCol, limit(1000));
     const unsub2 = onSnapshot(
       q2,
       handleSnapshot,
@@ -231,7 +231,7 @@ export async function fetchOrdersFromFirestore(
     // Fetch tenant collection
     try {
       const ordersCol = collection(db, 'tenants', tenantId, 'orders');
-      const q = query(ordersCol, limit(250));
+      const q = query(ordersCol, limit(1000));
       const snapshot = await getDocs(q);
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
@@ -246,7 +246,7 @@ export async function fetchOrdersFromFirestore(
     // Fetch global collection
     try {
       const globalCol = collection(db, 'orders');
-      const qG = query(globalCol, limit(250));
+      const qG = query(globalCol, limit(1000));
       const snapG = await getDocs(qG);
       snapG.forEach((docSnap) => {
         const data = docSnap.data();

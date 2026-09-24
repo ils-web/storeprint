@@ -19,8 +19,8 @@ import {
 import { AuthSession } from '../types/multiTenant';
 
 interface HeaderProps {
-  sheetUrl: string;
-  activeSheetTitle: string;
+  sheetUrl?: string;
+  activeSheetTitle?: string;
   activeTab: 'orders' | 'warehouse' | 'order_portal' | 'analytics';
   setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => void;
   isEmergencyMode?: boolean;
@@ -250,18 +250,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>{isRefreshing ? 'מרענן...' : 'רענן'}</span>
               </button>
 
-              {/* Google Sheets Link */}
-              <a
-                href={sheetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 transition-colors"
-                title="פתח טבלת הזמנות מקורית ב-Google Sheets"
+              {/* Real-Time Firebase Cloud Badge */}
+              <div
+                className="bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
+                title="מערכת עצמאית מחוברת ישירות לענן Firebase בזמן אמת (ללא תלות ב-Google Sheets)"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">טבלה</span>
-                <ExternalLink className="w-3 h-3 text-slate-400" />
-              </a>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-bold text-[11px] hidden sm:inline">ענן בזמן אמת 🟢</span>
+              </div>
 
               {/* Logout / Switch */}
               {onLogout && (
