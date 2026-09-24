@@ -1430,8 +1430,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white" dir="rtl">
       {/* Header */}
       <Header
-        sheetUrl={spreadsheetUrl}
-        activeSheetTitle="טבלת הזמנות אספקה"
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isEmergencyMode={isEmergencyMode}

@@ -19,8 +19,6 @@ import {
 import { AuthSession } from '../types/multiTenant';
 
 interface HeaderProps {
-  sheetUrl?: string;
-  activeSheetTitle?: string;
   activeTab: 'orders' | 'warehouse' | 'order_portal' | 'analytics';
   setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => void;
   isEmergencyMode?: boolean;
@@ -44,8 +42,6 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  sheetUrl,
-  activeSheetTitle,
   activeTab,
   setActiveTab,
   isEmergencyMode = false,

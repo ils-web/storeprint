@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import './index.css';
 
 // Register Service Worker for PWA support
@@ -16,6 +17,8 @@ if ('serviceWorker' in navigator && window.location.protocol.startsWith('http'))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary fallbackTitle="אירעה שגיאה בטעינת StorePrint">
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
