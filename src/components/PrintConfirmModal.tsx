@@ -25,15 +25,26 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
   // Count new vs already printed orders
   const alreadyPrintedCount = ordersToPrint.filter((o) => o.printed).length;
   const newOrdersCount = ordersToPrint.length - alreadyPrintedCount;
+  const allAlreadyPrinted = ordersToPrint.length > 0 && ordersToPrint.every((o) => o.printed);
 
-  // Selected mode defaults ALWAYS to 'deduct' so stock is properly deducted and no copy stamp appears
-  const [selectedMode, setSelectedMode] = useState<'deduct' | 'copy' | 'smart'>('deduct');
+  // Selected mode defaults to 'copy' if already printed, or 'deduct' if new
+  const [selectedMode, setSelectedMode] = useState<'deduct' | 'copy' | 'smart'>(() =>
+    allAlreadyPrinted ? 'copy' : 'deduct'
+  );
+
+  React.useEffect(() => {
+    if (allAlreadyPrinted) {
+      setSelectedMode('copy');
+    } else {
+      setSelectedMode('deduct');
+    }
+  }, [allAlreadyPrinted, isOpen]);
 
   // Calculate total items to deduct
   const totalItemsCount = ordersToPrint.reduce((acc, o) => acc + o.items.length, 0);
 
   const handleConfirm = () => {
-    if (selectedMode === 'copy') {
+    if (allAlreadyPrinted || selectedMode === 'copy') {
       onConfirmPrint(ordersToPrint, false, true);
     } else if (selectedMode === 'deduct') {
       onConfirmPrint(ordersToPrint, true, false);
@@ -83,20 +94,20 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
         <div className="p-6 sm:p-7 space-y-5 text-sm sm:text-base text-slate-800">
           
           {/* Status Info Banner if already printed */}
-          {isSingle && singleOrder?.printed && (
+          {allAlreadyPrinted && (
             <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-center gap-3 text-amber-900 shadow-xs">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
               <div className="text-xs sm:text-sm font-bold text-amber-950">
-                שים לב: הזמנה זו סומנה כהודפסה בעבר. תוכל לבחור לקזז שוב או להדפיס כהעתק.
+                🔒 {isSingle ? 'הזמנה זו' : 'הזמנות אלו'} כבר הודפסה בעבר והמלאי קוזז מהמחסן. הדפסה זו תבוצע כ<strong>העתק בלבד</strong> ללא גריעה נוספת מהמחסן.
               </div>
             </div>
           )}
 
-          {!isSingle && alreadyPrintedCount > 0 && (
+          {!allAlreadyPrinted && alreadyPrintedCount > 0 && (
             <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-center gap-3 text-amber-900 shadow-xs">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
               <div className="text-xs sm:text-sm font-bold text-amber-950">
-                מתוך {ordersToPrint.length} הזמנות, {alreadyPrintedCount} כבר הודפסו בעבר.
+                מתוך {ordersToPrint.length} הזמנות, {alreadyPrintedCount} כבר הודפסו בעבר. מומלץ לבחור ב״קיזוז חכם״ למניעת קיזוז כפול.
               </div>
             </div>
           )}
@@ -107,28 +118,38 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
               בחר פעולת הדפסה ומלאי:
             </label>
 
-            {/* Option 1: Full Deduction (DEFAULT - Primary) */}
+            {/* Option 1: Full Deduction (Only available if there are UNPRINTED orders!) */}
             <label
-              className={`p-4 rounded-2xl border-2 flex items-start gap-3.5 cursor-pointer transition-all ${
-                selectedMode === 'deduct'
-                  ? 'border-emerald-600 bg-emerald-50/90 shadow-sm ring-2 ring-emerald-500/20'
-                  : 'border-slate-200 hover:bg-slate-50'
+              className={`p-4 rounded-2xl border-2 flex items-start gap-3.5 transition-all ${
+                allAlreadyPrinted
+                  ? 'border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed'
+                  : selectedMode === 'deduct'
+                  ? 'border-emerald-600 bg-emerald-50/90 shadow-sm ring-2 ring-emerald-500/20 cursor-pointer'
+                  : 'border-slate-200 hover:bg-slate-50 cursor-pointer'
               }`}
             >
               <input
                 type="radio"
                 name="printMode"
+                disabled={allAlreadyPrinted}
                 checked={selectedMode === 'deduct'}
-                onChange={() => setSelectedMode('deduct')}
-                className="mt-1 w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
+                onChange={() => !allAlreadyPrinted && setSelectedMode('deduct')}
+                className="mt-1 w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0 disabled:cursor-not-allowed"
               />
               <div className="space-y-1 flex-1">
                 <div className="font-black text-slate-900 text-base flex items-center gap-2">
                   <PackageMinus className="w-5 h-5 text-emerald-600 shrink-0" />
                   <span>הדפס ובצע קיזוז מהמלאי (ניפוק רגיל — מקור)</span>
+                  {allAlreadyPrinted && (
+                    <span className="text-[11px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                      נעול: הזמנה זו כבר קוזזה 🔒
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  המסמך יודפס נקי <strong>(ללא חותמת העתק)</strong>, והכמויות יקוזזו באופן מלא מהמחסן.
+                  {allAlreadyPrinted
+                    ? 'הזמנה זו כבר נופקה וקוזזה בעבר. כדי למנוע קיזוז כפול, לא ניתן לגרוע שוב מהמחסן.'
+                    : 'המסמך יודפס נקי (ללא חותמת העתק), והכמויות יקוזזו באופן מלא מהמחסן.'}
                 </div>
               </div>
             </label>

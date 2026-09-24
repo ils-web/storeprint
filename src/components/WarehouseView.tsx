@@ -7,12 +7,9 @@ import {
   Search,
   Plus,
   Minus,
-  Download,
-  Upload,
   Layers,
   Sparkles,
   ShieldCheck,
-  Sliders,
   RotateCcw,
   Cloud,
   CloudCheck,
@@ -34,7 +31,7 @@ import {
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
-import { exportStockToJson, importStockFromJson, normalizeProductName } from '../utils/stockManager';
+import { normalizeProductName } from '../utils/stockManager';
 import { PhoneQRModal } from './PhoneQRModal';
 import { ItemModal } from './ItemModal';
 
@@ -294,12 +291,9 @@ interface WarehouseViewProps {
     isActive?: boolean,
     limitByPatients?: boolean
   ) => void;
-  onBatchUpdateStock: (updatedStock: Record<string, StockItem | number>) => void;
-  onSetAllStock: (qty: number) => void;
   onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => void;
   onDeleteItem?: (idOrName: string) => void;
   onMoveItem?: (idOrName: string, direction: 'up' | 'down') => void;
-  onResetMasterCatalog?: () => void;
   onOrganizeLogically?: () => void;
   onRestoreBackup?: () => void;
   onSaveBackup?: () => void;
@@ -317,12 +311,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onSyncWithCloud,
   isSyncingCloud,
   onUpdateStockItem,
-  onBatchUpdateStock,
-  onSetAllStock,
   onSaveFullItem,
   onDeleteItem,
   onMoveItem,
-  onResetMasterCatalog,
   onOrganizeLogically,
   onRestoreBackup,
   onSaveBackup,
@@ -330,11 +321,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
   const [globalThreshold, setGlobalThreshold] = useState<number>(10);
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [batchQtyInput, setBatchQtyInput] = useState<string>('50');
   const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
   const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
-  const [isResetMasterModalOpen, setIsResetMasterModalOpen] = useState(false);
   const [isOrganizeConfirmOpen, setIsOrganizeConfirmOpen] = useState(false);
   const [isRestoreBackupModalOpen, setIsRestoreBackupModalOpen] = useState(false);
 
@@ -490,35 +478,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     } else {
       printReorderListHtml(lowStockItems, globalThreshold);
     }
-  };
-
-  const handleExport = () => {
-    const json = exportStockToJson(stock);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `storeprint_stock_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const content = ev.target?.result as string;
-      const parsed = importStockFromJson(content);
-      if (parsed) {
-        onBatchUpdateStock(parsed);
-        alert('הנתונים יובאו בהצלחה!');
-      } else {
-        alert('שגיאה בקריאת קובץ JSON.');
-      }
-    };
-    reader.readAsText(file);
   };
 
   return (
@@ -743,17 +702,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <span>הוסף פריט למחסן 📦</span>
               </button>
 
-              {/* Reset / Restore Master Catalog (192 clean canonical items) */}
-              {onResetMasterCatalog && (
-                <button
-                  onClick={() => setIsResetMasterModalOpen(true)}
-                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                  title="שחזור קטלוג המלאי המקורי (192 פריטים נקיים ללא כפילויות)"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                  <span>איפוס לקטלוג מקורי (192) 🔄</span>
-                </button>
-              )}
               {/* Emergency Mode Toggle Button */}
               {onOpenEmergencyConfirm && (
                 <button
@@ -789,34 +737,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     : `הדפס דוח חוסרים (${lowStockItems.length})`}
                 </span>
               </button>
-
-              {/* Batch Set Stock */}
-              <button
-                onClick={() => setBatchModalOpen(true)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Sliders className="w-3.5 h-3.5 text-sky-600" />
-                <span className="hidden sm:inline">הגדרת מלאי לכולם</span>
-                <span className="sm:hidden">הגדרה כוללת</span>
-              </button>
-
-              {/* Export JSON */}
-              <button
-                onClick={handleExport}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded-xl border border-slate-300 transition-colors cursor-pointer"
-                title="ייצוא גיבוי מלאי לקובץ"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-
-              {/* Import JSON */}
-              <label
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-1.5 rounded-xl border border-slate-300 transition-colors cursor-pointer"
-                title="ייבוא גיבוי מלאי מקובץ"
-              >
-                <Upload className="w-4 h-4" />
-                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-              </label>
             </div>
 
           </div>
@@ -1144,76 +1064,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       </div>
 
-      {/* Batch Set Stock Modal */}
-      {batchModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Sliders className="w-5 h-5 text-sky-600" />
-              <span>הגדרת יתרת מלאי לכל הפריטים</span>
-            </h3>
-            <p className="text-xs text-slate-600">
-              ציינו את כמות המלאי ההתחלתית שתוזן <strong>עבור כל הפריטים במחסן</strong>:
-            </p>
-
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={batchQtyInput}
-                onChange={(e) => setBatchQtyInput(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-2.5 text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-              <span className="text-xs font-bold text-slate-500">יחידות</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setBatchQtyInput('50')}
-                className="py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
-              >
-                50 יח'
-              </button>
-              <button
-                type="button"
-                onClick={() => setBatchQtyInput('100')}
-                className="py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
-              >
-                100 יח'
-              </button>
-              <button
-                type="button"
-                onClick={() => setBatchQtyInput('0')}
-                className="py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
-              >
-                איפוס ל-0
-              </button>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                onClick={() => setBatchModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-              >
-                ביטול
-              </button>
-              <button
-                onClick={() => {
-                  const qty = parseInt(batchQtyInput, 10);
-                  onSetAllStock(isNaN(qty) ? 0 : Math.max(0, qty));
-                  setBatchModalOpen(false);
-                }}
-                className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer"
-              >
-                החל על כל הפריטים
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Department QR Cards Print Modal */}
       <DepartmentQRPrintModal
         isOpen={isDeptQRModalOpen}
@@ -1271,48 +1121,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>כן, מחק לצמיתות 🗑️</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Dialog for Resetting to Master Catalog */}
-      {isResetMasterModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn" dir="rtl">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 space-y-4 text-slate-900">
-            <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto border-4 border-amber-50">
-              <RotateCcw className="w-7 h-7 text-amber-600" />
-            </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900">שחזור קטלוג המלאי המקורי?</h3>
-              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-                פעולה זו תאפס את רשימת המוצרים לקטלוג התקני המקורי של <strong>192 פריטים</strong>, תנקה לצמיתות כפילויות ושיבושים, ותסנכרן את הנתונים הנקיים ישירות לענן.
-              </p>
-              <p className="text-[11px] text-emerald-600 font-bold mt-2">
-                ✓ כמויות המלאי שהזנתם עבור פריטים קיימים יישמרו ללא שינוי.
-              </p>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsResetMasterModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition-colors"
-              >
-                ביטול
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onResetMasterCatalog) {
-                    onResetMasterCatalog();
-                    setIsResetMasterModalOpen(false);
-                  }
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-md shadow-amber-600/30 cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>שחזר קטלוג תקין ✓</span>
               </button>
             </div>
           </div>

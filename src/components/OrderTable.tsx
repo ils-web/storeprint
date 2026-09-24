@@ -49,7 +49,6 @@ interface OrderTableProps {
   onTogglePrintedStatus: (orderId: string) => void;
   onDeleteOrder?: (orderId: string) => void;
   onMassDeleteOrders?: (orderIds: string[]) => void;
-  onClearTestOrders?: () => void;
   isSheetLoaded: boolean;
 }
 
@@ -73,7 +72,6 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   onTogglePrintedStatus,
   onDeleteOrder,
   onMassDeleteOrders,
-  onClearTestOrders,
   isSheetLoaded,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -424,41 +422,6 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               </span>
             </span>
 
-            {/* Helpful Notice when orders are hidden by status tab */}
-            {statusFilter === 'unprinted' && counts.printed > 0 && (
-              <button
-                type="button"
-                onClick={() => handleStatusChange('all')}
-                className="text-[11px] text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded-xl font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
-                title="לחץ להצגת כל ההזמנות כולל אלו שכבר הודפסו"
-              >
-                <span>מוצגות {counts.unprinted} ממתינות</span>
-                <span className="underline mr-1 font-black">• הצג גם {counts.printed} שהודפסו 👁️</span>
-              </button>
-            )}
-            {statusFilter === 'printed' && counts.unprinted > 0 && (
-              <button
-                type="button"
-                onClick={() => handleStatusChange('all')}
-                className="text-[11px] text-emerald-900 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2.5 py-1 rounded-xl font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
-                title="לחץ להצגת כל ההזמנות"
-              >
-                <span>מוצגות {counts.printed} שהודפסו</span>
-                <span className="underline mr-1 font-black">• הצג גם {counts.unprinted} ממתינות 👁️</span>
-              </button>
-            )}
-
-            {/* Clear Test Orders Button */}
-            {onClearTestOrders && (
-              <button
-                onClick={onClearTestOrders}
-                className="bg-amber-50/90 hover:bg-rose-50 text-amber-900 hover:text-rose-700 border border-amber-200/80 hover:border-rose-300 text-xs font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                title="נקה את כל הזמנות הבדיקה מהמערכת וממסד הנתונים"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                <span>ניקוי הזמנות בדיקה 🧹</span>
-              </button>
-            )}
 
             {/* Mass Delete Button */}
             {safeSelectedOrderIds.length > 0 && onMassDeleteOrders && (
@@ -677,26 +640,25 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                         </span>
                       </td>
 
-                      {/* Print Status Badge with Protected Manual Toggle */}
+                      {/* Print Status Badge with Ironclad Protection */}
                       <td className="py-3.5 px-4 text-center">
                         <button
+                          type="button"
                           onClick={() => {
                             if (order.printed) {
-                              const confirmed = window.confirm(
-                                '⚠️ זהירות: הזמנה זו כבר הודפסה והמלאי שלה קוזז מהמחסן!\n\nשינוי הסטטוס ל-"ממתין להדפסה" עלול לגרום להדפסה חוזרת ולקיזוז כפול של המלאי.\n\nהאם אתה בטוח לחלוטין שברצונך לבטל את סטטוס ההדפסה?'
-                              );
-                              if (!confirmed) return;
+                              alert('🔒 הזמנה זו נעולה: המלאי כבר נופק וקוזז מהמחסן.\nלא ניתן לבטל סטטוס של הזמנה שכבר נופקה כדי למנוע קיזוז כפול.');
+                              return;
                             }
                             onTogglePrintedStatus(order.id);
                           }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors ${
                             order.printed
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-2xs'
-                              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs cursor-default'
+                              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 cursor-pointer'
                           }`}
                           title={
                             order.printed
-                              ? 'הזמנה זו הודפסה והמלאי קוזז (סטטוס מוגן 🔒)'
+                              ? 'הזמנה זו הודפסה והמלאי קוזז (סטטוס נעול ומוגן 🔒)'
                               : 'הזמנה ממתינה להדפסה ולקיזוז מהמחסן'
                           }
                         >
@@ -718,11 +680,25 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           
-                          {/* Print with Stock Control */}
+                          {/* Print with Stock Control or Safe Copy if already printed */}
                           <button
-                            onClick={() => onSinglePrint(order)}
-                            className="bg-sky-600 hover:bg-sky-700 text-white p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
-                            title="הדפסה ובקרת מלאי"
+                            onClick={() => {
+                              if (order.printed) {
+                                onDirectCopyPrint(order);
+                              } else {
+                                onSinglePrint(order);
+                              }
+                            }}
+                            className={`${
+                              order.printed
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : 'bg-sky-600 hover:bg-sky-700 text-white'
+                            } p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer`}
+                            title={
+                              order.printed
+                                ? 'הדפסת העתק (הזמנה זו כבר קוזזה מהמלאי — ללא קיזוז נוסף 🔒)'
+                                : 'הדפסה ובקרת מלאי (קיזוז מקור)'
+                            }
                           >
                             <Printer className="w-4 h-4" />
                           </button>

@@ -23,9 +23,6 @@ interface HeaderProps {
   setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => void;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
-  autoRefreshSec: number;
-  setAutoRefreshSec: (sec: number) => void;
-  countdown: number;
   onRefresh: () => void;
   isRefreshing: boolean;
   ordersCount: number;
@@ -46,9 +43,6 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   isEmergencyMode = false,
   onOpenEmergencyConfirm,
-  autoRefreshSec,
-  setAutoRefreshSec,
-  countdown,
   onRefresh,
   isRefreshing,
   ordersCount,
@@ -213,27 +207,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden md:inline">סופר-אדמין</span>
               </button>
             )}
-
-            {/* Auto-Refresh Control */}
-            <div className="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-xl px-2.5 py-1 text-[11px] sm:text-xs text-slate-300 gap-1.5">
-              <span className="text-slate-400">רענון:</span>
-              <select
-                value={autoRefreshSec}
-                onChange={(e) => setAutoRefreshSec(Number(e.target.value))}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-1.5 py-0.5 text-[11px] font-bold text-sky-400 focus:outline-none cursor-pointer"
-              >
-                <option value={0}>כבוי</option>
-                <option value={15}>15 שנ'</option>
-                <option value={30}>30 שנ'</option>
-                <option value={60}>1 דק'</option>
-                <option value={300}>5 דק'</option>
-              </select>
-              {autoRefreshSec > 0 && (
-                <span className="text-[10px] font-mono text-slate-400 w-4">
-                  {countdown}s
-                </span>
-              )}
-            </div>
 
             <div className="flex items-center gap-1.5">
               {/* Refresh Button */}

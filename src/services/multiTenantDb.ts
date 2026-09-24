@@ -8,8 +8,9 @@ import {
   PlanType,
   STANDARD_PACKAGING_UNITS,
 } from '../types/multiTenant';
+import { StockItem } from '../types';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
-import { CANONICAL_DEPARTMENTS } from './unifiedDb';
+import { CANONICAL_DEPARTMENTS, getDbStock } from './unifiedDb';
 import { db } from './firebase';
 import {
   doc,
@@ -240,6 +241,7 @@ export function createTenant(data: {
   spreadsheetId?: string;
   spreadsheetGid?: string;
   allowSelfWarehouseCreation?: boolean;
+  cloneBaseCatalog?: boolean;
 }): Tenant {
   const tenants = getTenants();
   const plan = data.plan || 'starter';
@@ -286,7 +288,7 @@ export function createTenant(data: {
   setStoredJson(TENANTS_KEY, tenants);
   syncTenantToFirestore(newTenant).catch(console.warn);
 
-  createWarehouse({
+  const primaryWh = createWarehouse({
     tenantId: newTenantId,
     name: `מחסן ראשי - ${newTenant.name}`,
     code: 'WH-01',
@@ -294,7 +296,101 @@ export function createTenant(data: {
     address: newTenant.address || 'בניין ראשי',
   });
 
+  // Automatically clone the base catalog template (186 items) and departments to this branch!
+  if (data.cloneBaseCatalog !== false) {
+    try {
+      cloneBaseCatalogToNewTenant(newTenantId, primaryWh.id, 'tenant-main-01');
+    } catch (e) {
+      console.warn('Failed to clone base catalog to new tenant:', e);
+    }
+  }
+
   return newTenant;
+}
+
+/**
+ * Clones the Base Master Catalog (all 186 items, order, packaging, and thresholds)
+ * and canonical departments into a newly created branch/tenant.
+ */
+export function cloneBaseCatalogToNewTenant(
+  targetTenantId: string,
+  targetWarehouseId: string,
+  sourceTenantId: string = 'tenant-main-01'
+): InventoryProduct[] {
+  // 1. Get base inventory items from source tenant or fallback to local db stock
+  let baseItems = getInventory(sourceTenantId);
+  if (!baseItems || baseItems.length === 0) {
+    const localStock = getDbStock();
+    baseItems = Object.values(localStock).map((it, idx) => ({
+      id: it.id || `prod-${idx}-${Date.now()}`,
+      tenantId: sourceTenantId,
+      warehouseId: 'wh-main-01',
+      name: it.name,
+      colIndex: it.colIndex || idx + 4,
+      currentStock: 0,
+      minThreshold: it.minThreshold ?? 10,
+      unit: it.unit || "יח'",
+      isActive: it.isActive !== false,
+      limitByPatients: Boolean(it.limitByPatients),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  // 2. Clone products for the new branch with currentStock starting at 0 (or clean initial)
+  const newTenantItems: InventoryProduct[] = baseItems.map((item, idx) => ({
+    ...item,
+    id: `prod-${targetTenantId}-${idx}-${Date.now()}`,
+    tenantId: targetTenantId,
+    warehouseId: targetWarehouseId,
+    currentStock: 0,
+    updatedAt: new Date().toISOString(),
+  }));
+
+  saveInventory(targetTenantId, newTenantItems);
+
+  // 3. Clone departments for the new branch
+  const sourceDepts = getTenantDepartments(sourceTenantId);
+  const baseDepts: TenantDepartment[] =
+    sourceDepts.length > 0
+      ? sourceDepts
+      : CANONICAL_DEPARTMENTS.map((d, i) => ({ id: `dept-${i}`, tenantId: sourceTenantId, name: d, pinCode: '1234' }));
+  const newDepts: TenantDepartment[] = baseDepts.map((d, i) => ({
+    id: `dept-${targetTenantId}-${i}`,
+    tenantId: targetTenantId,
+    name: d.name,
+    pinCode: d.pinCode || '1234',
+  }));
+  saveTenantDepartments(targetTenantId, newDepts);
+
+  // 4. Also seed master_stock directly in Firestore for real-time syncing
+  if (db) {
+    try {
+      const stockMap: Record<string, StockItem> = {};
+      newTenantItems.forEach((p) => {
+        stockMap[p.name] = {
+          id: p.id,
+          name: p.name,
+          colIndex: p.colIndex,
+          currentStock: 0,
+          minThreshold: p.minThreshold,
+          unit: p.unit,
+          isActive: p.isActive,
+          limitByPatients: p.limitByPatients,
+          lastUpdated: p.updatedAt,
+        };
+      });
+      const docRef = doc(db, 'tenants', targetTenantId, 'warehouse', 'master_stock');
+      setDoc(docRef, {
+        stock: stockMap,
+        totalItems: Object.keys(stockMap).length,
+        updatedAt: new Date().toISOString(),
+      }).catch(console.warn);
+    } catch (e) {
+      console.warn('Failed to seed master_stock in Firestore for new tenant:', e);
+    }
+  }
+
+  return newTenantItems;
 }
 
 export function updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant | null {

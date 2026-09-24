@@ -71,6 +71,7 @@ export function SuperAdminDashboard({
     spreadsheetId: '',
     spreadsheetGid: '',
     allowSelfWarehouseCreation: false,
+    cloneBaseCatalog: true,
   });
 
   // Edit Tenant Form State
@@ -703,6 +704,20 @@ export function SuperAdminDashboard({
                 <label htmlFor="selfWhCheck" className="text-xs text-slate-300 cursor-pointer">
                   <strong className="text-white block">אפשר לסניף לפתוח מחסנים עצמאית</strong>
                   כאשר כבוי - רק סופר-אדמין יכול להוסיף מחסנים לסניף באופן מרכזי.
+                </label>
+              </div>
+
+              <div className="bg-emerald-950/40 p-3.5 rounded-xl border border-emerald-500/40 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="cloneBaseCatalogCheck"
+                  checked={formData.cloneBaseCatalog}
+                  onChange={(e) => setFormData({ ...formData, cloneBaseCatalog: e.target.checked })}
+                  className="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <label htmlFor="cloneBaseCatalogCheck" className="text-xs text-emerald-200 cursor-pointer">
+                  <strong className="text-white block font-bold">שכפל קטלוג בסיסי (186 פריטים) ומחלקות מהסניף הראשי</strong>
+                  הסניף יוקם מיד עם כל 186 המוצרים, סדר המדפים והמחלקות התקניות. כל סניף יוכל לשנות כמויות, להוסיף מוצרים ולהקפיא פריטים באופן עצמאי.
                 </label>
               </div>
 
