@@ -640,32 +640,24 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                         </span>
                       </td>
 
-                      {/* Print Status Badge with Ironclad Protection */}
+                      {/* Print Status Badge - Strictly Informational Indicator (Automatic upon print only) */}
                       <td className="py-3.5 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (order.printed) {
-                              alert('🔒 הזמנה זו נעולה: המלאי כבר נופק וקוזז מהמחסן.\nלא ניתן לבטל סטטוס של הזמנה שכבר נופקה כדי למנוע קיזוז כפול.');
-                              return;
-                            }
-                            onTogglePrintedStatus(order.id);
-                          }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-colors select-none ${
                             order.printed
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs cursor-default'
-                              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 cursor-pointer'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                              : 'bg-amber-50 text-amber-800 border-amber-300'
                           }`}
                           title={
                             order.printed
-                              ? 'הזמנה זו הודפסה והמלאי קוזז (סטטוס נעול ומוגן 🔒)'
-                              : 'הזמנה ממתינה להדפסה ולקיזוז מהמחסן'
+                              ? 'הזמנה זו הודפסה והמלאי קוזז מהמחסן ✓'
+                              : 'ממתין להדפסה ולקיזוז מהמחסן (הסטטוס מתעדכן אוטומטית בעת הדפסה בלבד)'
                           }
                         >
                           {order.printed ? (
                             <>
                               <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>הודפס וקוזז ✓ 🔒</span>
+                              <span>הודפס וקוזז ✓</span>
                             </>
                           ) : (
                             <>
@@ -673,22 +665,16 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                               <span>ממתין להדפסה ⏱</span>
                             </>
                           )}
-                        </button>
+                        </span>
                       </td>
 
-                      {/* Action Buttons: Print, Copy Print, Preview, Delete */}
+                      {/* Action Buttons: Print, Copy Print, Revert, Preview, Delete */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           
-                          {/* Print with Stock Control or Safe Copy if already printed */}
+                          {/* Print with Stock Control (Opens Confirmation Modal) */}
                           <button
-                            onClick={() => {
-                              if (order.printed) {
-                                onDirectCopyPrint(order);
-                              } else {
-                                onSinglePrint(order);
-                              }
-                            }}
+                            onClick={() => onSinglePrint(order)}
                             className={`${
                               order.printed
                                 ? 'bg-amber-500 hover:bg-amber-600 text-white'
@@ -696,8 +682,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                             } p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer`}
                             title={
                               order.printed
-                                ? 'הדפסת העתק (הזמנה זו כבר קוזזה מהמלאי — ללא קיזוז נוסף 🔒)'
-                                : 'הדפסה ובקרת מלאי (קיזוז מקור)'
+                                ? 'הדפסה ובקרת מלאי (הזמנה זו כבר סומנה כמודפסת)'
+                                : 'הדפסה ובקרת מלאי (קיזוז מקור מהמחסן)'
                             }
                           >
                             <Printer className="w-4 h-4" />
@@ -707,10 +693,30 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                           <button
                             onClick={() => onDirectCopyPrint(order)}
                             className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 p-2 rounded-xl shadow-xs transition-transform active:scale-90 cursor-pointer"
-                            title="הדפסת העתק (ללא קיזוז מהמלאי)"
+                            title="הדפסת העתק מהיר (ללא קיזוז מהמלאי)"
                           >
                             <Copy className="w-4 h-4" />
                           </button>
+
+                          {/* Revert to Unprinted (Protected, only shown for printed orders) */}
+                          {order.printed && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `האם להחזיר את הזמנת מחלקת "${order.department}" לסטטוס 'ממתין להדפסה'?\n\nפעולה זו תבטל את סימון ההדפסה ותאפשר להדפיס אותה מחדש עם קיזוז מלאי מהמחסן.`
+                                  )
+                                ) {
+                                  onTogglePrintedStatus(order.id);
+                                }
+                              }}
+                              className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 p-2 rounded-xl shadow-xs transition-colors cursor-pointer"
+                              title="החזר לסטטוס 'ממתין להדפסה' (מאפשר הדפסה וקיזוז מחסן מחדש)"
+                            >
+                              <RotateCcw className="w-4 h-4 text-amber-800" />
+                            </button>
+                          )}
 
                           {/* Preview */}
                           <button
@@ -731,7 +737,6 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                               <Trash2 className="w-4 h-4" />
                             </button>
                           )}
-
                         </div>
                       </td>
                     </tr>

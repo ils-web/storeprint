@@ -1964,6 +1964,7 @@ export default function App() {
         ordersToPrint={ordersForConfirm}
         stock={stock}
         onConfirmPrint={handleExecutePrint}
+        onRevertOrder={handleTogglePrintedStatus}
       />
 
       {/* Cloud Sync Modal */}

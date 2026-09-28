@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Printer, PackageMinus, Copy, AlertTriangle, CheckCircle, Package } from 'lucide-react';
+import { X, Printer, PackageMinus, Copy, AlertTriangle, CheckCircle, Package, RotateCcw } from 'lucide-react';
 import { Order, StockItem } from '../types';
 
 interface PrintConfirmModalProps {
@@ -8,6 +8,7 @@ interface PrintConfirmModalProps {
   ordersToPrint: Order[];
   stock: Record<string, StockItem>;
   onConfirmPrint: (orders: Order[], deductFromStock: boolean, isCopy: boolean) => void;
+  onRevertOrder?: (orderId: string) => void;
 }
 
 export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
@@ -16,6 +17,7 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
   ordersToPrint,
   stock,
   onConfirmPrint,
+  onRevertOrder,
 }) => {
   if (!isOpen || ordersToPrint.length === 0) return null;
 
@@ -95,11 +97,32 @@ export const PrintConfirmModal: React.FC<PrintConfirmModalProps> = ({
           
           {/* Status Info Banner if already printed */}
           {allAlreadyPrinted && (
-            <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex items-center gap-3 text-amber-900 shadow-xs">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-              <div className="text-xs sm:text-sm font-bold text-amber-950">
-                🔒 {isSingle ? 'הזמנה זו' : 'הזמנות אלו'} כבר הודפסה בעבר והמלאי קוזז מהמחסן. הדפסה זו תבוצע כ<strong>העתק בלבד</strong> ללא גריעה נוספת מהמחסן.
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="text-xs sm:text-sm font-bold text-amber-950">
+                  🔒 {isSingle ? 'הזמנה זו' : 'הזמנות אלו'} כבר סומנה בעבר כמודפסת. ברירת המחדל היא <strong>העתק בלבד</strong> (ללא קיזוז נוסף מהמחסן).
+                </div>
               </div>
+              {onRevertOrder && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const confirmMsg = isSingle
+                      ? `האם להחזיר את הזמנת מחלקת "${singleOrder?.department}" לסטטוס 'ממתין להדפסה'?\n\nפעולה זו תאפשר לקזז מחדש את המלאי מהמחסן בעת ההדפסה.`
+                      : `האם להחזיר את כל ${ordersToPrint.length} ההזמנות לסטטוס 'ממתין להדפסה'?`;
+                    if (window.confirm(confirmMsg)) {
+                      ordersToPrint.forEach((o) => onRevertOrder(o.id));
+                      onClose();
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer transition-colors shrink-0 shadow-2xs"
+                  title="החזר לסטטוס ממתין להדפסה לצורך קיזוז מחדש"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-900" />
+                  <span>החזר ל'ממתין להדפסה' ⏱</span>
+                </button>
+              )}
             </div>
           )}
 
