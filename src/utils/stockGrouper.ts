@@ -153,3 +153,78 @@ export function organizeStockLogically(stock: Record<string, StockItem>): Record
 
   return next;
 }
+
+export interface StockCategoryGroup {
+  groupNumber: number;
+  groupName: string;
+  minColIndex: number;
+  items: StockItem[];
+}
+
+/**
+ * Groups and sorts stock items by category, and within each category
+ * strictly preserves the user's custom warehouse order (colIndex).
+ * Category groups are ordered based on the warehouse appearance order
+ * (lowest colIndex in that category) and standard category group priority.
+ */
+export function groupAndSortStockItems(items: StockItem[]): StockCategoryGroup[] {
+  const groupsMap = new Map<string, { groupNumber: number; groupName: string; items: StockItem[] }>();
+
+  items.forEach((item) => {
+    if (!item || !item.name) return;
+    const cat = categorizeItem(item.name);
+    if (!groupsMap.has(cat.groupName)) {
+      groupsMap.set(cat.groupName, {
+        groupNumber: cat.group,
+        groupName: cat.groupName,
+        items: [],
+      });
+    }
+    groupsMap.get(cat.groupName)!.items.push(item);
+  });
+
+  const categoryGroups: StockCategoryGroup[] = [];
+
+  groupsMap.forEach((grp) => {
+    // Sort items within each category strictly by warehouse order (colIndex), then Hebrew name
+    grp.items.sort((a, b) => {
+      const colA = typeof a.colIndex === 'number' ? a.colIndex : 99999;
+      const colB = typeof b.colIndex === 'number' ? b.colIndex : 99999;
+      if (colA !== colB) return colA - colB;
+      return a.name.localeCompare(b.name, 'he');
+    });
+
+    const minCol =
+      grp.items.length > 0 && typeof grp.items[0].colIndex === 'number'
+        ? grp.items[0].colIndex
+        : 99999;
+
+    categoryGroups.push({
+      groupNumber: grp.groupNumber,
+      groupName: grp.groupName,
+      minColIndex: minCol,
+      items: grp.items,
+    });
+  });
+
+  // Sort the category blocks themselves:
+  // First by the position of their first item in the user's warehouse (minColIndex),
+  // with tie-break by standard category groupNumber (1..10)
+  categoryGroups.sort((a, b) => {
+    if (a.minColIndex !== b.minColIndex) {
+      return a.minColIndex - b.minColIndex;
+    }
+    return a.groupNumber - b.groupNumber;
+  });
+
+  return categoryGroups;
+}
+
+/**
+ * Flattens categorized items into a single array ordered by category blocks
+ * and warehouse order (colIndex).
+ */
+export function getCategorizedSortedStockItems(items: StockItem[]): StockItem[] {
+  const groups = groupAndSortStockItems(items);
+  return groups.flatMap((g) => g.items);
+}

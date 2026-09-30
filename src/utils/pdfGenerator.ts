@@ -1,4 +1,5 @@
 import { Order, PrintSettings, StockItem } from '../types';
+import { groupAndSortStockItems } from './stockGrouper';
 
 /**
  * Escapes HTML characters
@@ -260,17 +261,30 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings, isCopy
 }
 
 /**
- * Generates and prints the Reorder / Low Stock defect sheet (< 10 units)
+ * Generates and prints the Reorder / Low Stock defect sheet.
+ * Strictly filtered to items below minimum threshold, grouped by category/type,
+ * and sorted in accordance with the user's custom warehouse arrangement order (colIndex).
  */
 export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: number = 10) {
-  if (!lowStockItems || lowStockItems.length === 0) {
+  // Filter active deficit items only (safeQty < effective threshold)
+  const activeDeficitItems = (lowStockItems || []).filter((item) => {
+    if (!item || !item.name || item.isActive === false) return false;
+    const th = item.minThreshold || minThreshold;
+    const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+    return safeQty < th;
+  });
+
+  if (activeDeficitItems.length === 0) {
     alert('אין פריטים בחוסר כרגע. כל המלאי מעל לסף המינימום!');
     return;
   }
 
+  // Group by medical specialty/category, preserving the user's warehouse order (colIndex)
+  const categoryGroups = groupAndSortStockItems(activeDeficitItems);
+
   const printWindow = window.open('', '_blank', 'width=950,height=850');
   if (!printWindow) {
-    alert('Пожалуйста, разрешите всплывающие окна в браузере для отправки на печать.');
+    alert('נא לאפשר חלונות קופצים (Pop-ups) בדפדפן כדי להדפיס את דוח החוסרים.');
     return;
   }
 
@@ -283,6 +297,8 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
     minute: '2-digit',
   });
 
+  let globalItemIndex = 0;
+
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="he" dir="rtl">
@@ -290,7 +306,7 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
       <meta charset="UTF-8">
       <title>דוח חוסרים והזמנת רכש - ${dateStr}</title>
       <style>
-        @page { size: A4 portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 8mm; }
         * { box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, Tahoma, sans-serif;
@@ -298,26 +314,26 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
           margin: 0;
           padding: 0;
           background: #ffffff;
-          font-size: 11.5pt;
+          font-size: 11pt;
           line-height: 1.35;
           direction: rtl;
         }
         .header {
           border-bottom: 3px solid #dc2626;
           padding-bottom: 12px;
-          margin-bottom: 16px;
+          margin-bottom: 14px;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
         }
         .title {
-          font-size: 20pt;
+          font-size: 19pt;
           font-weight: 900;
           color: #991b1b;
           margin: 0 0 4px 0;
         }
         .subtitle {
-          font-size: 11pt;
+          font-size: 10.5pt;
           color: #475569;
           font-weight: 600;
         }
@@ -333,66 +349,150 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
         table {
           width: 100%;
           border-collapse: collapse;
-          margin-top: 10px;
-          font-size: 10.5pt;
+          margin-top: 8px;
+          font-size: 10pt;
+        }
+        thead {
+          display: table-header-group;
         }
         th {
           background: #f1f5f9;
           border: 1.5px solid #475569;
-          padding: 8px 10px;
+          padding: 7px 8px;
           text-align: right;
           font-weight: 800;
           color: #0f172a;
         }
         td {
-          border: 1px solid #94a3b8;
-          padding: 7px 10px;
+          border: 1px solid #cbd5e1;
+          padding: 6px 8px;
           vertical-align: middle;
           text-align: right;
         }
-        tr:nth-child(even) {
-          background-color: #f8fafc;
+        tr {
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
-        .num-col { width: 36px; text-align: center !important; font-weight: 700; color: #64748b; }
+        .cat-header-row {
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .cat-header-cell {
+          background: #e2e8f0 !important;
+          border-top: 2px solid #0f172a !important;
+          border-bottom: 2px solid #94a3b8 !important;
+          padding: 6px 10px !important;
+        }
+        .cat-header-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .cat-title-left {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .cat-icon {
+          font-size: 12pt;
+        }
+        .cat-name {
+          font-size: 11.5pt;
+          font-weight: 900;
+          color: #0f172a;
+        }
+        .cat-badge {
+          background: #0284c7;
+          color: white;
+          font-size: 8.5pt;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 4px;
+        }
+        .cat-count {
+          font-size: 9pt;
+          font-weight: 700;
+          color: #475569;
+        }
+        .num-col {
+          width: 34px;
+          text-align: center !important;
+          font-weight: 700;
+          color: #64748b;
+        }
+        .pos-tag {
+          display: inline-block;
+          font-family: monospace;
+          font-size: 8.5pt;
+          font-weight: 700;
+          color: #64748b;
+          background: #f1f5f9;
+          border: 1px solid #cbd5e1;
+          padding: 1px 5px;
+          border-radius: 4px;
+          margin-right: 6px;
+        }
+        .zero-badge {
+          display: inline-block;
+          font-size: 8pt;
+          font-weight: 900;
+          color: #ffffff;
+          background: #dc2626;
+          padding: 1px 5px;
+          border-radius: 4px;
+          margin-right: 6px;
+        }
+        .zero-stock-row {
+          background-color: #fef2f2 !important;
+        }
         .stock-col {
-          width: 90px;
+          width: 85px;
           text-align: center !important;
           font-weight: 900;
-          font-size: 12pt;
+          font-size: 11.5pt;
           color: #dc2626;
           background: #fef2f2;
         }
+        .stock-zero {
+          color: #ffffff !important;
+          background: #dc2626 !important;
+        }
         .threshold-col {
-          width: 90px;
+          width: 85px;
           text-align: center !important;
           font-weight: 700;
           color: #475569;
         }
         .order-col {
-          width: 110px;
+          width: 105px;
           text-align: center !important;
+          font-weight: 900;
+          font-size: 12pt;
+          color: #0369a1;
+          background: #f0f9ff;
         }
         .notes-col {
-          width: 130px;
+          width: 120px;
         }
         .empty-line {
           display: inline-block;
-          width: 80%;
+          width: 85%;
           border-bottom: 1.5px dotted #94a3b8;
-          height: 16px;
+          height: 14px;
         }
         .footer {
-          margin-top: 24px;
-          padding-top: 12px;
+          margin-top: 20px;
+          padding-top: 10px;
           border-top: 1.5px dashed #cbd5e1;
           display: flex;
           justify-content: space-between;
-          font-size: 10.5pt;
+          font-size: 10pt;
           color: #475569;
+          page-break-inside: avoid;
         }
         .signature-line {
           display: inline-block;
-          width: 160px;
+          width: 140px;
           border-bottom: 1.5px solid #0f172a;
           margin-right: 6px;
         }
@@ -401,12 +501,12 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
     <body>
       <div class="header">
         <div>
-          <h1 class="title">דוח חוסרים והזמנת רכש (מתחת ל-${minThreshold} יחידות)</h1>
-          <div class="subtitle">רשימת פריטים שיתרת המלאי שלהם נמוכה ומחייבת הזמנת רכש דחופה</div>
+          <h1 class="title">דוח חוסרים והזמנת רכש (לפי סדר ומיקום במחסן)</h1>
+          <div class="subtitle">רשימת פריטים שיתרתם נמוכה מסף המינימום, מקובצת לפי סוג הפריט ומסודרת לפי המדפים במחסן</div>
         </div>
         <div style="text-align: left;">
-          <div class="meta-badge">${lowStockItems.length} פריטים בחוסר</div>
-          <div style="font-size: 10pt; color: #64748b; margin-top: 6px;">תאריך הפקה: ${dateStr}</div>
+          <div class="meta-badge">${activeDeficitItems.length} פריטים בחוסר (${categoryGroups.length} קטגוריות)</div>
+          <div style="font-size: 9.5pt; color: #64748b; margin-top: 6px;">תאריך הפקה: ${dateStr}</div>
         </div>
       </div>
 
@@ -414,7 +514,7 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
         <thead>
           <tr>
             <th class="num-col">№</th>
-            <th>שם הפריט / מק"ט (מתוך טבלת המחסן)</th>
+            <th>שם הפריט / מיקום במחסן</th>
             <th class="stock-col">יתרת מלאי</th>
             <th class="threshold-col">סף מינימום</th>
             <th class="order-col">כמות להזמנה</th>
@@ -422,32 +522,62 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
           </tr>
         </thead>
         <tbody>
-          ${lowStockItems
-            .filter((item) => item.isActive !== false)
-            .map((item, i) => {
-              const th = item.minThreshold || minThreshold;
-              const neededQty = Math.max(1, th - item.currentStock);
-              const unit = escapeHtml(item.unit || "יח'");
+          ${categoryGroups
+            .map((grp) => `
+              <tr class="cat-header-row">
+                <td colspan="6" class="cat-header-cell">
+                  <div class="cat-header-wrap">
+                    <div class="cat-title-left">
+                      <span class="cat-icon">📁</span>
+                      <span class="cat-badge">סוג פריט</span>
+                      <span class="cat-name">${escapeHtml(grp.groupName)}</span>
+                    </div>
+                    <span class="cat-count">${grp.items.length} פריטים בחוסר</span>
+                  </div>
+                </td>
+              </tr>
+              ${grp.items
+                .map((item) => {
+                  globalItemIndex++;
+                  const th = item.minThreshold || minThreshold;
+                  const safeQty =
+                    typeof item.currentStock === 'number' && !isNaN(item.currentStock)
+                      ? item.currentStock
+                      : 0;
+                  const neededQty = Math.max(1, th - safeQty);
+                  const unit = escapeHtml(item.unit || "יח'");
+                  const isZero = safeQty === 0;
+                  const posText = item.colIndex ? `#${item.colIndex - 3}` : '';
 
-              return `
-            <tr>
-              <td class="num-col">${i + 1}</td>
-              <td style="font-weight: 800; color: #0f172a;">${escapeHtml(item.name)}</td>
-              <td class="stock-col">${item.currentStock} ${unit}</td>
-              <td class="threshold-col">${th} ${unit}</td>
-              <td class="order-col" style="font-weight: 900; font-size: 12.5pt; color: #0369a1; background: #f0f9ff; text-align: center;">
-                ${neededQty} ${unit}
-              </td>
-              <td class="notes-col"><span class="empty-line"></span></td>
-            </tr>
-          `;
-            })
+                  return `
+                <tr class="${isZero ? 'zero-stock-row' : ''}">
+                  <td class="num-col">${globalItemIndex}</td>
+                  <td>
+                    <div style="font-weight: 800; color: #0f172a; font-size: 10.5pt;">
+                      ${escapeHtml(item.name)}
+                      ${posText ? `<span class="pos-tag" title="מיקום מדף בטבלת המחסן">${posText}</span>` : ''}
+                      ${isZero ? `<span class="zero-badge">אזל לחלוטין (0)</span>` : ''}
+                    </div>
+                  </td>
+                  <td class="stock-col ${isZero ? 'stock-zero' : ''}">
+                    ${safeQty} ${unit}
+                  </td>
+                  <td class="threshold-col">${th} ${unit}</td>
+                  <td class="order-col">
+                    +${neededQty} ${unit}
+                  </td>
+                  <td class="notes-col"><span class="empty-line"></span></td>
+                </tr>
+              `;
+                })
+                .join('')}
+            `)
             .join('')}
         </tbody>
       </table>
 
       <div class="footer">
-        <div><strong>סה"כ שורות להזמנה:</strong> ${lowStockItems.length} פריטים</div>
+        <div><strong>סה"כ שורות להזמנה:</strong> ${activeDeficitItems.length} פריטים ב-${categoryGroups.length} קבוצות</div>
         <div><strong>חתימת מנהל מחסן:</strong> <span class="signature-line"></span></div>
         <div><strong>אישור רכש / הנהלה:</strong> <span class="signature-line"></span></div>
       </div>

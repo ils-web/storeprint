@@ -32,6 +32,7 @@ import {
 import { StockItem, CloudSyncConfig } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { normalizeProductName } from '../utils/stockManager';
+import { getCategorizedSortedStockItems, categorizeItem } from '../utils/stockGrouper';
 import { PhoneQRModal } from './PhoneQRModal';
 import { ItemModal } from './ItemModal';
 
@@ -387,14 +388,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return { total: stockList.length, ok, low, out, inactive };
   }, [stockList, getEffectiveTh]);
 
-  // Low stock items list for printing (strictly excluding inactive items)
+  // Low stock items list for printing (strictly excluding inactive items, grouped by category and ordered by warehouse order)
   const lowStockItems = useMemo(() => {
-    return stockList.filter((item) => {
+    const raw = stockList.filter((item) => {
       if (!item || !item.name || item.isActive === false) return false;
       const th = getEffectiveTh(item);
       const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       return safeQty < th;
-    }).sort((a, b) => (a.currentStock || 0) - (b.currentStock || 0));
+    });
+    return getCategorizedSortedStockItems(raw);
   }, [stockList, getEffectiveTh]);
 
   // Filtered display list
@@ -427,7 +429,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       return true;
     }).sort((a, b) => {
       if (filterType === 'low' || filterType === 'out') {
-        return (a.currentStock || 0) - (b.currentStock || 0);
+        const catA = categorizeItem(a.name);
+        const catB = categorizeItem(b.name);
+        if (catA.group !== catB.group) return catA.group - catB.group;
+        return (a.colIndex || 0) - (b.colIndex || 0);
       }
       const aInactive = a.isActive === false;
       const bInactive = b.isActive === false;

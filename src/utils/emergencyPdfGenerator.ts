@@ -1,4 +1,5 @@
 import { StockItem } from '../types';
+import { groupAndSortStockItems } from './stockGrouper';
 
 /**
  * Escapes HTML characters
@@ -43,16 +44,21 @@ export function printEmergencyReorderListHtml(
     .map((item) => {
       const routineTh = item.minThreshold || globalRoutineThreshold;
       const emergencyTh = routineTh * emergencyMultiplier;
-      const neededQty = Math.max(0, emergencyTh - (item.currentStock || 0));
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      const neededQty = Math.max(0, emergencyTh - safeQty);
       return {
         ...item,
         routineTh,
         emergencyTh,
+        safeQty,
         neededQty,
       };
     })
-    .filter((item) => item.neededQty > 0)
-    .sort((a, b) => b.neededQty - a.neededQty);
+    .filter((item) => item.neededQty > 0);
+
+  // Group by medical specialty/category, preserving the user's warehouse order (colIndex)
+  const categoryGroups = groupAndSortStockItems(emergencyDeficitItems as any);
+  let globalEmergencyIndex = 0;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -179,6 +185,42 @@ export function printEmergencyReorderListHtml(
           height: 14px;
         }
 
+        .cat-header-row td {
+          background: #fee2e2 !important;
+          border-top: 2px solid #b91c1c !important;
+          border-bottom: 2px solid #f87171 !important;
+          padding: 6px 10px !important;
+          font-weight: 900 !important;
+          color: #991b1b !important;
+          font-size: 11pt !important;
+        }
+        .cat-header-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .cat-badge {
+          background: #b91c1c;
+          color: white;
+          font-size: 8.5pt;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 4px;
+          margin-left: 6px;
+        }
+        .pos-tag {
+          display: inline-block;
+          font-family: monospace;
+          font-size: 8.5pt;
+          font-weight: 700;
+          color: #64748b;
+          background: #f1f5f9;
+          border: 1px solid #cbd5e1;
+          padding: 1px 5px;
+          border-radius: 4px;
+          margin-right: 6px;
+        }
+
         .footer {
           margin-top: 25px;
           padding-top: 15px;
@@ -223,14 +265,14 @@ export function printEmergencyReorderListHtml(
       </div>
 
       <div class="alert-instruction">
-        ⚠️ <strong>הנחיית שעת חירום:</strong> כל ספי המינימום חושבו במכפיל פי 3 (X3) מהשגרה. יש להעביר דוח זה מיידית לאגף הרכש וקצין הלוגיסטיקה לניפוק והזמנה בהולה!
+        ⚠️ <strong>הנחיית שעת חירום:</strong> כל ספי המינימום חושבו במכפיל פי 3 (X3) מהשגרה, מקובצים לפי סוג פריט ומסודרים לפי סדר המחסן. יש להעביר דוח זה מיידית לאגף הרכש וקצין הלוגיסטיקה לניפוק והזמנה בהולה!
       </div>
 
       <table>
         <thead>
           <tr>
             <th class="num-col">№</th>
-            <th>שם הפריט / מק"ט (מתוך קטלוג המחסן)</th>
+            <th>שם הפריט / מיקום במחסן</th>
             <th class="stock-col">יתרת מלאי</th>
             <th class="routine-col">סף שגרה (1X)</th>
             <th class="emergency-col">תקן חירום (3X)</th>
@@ -239,21 +281,41 @@ export function printEmergencyReorderListHtml(
           </tr>
         </thead>
         <tbody>
-          ${emergencyDeficitItems
-            .map((item, i) => {
-              const unit = escapeHtml(item.unit || "יח'");
-              return `
-            <tr>
-              <td class="num-col">${i + 1}</td>
-              <td class="item-col">${escapeHtml(item.name)}</td>
-              <td class="stock-col"><strong>${item.currentStock}</strong> ${unit}</td>
-              <td class="routine-col">${item.routineTh} ${unit}</td>
-              <td class="emergency-col"><strong>${item.emergencyTh}</strong> ${unit}</td>
-              <td class="needed-col">${item.neededQty} ${unit}</td>
-              <td class="notes-col"><span class="empty-line"></span></td>
-            </tr>
-          `;
-            })
+          ${categoryGroups
+            .map((grp) => `
+              <tr class="cat-header-row">
+                <td colspan="7">
+                  <div class="cat-header-wrap">
+                    <div>
+                      <span class="cat-badge">סוג פריט</span>
+                      <span>📁 <strong>${escapeHtml(grp.groupName)}</strong></span>
+                    </div>
+                    <span style="font-size: 9.5pt; color: #7f1d1d; font-weight: 700;">${grp.items.length} פריטים בדרישת חירום</span>
+                  </div>
+                </td>
+              </tr>
+              ${grp.items
+                .map((item: any) => {
+                  globalEmergencyIndex++;
+                  const unit = escapeHtml(item.unit || "יח'");
+                  const posText = item.colIndex ? `#${item.colIndex - 3}` : '';
+                  return `
+                <tr>
+                  <td class="num-col">${globalEmergencyIndex}</td>
+                  <td class="item-col">
+                    <strong>${escapeHtml(item.name)}</strong>
+                    ${posText ? `<span class="pos-tag">${posText}</span>` : ''}
+                  </td>
+                  <td class="stock-col"><strong>${item.safeQty}</strong> ${unit}</td>
+                  <td class="routine-col">${item.routineTh} ${unit}</td>
+                  <td class="emergency-col"><strong>${item.emergencyTh}</strong> ${unit}</td>
+                  <td class="needed-col">+${item.neededQty} ${unit}</td>
+                  <td class="notes-col"><span class="empty-line"></span></td>
+                </tr>
+              `;
+                })
+                .join('')}
+            `)
             .join('')}
         </tbody>
       </table>

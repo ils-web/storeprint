@@ -25,8 +25,13 @@ import {
   ArrowUp,
   ChevronUp,
   ChevronDown,
+  Printer,
+  Copy,
 } from 'lucide-react';
 import { InstallAppModal } from '../portal/InstallAppModal';
+import { categorizeItem, groupAndSortStockItems } from '../../utils/stockGrouper';
+import { printReorderListHtml } from '../../utils/pdfGenerator';
+import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
@@ -532,7 +537,65 @@ export function MobileStockManager({
     return { total: stockList.length, ok, low, out, inactive };
   }, [stockList, isEmergencyMode, globalThreshold]);
 
-  // Filtered Items strictly synced with PC sorting
+  const [isWhatsAppCopied, setIsWhatsAppCopied] = useState(false);
+
+  // Generate and print the A4 Reorder Shortage sheet directly from mobile
+  const handlePrintShortageReport = () => {
+    const rawDeficit = stockList.filter((item) => {
+      if (!item || !item.name || item.isActive === false) return false;
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      return safeQty < th;
+    });
+
+    if (isEmergencyMode) {
+      printEmergencyReorderListHtml(stockList, globalThreshold, 3);
+    } else {
+      printReorderListHtml(rawDeficit, globalThreshold);
+    }
+  };
+
+  // Copy WhatsApp formatted order list grouped by item type
+  const handleCopyWhatsAppShortage = () => {
+    const rawDeficit = stockList.filter((item) => {
+      if (!item || !item.name || item.isActive === false) return false;
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      return safeQty < th;
+    });
+
+    const categoryGroups = groupAndSortStockItems(rawDeficit);
+
+    let text = `🚨 *דוח חוסרי מלאי ורכש - ספירת מחסן*\n`;
+    text += `📅 תאריך: ${new Date().toLocaleDateString('he-IL')} ${new Date().toLocaleTimeString('he-IL')}\n`;
+    if (isEmergencyMode) text += `⚠️ *נוהל שעת חירום (מלאי משולש X3)*\n`;
+    text += `סה"כ פריטים בחוסר: ${rawDeficit.length} (${categoryGroups.length} קטגוריות)\n\n`;
+
+    let itemCounter = 0;
+    categoryGroups.forEach((grp) => {
+      text += `📂 *${grp.groupName}:*\n`;
+      grp.items.forEach((item: any) => {
+        itemCounter++;
+        const th = getEffectiveTh(item);
+        const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+        const deficit = Math.max(1, th - safeQty);
+        const unit = item.unit || "יח'";
+        const isZero = safeQty === 0;
+        const posText = item.colIndex ? `[#${item.colIndex - 3}] ` : '';
+        text += `${itemCounter}. ${posText}*${item.name}* ${isZero ? '⚠️(אזל!)' : ''}\n   יתרה: ${safeQty} ${unit} | סף: ${th} | *להזמנה: ${deficit} ${unit}*\n`;
+      });
+      text += `\n`;
+    });
+
+    text += `_הופק מאפליקציית ניהול מחסן StorePrint_`;
+
+    navigator.clipboard.writeText(text);
+    setIsWhatsAppCopied(true);
+    setTimeout(() => setIsWhatsAppCopied(false), 3000);
+  };
+
+  // Filtered Items strictly synced with PC sorting:
+  // In 'low' and 'out' tabs: grouped by item category and ordered by warehouse layout (colIndex)
   const filteredItems = useMemo(() => {
     return stockList
       .filter((item) => {
@@ -565,7 +628,10 @@ export function MobileStockManager({
       })
       .sort((a, b) => {
         if (filterType === 'low' || filterType === 'out') {
-          return (a.currentStock || 0) - (b.currentStock || 0);
+          const catA = categorizeItem(a.name);
+          const catB = categorizeItem(b.name);
+          if (catA.group !== catB.group) return catA.group - catB.group;
+          return (a.colIndex || 0) - (b.colIndex || 0);
         }
         return (a.colIndex || 0) - (b.colIndex || 0);
       });
@@ -773,6 +839,39 @@ export function MobileStockManager({
           </div>
         )}
 
+        {/* Shortage Reorder Report Quick Actions Banner (Visible when viewing shortages) */}
+        {filterType === 'low' && filteredItems.length > 0 && (
+          <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/60 border border-amber-600/50 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-lg animate-fadeIn">
+            <div className="min-w-0">
+              <div className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>דוח חוסרים והזמנת רכש ({filteredItems.length} פריטים)</span>
+              </div>
+              <div className="text-[10px] text-slate-300 mt-0.5">
+                מקובץ לפי קטגוריות ומסודר לפי סדר המחסן שלך
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={handlePrintShortageReport}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md cursor-pointer active:scale-95 transition-all"
+                title="הדפס דוח חוסרים מסודר"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>הדפס דוח 🖨️</span>
+              </button>
+              <button
+                onClick={handleCopyWhatsAppShortage}
+                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
+                title="העתק רשימת חוסרים ל-WhatsApp"
+              >
+                {isWhatsAppCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{isWhatsAppCopied ? 'הועתק!' : 'WhatsApp'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Product Stock Cards List */}
         <div className="space-y-3">
           {filteredItems.length === 0 ? (
@@ -782,18 +881,38 @@ export function MobileStockManager({
               <p className="text-xs text-slate-500 mt-1">נסו לשנות את מונח החיפוש או לבחור בלשונית אחרת</p>
             </div>
           ) : (
-            filteredItems.map((item, idx) => (
-              <MobileStockCard
-                key={item.id || item.name || idx}
-                item={item}
-                idx={idx}
-                totalFiltered={filteredItems.length}
-                isEmergencyMode={isEmergencyMode}
-                effectiveTh={getEffectiveTh(item)}
-                onItemChange={handleItemChange}
-                onMoveItem={onMoveItem}
-              />
-            ))
+            filteredItems.map((item, idx) => {
+              const isGroupedView = filterType === 'low' || filterType === 'out';
+              const currentCat = isGroupedView ? categorizeItem(item.name).groupName : null;
+              const prevCat =
+                idx > 0 && isGroupedView
+                  ? categorizeItem(filteredItems[idx - 1].name).groupName
+                  : null;
+              const showCategoryDivider = currentCat && currentCat !== prevCat;
+
+              return (
+                <React.Fragment key={item.id || item.name || idx}>
+                  {showCategoryDivider && (
+                    <div className="pt-2 pb-0.5 flex items-center gap-2">
+                      <div className="bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-xl text-xs font-black text-sky-400 flex items-center gap-1.5 shadow-xs">
+                        <span>📁</span>
+                        <span>{currentCat}</span>
+                      </div>
+                      <div className="h-px bg-slate-800/80 flex-1"></div>
+                    </div>
+                  )}
+                  <MobileStockCard
+                    item={item}
+                    idx={idx}
+                    totalFiltered={filteredItems.length}
+                    isEmergencyMode={isEmergencyMode}
+                    effectiveTh={getEffectiveTh(item)}
+                    onItemChange={handleItemChange}
+                    onMoveItem={onMoveItem}
+                  />
+                </React.Fragment>
+              );
+            })
           )}
         </div>
       </main>
@@ -817,9 +936,18 @@ export function MobileStockManager({
             <div className="font-black text-white flex items-center gap-1.5">
               <span>סה"כ: {stats.total}</span>
               <span>•</span>
-              <span className={stats.low > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+              <button
+                type="button"
+                onClick={() => setFilterType('low')}
+                className={`transition-colors cursor-pointer ${
+                  stats.low > 0
+                    ? 'text-amber-400 font-bold hover:underline'
+                    : 'text-emerald-400'
+                }`}
+                title="הצג פריטים בחוסר"
+              >
                 חוסרים: {stats.low}
-              </span>
+              </button>
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
