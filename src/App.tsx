@@ -48,6 +48,8 @@ import {
   subscribeToFirestoreStock,
   subscribeToFirestoreOrders,
   fetchOrdersFromFirestore,
+  fetchStockFromFirestore,
+  pushStockToFirestore,
   updateOrderPrintedInFirestore,
   deleteOrderFromFirestore,
   pushPrintedOrderKeysToFirestore,
@@ -981,6 +983,69 @@ export default function App() {
     }
   }, [activeTenantId]);
 
+  // Handle Direct Database Sync with Firestore (Guaranteed synchronization with backend database)
+  const handleSyncWithFirestore = useCallback(async () => {
+    setIsSyncingCloud(true);
+    setErrorMessage(null);
+    try {
+      // 1. Fetch latest master stock directly from Cloud Firestore
+      const remoteStock = await fetchStockFromFirestore(activeTenantId);
+      let targetStock: Record<string, StockItem>;
+
+      if (remoteStock && Object.keys(remoteStock).length > 0) {
+        targetStock = { ...remoteStock };
+        setStock(targetStock);
+        if (activeTenantId === 'tenant-main-01') {
+          saveDbStock(targetStock, false);
+          saveStoredStock(targetStock);
+        } else {
+          const items: InventoryProduct[] = Object.values(targetStock).map((item, idx) => ({
+            id: item.id || `prod-${activeTenantId}-${idx}`,
+            tenantId: activeTenantId,
+            warehouseId: 'wh-01',
+            name: item.name,
+            colIndex: item.colIndex || idx + 1,
+            currentStock: item.currentStock || 0,
+            minThreshold: item.minThreshold || 10,
+            unit: item.unit || "יח'",
+            isActive: item.isActive !== false,
+            limitByPatients: Boolean(item.limitByPatients),
+            updatedAt: item.lastUpdated || new Date().toISOString(),
+          }));
+          saveInventory(activeTenantId, items);
+        }
+        setProductHeaders(Object.keys(targetStock));
+      } else {
+        targetStock = stock;
+      }
+
+      // 2. Re-push to guarantee Firestore collections are completely up-to-date
+      await pushStockToFirestore(targetStock, activeTenantId);
+      syncToMultiTenantDb(Object.keys(targetStock), departments, targetStock);
+
+      // 3. If Google Sheets webhook is configured, also push to it in background
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        pushStockToCloud(targetStock, cloudConfig).catch(console.warn);
+      }
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const msg = `מסד הנתונים בענן (Firestore) סונכרן במלואו! עודכנו ${Object.keys(targetStock).length} פריטים (${timeStr})`;
+      setSuccessMessage(msg);
+      setTimeout(() => setSuccessMessage(null), 4000);
+
+      return { success: true, count: Object.keys(targetStock).length, time: timeStr };
+    } catch (err: any) {
+      console.error('Firestore sync error:', err);
+      const errMsg = `שגיאת סנכרון מול מסד הנתונים: ${err?.message || 'שגיאה לא ידועה'}`;
+      setErrorMessage(errMsg);
+      setTimeout(() => setErrorMessage(null), 5000);
+      return { success: false, error: err?.message };
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  }, [activeTenantId, stock, departments, cloudConfig, syncToMultiTenantDb]);
+
   // Robust, Immediate Stock Updates with Debounced Cloud Sync to prevent UI flicker
   const handleUpdateStockItem = useCallback((
     itemIdOrName: string,
@@ -995,6 +1060,7 @@ export default function App() {
       setStock(updated);
       saveStoredStock(updated);
       syncToMultiTenantDb(productHeaders, departments, updated);
+      pushStockToFirestore(updated, 'tenant-main-01').catch(console.warn);
     } else {
       setStock((prev) => {
         const next = { ...prev };
@@ -1011,6 +1077,7 @@ export default function App() {
           };
         }
         syncToMultiTenantDb(productHeaders, departments, next);
+        pushStockToFirestore(next, activeTenantId).catch(console.warn);
         return next;
       });
     }
@@ -1726,7 +1793,7 @@ export default function App() {
           isEmergencyMode={isEmergencyMode}
           onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
           onUpdateStockItem={handleUpdateStockItem}
-          onSyncWithCloud={handleSyncWithCloud}
+          onSyncWithCloud={handleSyncWithFirestore}
           isSyncingCloud={isSyncingCloud}
           onMoveItem={handleMoveStockItem}
           onSaveFullItem={handleSaveFullItem}

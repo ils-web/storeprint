@@ -55,6 +55,39 @@ export async function pushStockToFirestore(
 }
 
 /**
+ * Fetches the master warehouse stock directly from Firestore
+ */
+export async function fetchStockFromFirestore(
+  tenantId: string = 'tenant-main-01'
+): Promise<Record<string, StockItem> | null> {
+  if (!isFirebaseReady || !db) return null;
+  try {
+    const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
+    const snap = await getDoc(tenantRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.stock && typeof data.stock === 'object' && Object.keys(data.stock).length > 0) {
+        return data.stock as Record<string, StockItem>;
+      }
+    }
+    if (tenantId === 'tenant-main-01') {
+      const globalRef = doc(db, 'warehouse', 'master_stock');
+      const snapG = await getDoc(globalRef);
+      if (snapG.exists()) {
+        const dataG = snapG.data();
+        if (dataG && dataG.stock && typeof dataG.stock === 'object' && Object.keys(dataG.stock).length > 0) {
+          return dataG.stock as Record<string, StockItem>;
+        }
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn('Firestore fetchStockFromFirestore error:', err);
+    return null;
+  }
+}
+
+/**
  * Subscribes to real-time warehouse stock updates from Firestore.
  */
 export function subscribeToFirestoreStock(
@@ -65,7 +98,7 @@ export function subscribeToFirestoreStock(
 
   try {
     const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
-    const unsubscribe = onSnapshot(
+    const unsub1 = onSnapshot(
       docRef,
       (snapshot) => {
         if (snapshot.exists()) {
@@ -90,7 +123,40 @@ export function subscribeToFirestoreStock(
       }
     );
 
-    return unsubscribe;
+    // For main hospital tenant, also listen to global warehouse collection for seamless updates
+    let unsub2: (() => void) | null = null;
+    if (tenantId === 'tenant-main-01') {
+      const globalDocRef = doc(db, 'warehouse', 'master_stock');
+      unsub2 = onSnapshot(
+        globalDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data && data.stock && typeof data.stock === 'object') {
+              const firestoreStock = data.stock as Record<string, StockItem>;
+              if (Object.keys(firestoreStock).length > 0) {
+                saveDbStock(firestoreStock, false);
+                onStockUpdated(firestoreStock);
+              }
+            }
+          }
+        },
+        (err) => {
+          console.warn('Firestore global stock subscription error:', err);
+        }
+      );
+    }
+
+    return () => {
+      try {
+        unsub1();
+      } catch {}
+      if (unsub2) {
+        try {
+          unsub2();
+        } catch {}
+      }
+    };
   } catch (err) {
     console.warn('Failed to start Firestore stock subscription:', err);
     return null;
