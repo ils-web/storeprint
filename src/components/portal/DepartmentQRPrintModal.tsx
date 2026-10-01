@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { QrCode, Printer, Building2, X, Download, Smartphone, CheckCircle2, Copy, Sparkles, Layers } from 'lucide-react';
+import { QrCode, Printer, Building2, X, Download, Smartphone, CheckCircle2, Copy, Sparkles, Layers, Package } from 'lucide-react';
+import { getWarehouses } from '../../services/multiTenantDb';
 
 interface DepartmentQRPrintModalProps {
   isOpen: boolean;
@@ -16,10 +17,15 @@ export function DepartmentQRPrintModal({
   tenantId,
   tenantName = 'מרכז רפואי (סניף ראשי)',
 }: DepartmentQRPrintModalProps) {
+  const warehouses = getWarehouses(tenantId);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(() => warehouses[0]?.id || '');
   const [selectedDept, setSelectedDept] = useState<string>('universal');
   const [copiedDept, setCopiedDept] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const activeWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) || warehouses[0];
+  const whName = activeWarehouse ? activeWarehouse.name : '';
 
   // Base URL for mobile staff order portal
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
@@ -30,6 +36,9 @@ export function DepartmentQRPrintModal({
   const getPortalUrlForDept = (dept: string) => {
     const params = new URLSearchParams();
     if (tenantId) params.set('tenant', tenantId);
+    if (selectedWarehouseId && warehouses.length > 1) {
+      params.set('wh', selectedWarehouseId);
+    }
     if (dept && dept !== 'universal') params.set('dept', dept);
     const queryString = params.toString() ? `?${params.toString()}` : '';
     return `${origin}${cleanPath}/order/${queryString}`;
@@ -58,12 +67,13 @@ export function DepartmentQRPrintModal({
       return;
     }
 
+    const targetWhLabel = warehouses.length > 1 && whName ? ` [${whName}]` : '';
     const cardsHtml = printDepts
       .map((dept) => {
         const qrUrl = getQrImageUrl(dept);
         const directUrl = getPortalUrlForDept(dept);
         const isUniversal = dept === 'universal';
-        const displayTitle = isUniversal ? 'טופס הזמנת אספקה וציוד רפואי' : `טופס הזמנת אספקה — ${dept}`;
+        const displayTitle = isUniversal ? `טופס הזמנת אספקה${targetWhLabel}` : `טופס הזמנת אספקה${targetWhLabel} — ${dept}`;
         const badgeTitle = isUniversal ? 'כלל מחלקות בית החולים' : dept;
 
         return `
@@ -248,22 +258,43 @@ export function DepartmentQRPrintModal({
 
         {/* Filter bar */}
         <div className="p-4 sm:p-5 bg-slate-950/70 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Building2 className="w-5 h-5 text-sky-400 shrink-0" />
-            <span className="text-sm font-bold text-slate-200">בחר שלט להדפסה:</span>
-            <select
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white font-bold focus:outline-none focus:border-sky-500 cursor-pointer"
-            >
-              <option value="universal">🌟 שלט כללי — לכל המחלקות (מומלץ לתלייה ראשית)</option>
-              <option value="all">📑 כל השלטים (הדפסת שלט נפרד לכל מחלקה)</option>
-              {departments.map((d) => (
-                <option key={d} value={d}>
-                  מחלקה: {d}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-3 flex-wrap">
+            {warehouses.length > 1 && (
+              <div className="flex items-center gap-2 bg-slate-900 border border-amber-500/40 px-3 py-1.5 rounded-xl shadow-xs">
+                <Package className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-bold text-amber-200">מחסן יעד:</span>
+                <select
+                  value={selectedWarehouseId}
+                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                  className="bg-slate-800 border border-amber-500/50 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-amber-400 cursor-pointer"
+                  title="בחר מחסן יעד להפקת שלטי QR ייעודיים"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} {w.code ? `(${w.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-sky-400 shrink-0" />
+              <span className="text-sm font-bold text-slate-200">בחר שלט להדפסה:</span>
+              <select
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white font-bold focus:outline-none focus:border-sky-500 cursor-pointer"
+              >
+                <option value="universal">🌟 שלט כללי — לכל המחלקות (מומלץ לתלייה ראשית)</option>
+                <option value="all">📑 כל השלטים (הדפסת שלט נפרד לכל מחלקה)</option>
+                {departments.map((d) => (
+                  <option key={d} value={d}>
+                    מחלקה: {d}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <span className="text-sm text-slate-300 font-medium">

@@ -60,6 +60,7 @@ interface StaffOrderPortalProps {
   key?: React.Key;
   initialTenantId?: string;
   initialDepartment?: string;
+  initialWarehouseId?: string;
 }
 
 const DEFAULT_DEPARTMENTS = CANONICAL_DEPARTMENTS;
@@ -122,7 +123,7 @@ function detectItemCategory(name: string): 'gloves' | 'dressings' | 'hygiene' | 
   return 'general';
 }
 
-export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOrderPortalProps) {
+export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWarehouseId }: StaffOrderPortalProps) {
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -169,7 +170,15 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
   const warehouses = getWarehouses(selectedTenantId);
-  const activeWarehouse = warehouses[0] || null;
+  const activeWarehouse = useMemo(() => {
+    if (initialWarehouseId) {
+      const match = warehouses.find(
+        (w) => w.id === initialWarehouseId || w.code === initialWarehouseId || w.name === initialWarehouseId
+      );
+      if (match) return match;
+    }
+    return warehouses[0] || null;
+  }, [warehouses, initialWarehouseId]);
 
   // Departments List (Loaded dynamically for active tenant)
   const departmentsList = useMemo(() => {
@@ -665,6 +674,20 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
                 </div>
               </div>
             </button>
+
+            {activeWarehouse && (
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
+                  isLight
+                    ? 'bg-amber-50 border-amber-300/80 text-amber-900'
+                    : 'bg-amber-950/70 border-amber-500/40 text-amber-300'
+                } border rounded-xl text-xs font-black shrink-0 shadow-xs`}
+                title={`הזמנה עבור ${activeWarehouse.name}`}
+              >
+                <Package className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate max-w-[140px]">{activeWarehouse.name}</span>
+              </div>
+            )}
 
             <div
               className={`hidden xs:flex items-center gap-1.5 px-2.5 py-1 ${
