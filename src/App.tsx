@@ -93,7 +93,7 @@ import {
 import { printOrdersHtml } from './utils/pdfGenerator';
 import { organizeStockLogically } from './utils/stockGrouper';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download, ArrowRight } from 'lucide-react';
 
 const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
 const DEPARTMENTS_CACHE_KEY = 'storeprint_departments_cache_v1';
@@ -1907,27 +1907,50 @@ export default function App() {
       {/* Multi-Tenant Quick Switcher & Clean Shortcuts */}
       <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-2 text-xs text-slate-300">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4 text-indigo-400" />
-            <span className="font-bold">סניף פעיל:</span>
+          <div className="flex items-center gap-2 flex-wrap">
             {authSession?.userRole === 'superadmin' ? (
-              <select
-                value={activeTenantId}
-                onChange={(e) => {
-                  setActiveTenantId(e.target.value);
-                }}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
-              >
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.plan.toUpperCase()})
-                  </option>
-                ))}
-              </select>
+              <>
+                <div className="flex items-center gap-1.5 bg-purple-950/90 border border-purple-700/60 text-purple-200 px-2.5 py-1 rounded-lg font-bold">
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                  <span>סופר-אדמין (ניהול רשת)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-purple-400" />
+                  <span className="font-bold text-slate-300">מעבר בין סניפים:</span>
+                  <select
+                    value={activeTenantId}
+                    onChange={(e) => {
+                      setActiveTenantId(e.target.value);
+                    }}
+                    className="bg-slate-800 border-2 border-purple-500/60 rounded-lg px-2.5 py-1 text-xs text-white font-bold focus:outline-none focus:border-purple-400 cursor-pointer shadow-xs"
+                    title="מעבר מהיר בין סניפי הרשת (פעיל עבור סופר-אדמין בלבד)"
+                  >
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.plan.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => setCurrentView('superadmin')}
+                  className="px-2.5 py-1 bg-purple-700/90 hover:bg-purple-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                  title="חזרה ללוח הבקרה הראשי של סופר-אדמין"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>חזרה לפאנל סופר-אדמין</span>
+                </button>
+              </>
             ) : (
-              <span className="text-white font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
-                {activeTenant?.name}
-              </span>
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-indigo-400" />
+                <span className="font-bold text-slate-400">סניף מחובר:</span>
+                <span className="text-white font-black bg-indigo-950/80 border border-indigo-700/60 px-3 py-1 rounded-lg shadow-xs flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  {activeTenant?.name}
+                </span>
+                <span className="text-[11px] text-slate-400 hidden sm:inline">(גישה מאובטחת לסניף זה בלבד 🔒)</span>
+              </div>
             )}
           </div>
 
