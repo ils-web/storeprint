@@ -156,30 +156,6 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Toolbar: Auto-refresh, Refresh, Multi-tenant Links */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
             
-            {/* Single Official Department QR Poster Print Button */}
-            {onOpenDepartmentQR && (
-              <button
-                onClick={onOpenDepartmentQR}
-                className="bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white text-xs sm:text-sm font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/30 border border-indigo-400/40 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                title="הדפסת שלט QR מעוצב לתלייה במחלקות להזמנה ישירה מהטלפון"
-              >
-                <QrCode className="w-4 h-4 text-white" />
-                <span>🖨️ הדפסת קוד QR למחלקות</span>
-              </button>
-            )}
-
-            {/* Live Shortage Blinking Button */}
-            {lowStockCount > 0 && onOpenShortageDrawer && (
-              <button
-                onClick={onOpenShortageDrawer}
-                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md shadow-red-600/30 ring-2 ring-red-400 animate-pulse transition-all cursor-pointer active:scale-95"
-                title="חלונית חוסרים במלאי - לחץ לצפייה והדפסת דוח רכש"
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>חוסרים ({lowStockCount}) 🚨</span>
-              </button>
-            )}
-
             {/* Emergency Mode Quick Toggle */}
             {onOpenEmergencyConfirm && (
               <button
@@ -222,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Real-Time Firebase Cloud Badge */}
               <div
                 className="bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
-                title="מערכת עצמאית מחוברת ישירות לענן Firebase בזמן אמת (ללא תלות ב-Google Sheets)"
+                title="מערכת מחוברת ישירות למסד הנתונים בענן Firebase בזמן אמת"
               >
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

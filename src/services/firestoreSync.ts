@@ -14,7 +14,7 @@ import { db, isFirebaseReady } from './firebase';
 import { StockItem } from '../types';
 import { MultiTenantOrder } from '../types/multiTenant';
 import { getDbStock, saveDbStock } from './unifiedDb';
-import { saveTenantOrders } from './multiTenantDb';
+import { saveTenantOrders, getTenantStockMap } from './multiTenantDb';
 
 /**
  * Sanitizes an object before passing to Firestore setDoc/updateDoc
@@ -106,13 +106,15 @@ export function subscribeToFirestoreStock(
           if (data && data.stock && typeof data.stock === 'object') {
             const firestoreStock = data.stock as Record<string, StockItem>;
             if (Object.keys(firestoreStock).length > 0) {
-              saveDbStock(firestoreStock, false);
+              if (tenantId === 'tenant-main-01') {
+                saveDbStock(firestoreStock, false);
+              }
               onStockUpdated(firestoreStock);
             }
           }
         } else {
-          // If Firestore document is empty, seed it with current local stock
-          const localStock = getDbStock();
+          // If Firestore document is empty, seed it with tenant-specific inventory
+          const localStock = getTenantStockMap(tenantId);
           if (Object.keys(localStock).length > 0) {
             pushStockToFirestore(localStock, tenantId).catch(console.warn);
           }
@@ -243,18 +245,25 @@ export function subscribeToFirestoreOrders(
   try {
     const ordersMap = new Map<string, MultiTenantOrder>();
 
+    const isMain = tenantId === 'tenant-main-01';
     const handleSnapshot = (snapshot: any) => {
       snapshot.forEach((docSnap: any) => {
         const data = docSnap.data() as MultiTenantOrder;
         if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          if (!data.tenantId || data.tenantId === tenantId) {
-            ordersMap.set(docSnap.id, data);
+          if (isMain) {
+            if (!data.tenantId || data.tenantId === 'tenant-main-01') {
+              ordersMap.set(docSnap.id, data);
+            }
+          } else {
+            if (data.tenantId === tenantId) {
+              ordersMap.set(docSnap.id, data);
+            }
           }
         }
       });
 
       const liveOrders = Array.from(ordersMap.values()).filter(
-        (o) => !o.tenantId || o.tenantId === tenantId
+        (o) => isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === tenantId
       );
       liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       saveTenantOrders(tenantId, liveOrders);
@@ -306,6 +315,7 @@ export async function fetchOrdersFromFirestore(
 ): Promise<MultiTenantOrder[]> {
   if (!isFirebaseReady || !db) return [];
   try {
+    const isMain = tenantId === 'tenant-main-01';
     const ordersMap = new Map<string, MultiTenantOrder>();
 
     // 1. Fetch tenant collection
@@ -316,8 +326,14 @@ export async function fetchOrdersFromFirestore(
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          if (!data.tenantId || data.tenantId === tenantId) {
-            ordersMap.set(docSnap.id, data as MultiTenantOrder);
+          if (isMain) {
+            if (!data.tenantId || data.tenantId === 'tenant-main-01') {
+              ordersMap.set(docSnap.id, data as MultiTenantOrder);
+            }
+          } else {
+            if (data.tenantId === tenantId) {
+              ordersMap.set(docSnap.id, data as MultiTenantOrder);
+            }
           }
         }
       });
@@ -334,7 +350,7 @@ export async function fetchOrdersFromFirestore(
         snapG.forEach((docSnap) => {
           const data = docSnap.data();
           if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-            if (!data.tenantId || data.tenantId === tenantId) {
+            if (!data.tenantId || data.tenantId === 'tenant-main-01') {
               ordersMap.set(docSnap.id, data as MultiTenantOrder);
             }
           }
@@ -345,7 +361,7 @@ export async function fetchOrdersFromFirestore(
     }
 
     const orders = Array.from(ordersMap.values()).filter(
-      (o) => !o.tenantId || o.tenantId === tenantId
+      (o) => isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === tenantId
     );
     orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     saveTenantOrders(tenantId, orders);

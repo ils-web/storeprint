@@ -4,16 +4,19 @@ import { QrCode, Smartphone, X, Copy, CheckCircle2, ExternalLink, Printer } from
 interface MobileStockQRModalProps {
   isOpen: boolean;
   onClose: () => void;
+  tenantId?: string;
+  tenantName?: string;
 }
 
-export function MobileStockQRModal({ isOpen, onClose }: MobileStockQRModalProps) {
+export function MobileStockQRModal({ isOpen, onClose, tenantId, tenantName = 'מחסן ראשי' }: MobileStockQRModalProps) {
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const pathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : '';
-  const mobileStockUrl = `${origin}${pathname}/?view=mobile_stock`;
+  const tenantQuery = tenantId ? `&tenant=${encodeURIComponent(tenantId)}` : '';
+  const mobileStockUrl = `${origin}${pathname}/?view=mobile_stock${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(mobileStockUrl)}`;
 
   const handleCopy = () => {
@@ -49,7 +52,7 @@ export function MobileStockQRModal({ isOpen, onClose }: MobileStockQRModalProps)
         <div class="card">
           <div class="logo">StorePrint 📦</div>
           <div class="title">ספירת ובקרת מלאי במחסן</div>
-          <div class="subtitle">גישה מהירה מהסמארטפון לצוות המחסן</div>
+          <div class="subtitle">${tenantName} — גישה מהירה מהסמארטפון</div>
           <img src="${qrImageUrl}" class="qr-img" />
           <div class="box">
             <strong>📋 הנחיות שימוש למחסנאי:</strong><br>

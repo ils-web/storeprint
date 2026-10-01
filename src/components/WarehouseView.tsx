@@ -82,7 +82,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
 
   return (
     <div
-      className={`inline-flex items-center gap-1 bg-white border border-slate-300 rounded-xl p-0.5 shadow-2xs shrink-0 ${
+      className={`inline-flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl p-1 shadow-2xs shrink-0 ${
         isMobile ? 'w-full justify-between py-1.5 px-2' : ''
       }`}
     >
@@ -91,7 +91,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, safeStock - 10))}
         className={`flex items-center justify-center rounded-lg bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-black transition-colors cursor-pointer shrink-0 ${
-          isMobile ? 'w-11 h-10 text-xs' : 'w-6 h-6 text-[10px]'
+          isMobile ? 'w-11 h-10 text-xs' : 'w-7.5 h-7.5 sm:w-8 sm:h-8 text-xs'
         }`}
         title="הורד 10"
       >
@@ -103,11 +103,11 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, Math.max(0, safeStock - 1))}
         className={`flex items-center justify-center rounded-lg bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer shrink-0 ${
-          isMobile ? 'w-11 h-10' : 'w-6 h-6'
+          isMobile ? 'w-11 h-10' : 'w-7.5 h-7.5 sm:w-8 sm:h-8'
         }`}
         title="הורד 1"
       >
-        <Minus className={isMobile ? 'w-4 h-4' : 'w-3 h-3'} />
+        <Minus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
 
       {/* Input - commits on Blur or Enter, with mobile numeric keypad and no clipped numbers */}
@@ -129,8 +129,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`w-14 sm:w-16 min-w-[54px] px-1 text-center font-black rounded-lg border focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-            isMobile ? 'text-base py-1.5' : 'text-xs py-0.5'
+          className={`w-14 sm:w-16 min-w-[56px] px-1 text-center font-black rounded-lg border focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+            isMobile ? 'text-base py-1.5' : 'text-sm py-1'
           } ${
             isLow
               ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500'
@@ -144,11 +144,11 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, safeStock + 1)}
         className={`flex items-center justify-center rounded-lg bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer shrink-0 ${
-          isMobile ? 'w-11 h-10' : 'w-6 h-6'
+          isMobile ? 'w-11 h-10' : 'w-7.5 h-7.5 sm:w-8 sm:h-8'
         }`}
         title="הוסף 1"
       >
-        <Plus className={isMobile ? 'w-4 h-4' : 'w-3 h-3'} />
+        <Plus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
 
       {/* +10 */}
@@ -156,7 +156,7 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         type="button"
         onClick={() => onUpdate(item.name, safeStock + 10)}
         className={`flex items-center justify-center rounded-lg bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer shrink-0 ${
-          isMobile ? 'w-11 h-10 text-xs' : 'w-6 h-6 text-[10px]'
+          isMobile ? 'w-11 h-10 text-xs' : 'w-7.5 h-7.5 sm:w-8 sm:h-8 text-xs'
         }`}
         title="הוסף 10"
       >
@@ -212,7 +212,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-1 border rounded-xl px-1.5 py-0.5 shadow-2xs shrink-0 ${
+      className={`inline-flex items-center gap-1.5 border rounded-xl px-2 py-1 shadow-2xs shrink-0 ${
         isEmergencyMode
           ? 'bg-red-50/80 border-red-300 ring-1 ring-red-400'
           : 'bg-slate-50 border-slate-300'
@@ -220,7 +220,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
     >
       {/* Min threshold number input */}
       <div className="flex items-center gap-1">
-        <span className="text-[10px] font-bold text-slate-500">
+        <span className="text-xs font-bold text-slate-500">
           {isEmergencyMode ? 'שגרה:' : 'סף:'}
         </span>
         <input
@@ -240,11 +240,11 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-11 sm:w-12 min-w-[42px] text-center text-xs font-black py-0.5 px-0.5 rounded-md border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          className="w-12 sm:w-14 min-w-[46px] text-center text-sm font-black py-0.5 px-1 rounded-md border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           title="סף כמות מינימום לדוח חוסרים"
         />
         {isEmergencyMode && (
-          <span className="text-[9px] font-black text-red-600 bg-red-100 px-1 py-0.5 rounded border border-red-300">
+          <span className="text-[10px] font-black text-red-600 bg-red-100 px-1 py-0.5 rounded border border-red-300">
             X3: {emergencyTh}
           </span>
         )}
@@ -255,7 +255,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
         <select
           value={currentUnit}
           onChange={(e) => handleUnitChange(e.target.value)}
-          className="bg-white border border-slate-300 text-slate-900 text-xs font-bold py-0.5 px-1 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+          className="bg-white border border-slate-300 text-slate-900 text-xs font-bold py-1 px-1.5 rounded-md focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
           title="בחר סוג אריזה / יחידת מידה"
         >
           {PACKAGING_UNITS.map((u) => (
@@ -567,10 +567,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* Filter Tabs */}
-            <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 text-[11px] sm:text-xs overflow-x-auto">
+            <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1.5 text-xs sm:text-sm overflow-x-auto">
               <button
                 onClick={() => setFilterType('all')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'all'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -580,7 +580,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterType('low')}
-                className={`px-3 py-1.5 rounded-xl font-black whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl font-black whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'low'
                     ? 'bg-red-600 text-white shadow-xs'
                     : 'text-red-700 hover:bg-red-50'
@@ -590,7 +590,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterType('out')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'out'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -600,7 +600,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterType('ok')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'ok'
                     ? 'bg-white text-emerald-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -610,7 +610,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterType('inactive')}
-                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'inactive'
                     ? 'bg-slate-800 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -624,55 +624,27 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* Row 2: Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/70">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1.5 border-t border-slate-200/70">
             
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Cloud Sync Status & Settings Button */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Add New Stock Item Button */}
               <button
-                onClick={onOpenCloudModal}
-                className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
-                  cloudConfig.enabled
-                    ? 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100'
-                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
-                }`}
-                title="הגדרות סנכרון ענן"
+                onClick={handleOpenCreateItem}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-black px-4 py-2 rounded-2xl shadow-sm flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+                title="הוספת פריט חדש למחסן"
               >
-                <Cloud className={`w-3.5 h-3.5 ${cloudConfig.enabled ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>{cloudConfig.enabled ? 'ענן מחובר ☁️' : 'חיבור לענן'}</span>
+                <PlusCircle className="w-4 h-4" />
+                <span>הוסף פריט למחסן 📦</span>
               </button>
-
-              {/* Save Current Layout to Cloud Backup */}
-              {onSaveBackup && (
-                <button
-                  onClick={onSaveBackup}
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                  title="שמירת סידור המחסן והמלאי הנוכחי כגיבוי קבוע בענן Firestore"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>שמור גיבוי ענן 💾</span>
-                </button>
-              )}
-
-              {/* Restore from Cloud Backup */}
-              {onRestoreBackup && (
-                <button
-                  onClick={() => setIsRestoreBackupModalOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                  title="שחזור המחסן מגיבוי הענן האחרון שנשמר ב-Firestore"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                  <span>שחזור מגיבוי ענן 🛡️</span>
-                </button>
-              )}
 
               {/* Smart Medical Grouping Button (With Safe Confirmation Modal) */}
               {onOrganizeLogically && (
                 <button
                   onClick={() => setIsOrganizeConfirmOpen(true)}
-                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs sm:text-sm font-bold px-3.5 py-2 rounded-2xl shadow-2xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
                   title="קיבוץ וארגון אוטומטי של המחסן לפי קטגוריות רפואיות מסודרות (דורש אישור)"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
                   <span>ארגון חכם לפי קטגוריות 🩺</span>
                 </button>
               )}
@@ -680,67 +652,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* Mobile Stock Scanner QR */}
               <button
                 onClick={() => setIsMobileStockQRModalOpen(true)}
-                className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
                 title="סריקת קוד QR לספירת מלאי מהטלפון בין המדפים"
               >
-                <Smartphone className="w-3.5 h-3.5" />
+                <Smartphone className="w-4 h-4" />
                 <span>QR ספירת מלאי במובייל 📱</span>
               </button>
 
               {/* Department QR Cards Generator & Print */}
               <button
                 onClick={() => setIsDeptQRModalOpen(true)}
-                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-bold px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
                 title="הפקת כרטיסיות QR עם הוראות להדפסה ותלייה בכל מחלקה"
               >
-                <QrCode className="w-3.5 h-3.5" />
+                <QrCode className="w-4 h-4" />
                 <span>כרטיסיות QR למחלקות 🏷️</span>
-              </button>
-
-              {/* Add New Stock Item Button */}
-              <button
-                onClick={handleOpenCreateItem}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                title="הוספת פריט חדש למחסן"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>הוסף פריט למחסן 📦</span>
-              </button>
-
-              {/* Emergency Mode Toggle Button */}
-              {onOpenEmergencyConfirm && (
-                <button
-                  onClick={onOpenEmergencyConfirm}
-                  className={`text-xs font-black px-3.5 py-1.5 rounded-xl shadow flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isEmergencyMode
-                      ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse ring-2 ring-red-400'
-                      : 'bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-700/60'
-                  }`}
-                  title={isEmergencyMode ? 'לחץ לחזרה לשגרה (1X)' : 'מעבר לשעת חירום והגדלת מלאי פי 3 (3X)'}
-                >
-                  <Siren className="w-3.5 h-3.5 text-white" />
-                  <span>{isEmergencyMode ? '🚨 שעת חירום (X3) • חזרה לשגרה' : 'מצב חירום (X3) 🚨'}</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Print Reorder Sheet */}
-              <button
-                onClick={handlePrintReorder}
-                disabled={lowStockItems.length === 0}
-                className={`text-white text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 ${
-                  isEmergencyMode
-                    ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 ring-2 ring-red-400'
-                    : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700'
-                }`}
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>
-                  {isEmergencyMode
-                    ? `הדפס דוח רכש חירום X3 (${lowStockItems.length})`
-                    : `הדפס דוח חוסרים (${lowStockItems.length})`}
-                </span>
               </button>
             </div>
 
@@ -836,13 +762,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-right border-collapse">
             <thead>
-              <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-600">
-                <th className="py-2.5 px-2 w-10 text-center">מס'</th>
-                <th className="py-2.5 px-3">שם המוצר / פריט (עמודות E..FM בטבלה)</th>
-                <th className="py-2.5 px-2 w-48 text-center">יתרת מלאי נוכחית</th>
-                <th className="py-2.5 px-2 w-48 text-center">סף מינימום וסוג אריזה</th>
-                <th className="py-2.5 px-2 w-36 text-center">סטטוס מלאי</th>
-                <th className="py-2.5 px-2 w-28 text-center">פעילות / השהייה</th>
+              <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-600">
+                <th className="py-3 px-2 w-12 text-center">מס'</th>
+                <th className="py-3 px-3">שם המוצר / פריט</th>
+                <th className="py-3 px-2 w-52 text-center">יתרת מלאי נוכחית</th>
+                <th className="py-3 px-2 w-52 text-center">סף מינימום וסוג אריזה</th>
+                <th className="py-3 px-2 w-36 text-center">סטטוס מלאי</th>
+                <th className="py-3 px-2 w-32 text-center">פעילות / השהייה</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -881,7 +807,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       }`}
                     >
                       {/* Index & Reorder Buttons */}
-                      <td className="py-2 px-1 text-center font-mono font-bold text-slate-400">
+                      <td className="py-2.5 px-1 text-center font-mono font-bold text-slate-400">
                         <div className="flex items-center justify-center gap-1">
                           {onMoveItem && (
                             <div className="flex flex-col gap-0.5">
@@ -889,19 +815,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 type="button"
                                 disabled={idx === 0}
                                 onClick={() => onMoveItem(item.name || item.id, 'up')}
-                                className="p-0.5 rounded hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                className="p-1 rounded-md hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
                                 title="הזז פריט שורה אחת למעלה ▲"
                               >
-                                <ChevronUp className="w-3.5 h-3.5" />
+                                <ChevronUp className="w-4 h-4" />
                               </button>
                               <button
                                 type="button"
                                 disabled={idx === filteredItems.length - 1}
                                 onClick={() => onMoveItem(item.name || item.id, 'down')}
-                                className="p-0.5 rounded hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                                className="p-1 rounded-md hover:bg-sky-100 text-slate-400 hover:text-sky-700 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
                                 title="הזז פריט שורה אחת למטה ▼"
                               >
-                                <ChevronDown className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-4 h-4" />
                               </button>
                             </div>
                           )}
@@ -910,7 +836,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       {/* Product Name */}
-                      <td className="py-2 px-3">
+                      <td className="py-2.5 px-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
                             <span>{item.name}</span>
@@ -938,7 +864,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 !item.limitByPatients
                               )
                             }
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer shrink-0 ${
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer shrink-0 ${
                               item.limitByPatients
                                 ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
                                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border-slate-300'
@@ -955,7 +881,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       {/* Interactive Stock Adjuster */}
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         <StockRowInput
                           item={item}
                           globalThreshold={globalThreshold}
@@ -967,7 +893,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       {/* Threshold & Packaging Unit Selector */}
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         <ThresholdAndUnitInput
                           item={item}
                           globalThreshold={globalThreshold}
@@ -980,17 +906,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
 
                       {/* Status Badge with Custom Packaging Unit */}
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-2.5 px-2 text-center">
                         {isInactive ? (
-                          <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                          <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-600 px-2.5 py-1 rounded-full text-xs font-bold">
                             ⏸️ מושהה (לא בדוחות)
                           </span>
                         ) : isOut ? (
-                          <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                          <span className="inline-flex items-center gap-1 bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full text-xs font-bold">
                             ⚪ אזל ({item.currentStock} {currentUnit})
                           </span>
                         ) : isLow ? (
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black animate-pulse border ${
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black animate-pulse border ${
                             isEmergencyMode
                               ? 'bg-red-600 text-white border-red-700 shadow-xs'
                               : 'bg-red-100 text-red-700 border-red-300'
@@ -998,28 +924,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             ⚠️ {isEmergencyMode ? 'חסר בחירום' : 'נמוך'} ({item.currentStock} {currentUnit})
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold">
                             🟢 תקין ({item.currentStock} {currentUnit})
                           </span>
                         )}
                       </td>
 
                       {/* Active / Inactive Toggle & Edit Buttons */}
-                      <td className="py-2 px-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-2.5 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           {/* Edit Item Button */}
                           <button
                             onClick={() => handleOpenEditItem(item)}
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-sky-50 hover:border-sky-300 text-slate-700 transition-colors border border-slate-200 cursor-pointer"
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-sky-50 hover:border-sky-300 text-slate-700 transition-colors border border-slate-200 cursor-pointer"
                             title="ערוך פריט זה (שם, כמויות, ספים)"
                           >
-                            <Edit className="w-3.5 h-3.5 text-sky-600" />
+                            <Edit className="w-4 h-4 text-sky-600" />
                           </button>
 
                           {/* Pause / Resume Button */}
                           <button
                             onClick={() => onUpdateStockItem(item.name, safeQty, item.minThreshold || globalThreshold, currentUnit, isInactive ? true : false, item.limitByPatients)}
-                            className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                               isInactive
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
                                 : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
@@ -1028,12 +954,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           >
                             {isInactive ? (
                               <>
-                                <PlayCircle className="w-3.5 h-3.5 text-white" />
+                                <PlayCircle className="w-4 h-4 text-white" />
                                 <span>הפעל</span>
                               </>
                             ) : (
                               <>
-                                <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
+                                <PauseCircle className="w-4 h-4 text-slate-500" />
                                 <span>הקפא ❄️</span>
                               </>
                             )}
@@ -1042,10 +968,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           {/* Delete Button */}
                           <button
                             onClick={() => setItemToDelete(item)}
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-red-50 hover:border-red-300 text-slate-400 hover:text-red-600 transition-colors border border-slate-200 cursor-pointer"
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-red-50 hover:border-red-300 text-slate-400 hover:text-red-600 transition-colors border border-slate-200 cursor-pointer"
                             title="מחק פריט זה לצמיתות מהמחסן"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1082,6 +1008,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       <MobileStockQRModal
         isOpen={isMobileStockQRModalOpen}
         onClose={() => setIsMobileStockQRModalOpen(false)}
+        tenantId={tenantId}
+        tenantName={tenantName}
       />
 
       {/* Item Creation & Edit Modal */}

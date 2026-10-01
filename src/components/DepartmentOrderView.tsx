@@ -30,6 +30,7 @@ interface DepartmentOrderViewProps {
   productHeaders: string[];
   stock: Record<string, StockItem>;
   departments: string[];
+  tenantId?: string;
   cloudConfig: CloudSyncConfig;
   onOrderSubmitted?: () => void;
 }
@@ -41,6 +42,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
   productHeaders,
   stock,
   departments,
+  tenantId = 'tenant-main-01',
   cloudConfig,
   onOrderSubmitted,
 }) => {
@@ -211,8 +213,8 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
 
     try {
       // 1. Create order & push to Firestore Real-Time DB
-      const newOrder = createTenantOrder('tenant-main-01', {
-        tenantId: 'tenant-main-01',
+      const newOrder = createTenantOrder(tenantId, {
+        tenantId,
         warehouseId: 'wh-default',
         departmentId: `dept-${Date.now()}`,
         departmentName: activeDept,
@@ -225,7 +227,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
         printed: false,
       });
 
-      await pushOrderToFirestore(newOrder, 'tenant-main-01');
+      await pushOrderToFirestore(newOrder, tenantId);
 
       // 2. Optionally sync with Apps Script if configured
       if (cloudConfig.endpointUrl && cloudConfig.endpointUrl.trim()) {
@@ -279,7 +281,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
               ההזמנה נשלחה בהצלחה למחסן! 🎉
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              ההזמנה נרשמה ישירות בטבלת ה-Google Sheets ותטופל בהקדם על ידי צוות המחסן.
+              ההזמנה נקלטה ישירות במערכת המחסן ובענן ותטופל בהקדם על ידי צוות המחסן.
             </p>
           </div>
 

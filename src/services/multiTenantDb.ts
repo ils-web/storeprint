@@ -561,6 +561,32 @@ export function updateInventoryStock(
   }
 }
 
+/**
+ * Returns a standardized Record<string, StockItem> for any tenant,
+ * converting their isolated inventory into the application stock format.
+ */
+export function getTenantStockMap(tenantId: string): Record<string, StockItem> {
+  if (tenantId === 'tenant-main-01') {
+    return getDbStock();
+  }
+  const inv = getInventory(tenantId);
+  const stockMap: Record<string, StockItem> = {};
+  inv.forEach((item, idx) => {
+    stockMap[item.name] = {
+      id: item.id,
+      name: item.name,
+      unit: item.unit || "יח'",
+      currentStock: item.currentStock || 0,
+      minThreshold: item.minThreshold || 10,
+      colIndex: item.colIndex || idx + 1,
+      isActive: item.isActive !== false,
+      limitByPatients: Boolean(item.limitByPatients),
+      lastUpdated: item.updatedAt,
+    };
+  });
+  return stockMap;
+}
+
 // ----------------------------------------------------------------------------
 // DEPARTMENTS OPERATIONS
 // ----------------------------------------------------------------------------

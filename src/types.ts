@@ -11,12 +11,12 @@ export interface Order {
   id: string;
   tenantId?: string;
   rowNumber: number;
-  timestamp: string;       // Column A (חותמת זמן, e.g. 20/07/2026 09:37:32)
-  rawDate: string;         // Column B (תאריך, e.g. 20/07/2026)
+  timestamp: string;       // Order creation timestamp (e.g. 20/07/2026 09:37:32)
+  rawDate: string;         // Order date string (e.g. 20/07/2026)
   parsedDate: Date | null;
-  department: string;      // Column C (מחלקה או סקטור, e.g. ג' 2 סיעוד מורכב)
-  patientsCount: string;   // Column D (מספר טופלים במחלקה)
-  items: OrderItem[];      // Extracted items from columns E..FM
+  department: string;      // Department or ward name
+  patientsCount: string;   // Current patients count in department
+  items: OrderItem[];      // Extracted ordered items with quantities
   totalItemsCount: number; // Count of items ordered
   printed: boolean;
   printedAt?: string;

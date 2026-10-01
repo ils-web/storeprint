@@ -35,6 +35,7 @@ import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
+  tenantName?: string;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
   onUpdateStockItem: (
@@ -415,6 +416,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
 
 export function MobileStockManager({
   stock,
+  tenantName,
   isEmergencyMode = false,
   onOpenEmergencyConfirm,
   onUpdateStockItem,
@@ -549,7 +551,7 @@ export function MobileStockManager({
     });
 
     if (isEmergencyMode) {
-      printEmergencyReorderListHtml(stockList, globalThreshold, 3);
+      printEmergencyReorderListHtml(stockList, globalThreshold, 3, tenantName);
     } else {
       printReorderListHtml(rawDeficit, globalThreshold);
     }
@@ -654,7 +656,12 @@ export function MobileStockManager({
             )}
             <div className="min-w-0">
               <h2 className="font-black text-sm sm:text-base text-white truncate flex items-center gap-1.5">
-                <span>ספירת מלאי במחסן 📦</span>
+                <span>ספירת מלאי 📦</span>
+                {tenantName && (
+                  <span className="text-[10px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded-md font-bold truncate max-w-[120px]">
+                    {tenantName}
+                  </span>
+                )}
                 <span className="text-[11px] text-slate-400 font-mono font-normal">({stats.total})</span>
               </h2>
             </div>

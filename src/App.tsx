@@ -107,9 +107,21 @@ export default function App() {
 
   // Active Tenant
   const tenants = getTenants();
-  const [activeTenantId, setActiveTenantId] = useState<string>(
-    authSession?.tenantId || (tenants.length > 0 ? tenants[0].id : 'tenant-main-01')
-  );
+  const [activeTenantId, setActiveTenantId] = useState<string>(() => {
+    if (authSession?.tenantId) return authSession.tenantId;
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tParam = params.get('tenant') || params.get('tenantId');
+        if (tParam) {
+          const match = tenants.find((t) => t.id === tParam || t.slug === tParam);
+          if (match) return match.id;
+          return tParam;
+        }
+      } catch {}
+    }
+    return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
+  });
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
 
   // Security enforcement: regular tenant users are strictly pinned to their own tenantId
@@ -121,13 +133,23 @@ export default function App() {
     }
   }, [authSession, activeTenantId]);
 
-  // Deep Link Routing (URL params ?view=... &dept=...)
+  // Deep Link Routing (URL params ?view=... &dept=... &tenant=...)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get('view');
       const deptParam = params.get('dept');
+      const tenantParam = params.get('tenant') || params.get('tenantId');
       const cloudUrlParam = params.get('cloudUrl');
+
+      if (tenantParam) {
+        const match = tenants.find((t) => t.id === tenantParam || t.slug === tenantParam);
+        const resolvedId = match ? match.id : tenantParam;
+        if (resolvedId && resolvedId !== activeTenantId) {
+          setActiveTenantId(resolvedId);
+        }
+      }
+
       if (cloudUrlParam) {
         try {
           const decoded = decodeURIComponent(cloudUrlParam);
@@ -153,7 +175,7 @@ export default function App() {
         setCurrentView('superadmin');
       }
     }
-  }, []);
+  }, [activeTenantId, tenants]);
 
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
   const ACTIVE_TAB_KEY = 'storeprint_active_tab_v1';
@@ -1112,6 +1134,7 @@ export default function App() {
       }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
+    pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     setSuccessMessage(`הפריט "${savedItem.name}" נשמר בהצלחה במחסן ובקטלוג! 📦✅`);
     setTimeout(() => setSuccessMessage(null), 3500);
   }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
@@ -1140,6 +1163,7 @@ export default function App() {
       }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
+    pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     setSuccessMessage(`הפריט נמחק לצמיתות מהמחסן ומהקטלוג 🗑️`);
     setTimeout(() => setSuccessMessage(null), 3500);
   }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
@@ -1180,6 +1204,7 @@ export default function App() {
       }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
+    pushStockToFirestore(updated, activeTenantId).catch(console.warn);
   }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
 
   const handleResetMasterCatalog = useCallback(() => {
@@ -1790,6 +1815,7 @@ export default function App() {
       <>
         <MobileStockManager
           stock={stock}
+          tenantName={activeTenant?.name}
           isEmergencyMode={isEmergencyMode}
           onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
           onUpdateStockItem={handleUpdateStockItem}
@@ -1991,6 +2017,7 @@ export default function App() {
               productHeaders={productHeaders}
               stock={stock}
               departments={departments}
+              tenantId={activeTenantId}
               cloudConfig={cloudConfig}
               onOrderSubmitted={() => {
                 loadOrders(true);

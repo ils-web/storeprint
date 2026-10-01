@@ -148,20 +148,24 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment }: StaffOr
 
   const tenants = getTenants();
   const [selectedTenantId, setSelectedTenantId] = useState<string>(() => {
-    if (initialTenantId) return initialTenantId;
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const t = urlParams.get('tenant');
-      if (t) return t;
+    const rawTarget = initialTenantId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tenant') : null);
+    if (rawTarget) {
+      const match = tenants.find((t) => t.id === rawTarget || t.slug === rawTarget);
+      if (match) return match.id;
+      return rawTarget;
     }
     return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
   });
 
   useEffect(() => {
-    if (initialTenantId && initialTenantId !== selectedTenantId) {
-      setSelectedTenantId(initialTenantId);
+    if (initialTenantId) {
+      const match = tenants.find((t) => t.id === initialTenantId || t.slug === initialTenantId);
+      const resolvedId = match ? match.id : initialTenantId;
+      if (resolvedId !== selectedTenantId) {
+        setSelectedTenantId(resolvedId);
+      }
     }
-  }, [initialTenantId, selectedTenantId]);
+  }, [initialTenantId, selectedTenantId, tenants]);
 
   const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
   const warehouses = getWarehouses(selectedTenantId);
