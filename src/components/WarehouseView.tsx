@@ -11,9 +11,6 @@ import {
   Sparkles,
   ShieldCheck,
   RotateCcw,
-  Cloud,
-  CloudCheck,
-  RefreshCw,
   SlidersHorizontal,
   QrCode,
   Smartphone,
@@ -29,11 +26,10 @@ import {
   ChevronDown,
   ArrowUpDown,
 } from 'lucide-react';
-import { StockItem, CloudSyncConfig } from '../types';
+import { StockItem } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
 import { normalizeProductName } from '../utils/stockManager';
 import { getCategorizedSortedStockItems, categorizeItem } from '../utils/stockGrouper';
-import { PhoneQRModal } from './PhoneQRModal';
 import { ItemModal } from './ItemModal';
 
 export const PACKAGING_UNITS = [
@@ -280,10 +276,6 @@ interface WarehouseViewProps {
   tenantName?: string;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
-  cloudConfig: CloudSyncConfig;
-  onOpenCloudModal: () => void;
-  onSyncWithCloud: () => void;
-  isSyncingCloud: boolean;
   onUpdateStockItem: (
     name: string,
     newQty: number,
@@ -307,10 +299,6 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   tenantName,
   isEmergencyMode = false,
   onOpenEmergencyConfirm,
-  cloudConfig,
-  onOpenCloudModal,
-  onSyncWithCloud,
-  isSyncingCloud,
   onUpdateStockItem,
   onSaveFullItem,
   onDeleteItem,

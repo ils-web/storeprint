@@ -32,10 +32,15 @@ export function InstallAppModal({
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
   const cleanPath = typeof window !== 'undefined'
-    ? window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/order(\.html)?$/i, '').replace(/\/$/, '')
-    : '/storeprint';
+    ? window.location.pathname
+        .replace(/\/index\.html$/i, '')
+        .replace(/\/landing(\.html)?$/i, '')
+        .replace(/\/order(\.html)?$/i, '')
+        .replace(/\/stock(\.html)?$/i, '')
+        .replace(/\/$/, '')
+    : '';
   const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-  const portalUrl = `${origin}${cleanPath}/order/${tenantQuery}`;
+  const portalUrl = `${origin}${cleanPath}/order.html${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
 
   useEffect(() => {

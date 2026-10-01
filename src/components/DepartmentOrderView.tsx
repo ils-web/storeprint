@@ -23,7 +23,7 @@ import { StockItem, CloudSyncConfig } from '../types';
 import { PACKAGING_UNITS } from './WarehouseView';
 import { submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../utils/cloudSync';
 import { pushOrderToFirestore } from '../services/firestoreSync';
-import { createTenantOrder } from '../services/multiTenantDb';
+import { createTenantOrder, getWarehouses } from '../services/multiTenantDb';
 import { MultiTenantOrderItem } from '../types/multiTenant';
 
 interface DepartmentOrderViewProps {
@@ -213,9 +213,12 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
 
     try {
       // 1. Create order & push to Firestore Real-Time DB
+      const tenantWarehouses = getWarehouses(tenantId);
+      const primaryWhId = tenantWarehouses[0]?.id || 'wh-default';
+
       const newOrder = createTenantOrder(tenantId, {
         tenantId,
-        warehouseId: 'wh-default',
+        warehouseId: primaryWhId,
         departmentId: `dept-${Date.now()}`,
         departmentName: activeDept,
         items: orderItems,

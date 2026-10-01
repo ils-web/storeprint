@@ -4,7 +4,6 @@ import { OrderTable } from './components/OrderTable';
 import { WarehouseView } from './components/WarehouseView';
 import { DepartmentOrderView } from './components/DepartmentOrderView';
 import { PrintPreviewModal } from './components/PrintPreviewModal';
-import { CloudSyncModal } from './components/CloudSyncModal';
 import { PrintConfirmModal } from './components/PrintConfirmModal';
 import { ScrollToTop } from './components/ScrollToTop';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
@@ -308,7 +307,6 @@ export default function App() {
 
   // Cloud Sync State
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
-  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [isShortageDrawerOpen, setIsShortageDrawerOpen] = useState(false);
   const [isDepartmentQROpen, setIsDepartmentQROpen] = useState(false);
@@ -885,7 +883,6 @@ export default function App() {
   // Handle Cloud Sync
   const handleSyncWithCloud = useCallback(async () => {
     if (!cloudConfig.enabled || !cloudConfig.endpointUrl) {
-      setIsCloudModalOpen(true);
       return;
     }
 
@@ -2054,10 +2051,6 @@ export default function App() {
               tenantName={activeTenant?.name}
               isEmergencyMode={isEmergencyMode}
               onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
-              cloudConfig={cloudConfig}
-              onOpenCloudModal={() => setIsCloudModalOpen(true)}
-              onSyncWithCloud={handleSyncWithCloud}
-              isSyncingCloud={isSyncingCloud}
               onUpdateStockItem={handleUpdateStockItem}
               onSaveFullItem={handleSaveFullItem}
               onDeleteItem={handleDeleteStockItem}
@@ -2115,16 +2108,6 @@ export default function App() {
         stock={stock}
         onConfirmPrint={handleExecutePrint}
         onRevertOrder={handleTogglePrintedStatus}
-      />
-
-      {/* Cloud Sync Modal */}
-      <CloudSyncModal
-        isOpen={isCloudModalOpen}
-        onClose={() => setIsCloudModalOpen(false)}
-        config={cloudConfig}
-        totalItemsCount={productHeaders.length || 187}
-        onSaveConfig={handleSaveCloudConfig}
-        onSyncNow={handleSyncWithCloud}
       />
 
       {/* Login Modal */}

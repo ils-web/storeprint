@@ -17,10 +17,11 @@ export function MobileStockQRModal({ isOpen, onClose, tenantId, tenantName = 'מ
   const cleanPath = typeof window !== 'undefined'
     ? window.location.pathname
         .replace(/\/index\.html$/i, '')
+        .replace(/\/landing(\.html)?$/i, '')
         .replace(/\/order(\.html)?$/i, '')
         .replace(/\/stock(\.html)?$/i, '')
         .replace(/\/$/, '')
-    : '/storeprint';
+    : '';
   const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
   const mobileStockUrl = `${origin}${cleanPath}/stock.html${tenantQuery}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(mobileStockUrl)}`;

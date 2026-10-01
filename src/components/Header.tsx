@@ -2,8 +2,6 @@ import React from 'react';
 import {
   RefreshCw,
   ShieldCheck,
-  FileSpreadsheet,
-  ExternalLink,
   Printer,
   Package,
   AlertTriangle,

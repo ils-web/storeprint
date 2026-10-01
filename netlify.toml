@@ -3,6 +3,36 @@
   command = "npm run build"
 
 [[redirects]]
+  from = "/order/*"
+  to = "/order/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/order"
+  to = "/order.html"
+  status = 200
+
+[[redirects]]
+  from = "/stock/*"
+  to = "/stock/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/stock"
+  to = "/stock.html"
+  status = 200
+
+[[redirects]]
+  from = "/landing/*"
+  to = "/landing/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/landing"
+  to = "/landing.html"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
@@ -14,5 +44,15 @@
 
 [[headers]]
   for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/order-manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/stock-manifest.json"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"

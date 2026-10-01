@@ -1,1 +1,7 @@
-/*    /index.html   200
+/order/*    /order/index.html   200
+/order      /order.html         200
+/stock/*    /stock/index.html   200
+/stock      /stock.html         200
+/landing/*  /landing/index.html 200
+/landing    /landing.html       200
+/*          /index.html         200
