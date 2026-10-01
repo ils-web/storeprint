@@ -28,13 +28,14 @@ import {
   Printer,
   Copy,
 } from 'lucide-react';
-import { InstallAppModal } from '../portal/InstallAppModal';
+import { InstallStockModal } from './InstallStockModal';
 import { categorizeItem, groupAndSortStockItems } from '../../utils/stockGrouper';
 import { printReorderListHtml } from '../../utils/pdfGenerator';
 import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
+  tenantId?: string;
   tenantName?: string;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
@@ -416,6 +417,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
 
 export function MobileStockManager({
   stock,
+  tenantId,
   tenantName,
   isEmergencyMode = false,
   onOpenEmergencyConfirm,
@@ -975,10 +977,12 @@ export function MobileStockManager({
         </div>
       </div>
 
-      {/* Install App Modal */}
-      <InstallAppModal
+      {/* Install Stock App Modal */}
+      <InstallStockModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+        tenantId={tenantId}
+        tenantName={tenantName}
       />
     </div>
   );

@@ -18,6 +18,8 @@ export default defineConfig(() => {
           main: resolve(__dirname, 'index.html'),
           order: resolve(__dirname, 'order.html'),
           orderDir: resolve(__dirname, 'order/index.html'),
+          stock: resolve(__dirname, 'stock.html'),
+          stockDir: resolve(__dirname, 'stock/index.html'),
         },
       },
     },

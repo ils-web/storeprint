@@ -1,0 +1,29 @@
+{
+  "id": "storeprint-stock-counter-v1",
+  "name": "StorePrint — ספירת מלאי במחסן",
+  "short_name": "ספירת מלאי",
+  "description": "אפליקציה עצמאית ומהירה לספירת מלאי במחסן, עדכון כמויות ודוחות חוסרים בזמן אמת",
+  "start_url": "./stock.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0284c7",
+  "orientation": "portrait",
+  "lang": "he",
+  "dir": "rtl",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./stock-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./stock-favicon.svg",
+      "sizes": "48x48 72x72 96x96 144x144 192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

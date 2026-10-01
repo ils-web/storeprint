@@ -1815,6 +1815,7 @@ export default function App() {
       <>
         <MobileStockManager
           stock={stock}
+          tenantId={activeTenantId}
           tenantName={activeTenant?.name}
           isEmergencyMode={isEmergencyMode}
           onOpenEmergencyConfirm={() => setIsEmergencyConfirmOpen(true)}
@@ -1826,7 +1827,7 @@ export default function App() {
           onDeleteItem={handleDeleteStockItem}
           onBackToMain={() => setCurrentView('app')}
         />
-        <PWAInstallBanner />
+        <PWAInstallBanner appType="stock" />
       </>
     );
   }
