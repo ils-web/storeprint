@@ -38,6 +38,7 @@ import {
   Package,
   LogOut,
   ArrowRight,
+  Share2,
 } from 'lucide-react';
 
 interface SuperAdminDashboardProps {
@@ -61,6 +62,23 @@ export function SuperAdminDashboard({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  const [copiedLandingUrl, setCopiedLandingUrl] = useState(false);
+
+  const handleCopyLandingLink = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
+    const cleanPath = typeof window !== 'undefined'
+      ? window.location.pathname
+          .replace(/\/index\.html$/i, '')
+          .replace(/\/landing(\.html)?$/i, '')
+          .replace(/\/order(\.html)?$/i, '')
+          .replace(/\/stock(\.html)?$/i, '')
+          .replace(/\/$/, '')
+      : '/storeprint';
+    const landingUrl = `${origin}${cleanPath}/landing.html`;
+    navigator.clipboard.writeText(landingUrl);
+    setCopiedLandingUrl(true);
+    setTimeout(() => setCopiedLandingUrl(false), 2500);
+  };
 
   // Form State for New Tenant
   const [formData, setFormData] = useState({
@@ -307,6 +325,15 @@ export function SuperAdminDashboard({
                 </div>
               </button>
             </div>
+
+            <button
+              onClick={handleCopyLandingLink}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+              title="העתק קישור ישיר לעמוד הנחיתה להעברה לבתי חולים חדשים"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>{copiedLandingUrl ? 'הקישור הועתק! ✓' : 'קישור לדף נחיתה 🌐'}</span>
+            </button>
 
             <button
               onClick={onLogout}

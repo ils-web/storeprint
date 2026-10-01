@@ -13,6 +13,8 @@ import {
   Layers,
   FileSpreadsheet,
   Zap,
+  Copy,
+  Share2,
 } from 'lucide-react';
 import { LoginModal } from '../auth/LoginModal';
 import { AuthSession } from '../../types/multiTenant';
@@ -25,6 +27,23 @@ interface LandingPageProps {
 
 export function LandingPage({ onLoginSuccess }: LandingPageProps) {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyLandingLink = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
+    const cleanPath = typeof window !== 'undefined'
+      ? window.location.pathname
+          .replace(/\/index\.html$/i, '')
+          .replace(/\/landing(\.html)?$/i, '')
+          .replace(/\/order(\.html)?$/i, '')
+          .replace(/\/stock(\.html)?$/i, '')
+          .replace(/\/$/, '')
+      : '/storeprint';
+    const landingUrl = `${origin}${cleanPath}/landing.html`;
+    navigator.clipboard.writeText(landingUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white" dir="rtl">
@@ -43,7 +62,16 @@ export function LandingPage({ onLoginSuccess }: LandingPageProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleCopyLandingLink}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-xl transition-all cursor-pointer shadow-sm"
+              title="העתק קישור ישיר לעמוד נחיתה זה לשליחה לבתי חולים נוספים"
+            >
+              {copiedLink ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-indigo-400" />}
+              <span>{copiedLink ? 'הקישור הועתק!' : 'שתף קישור לרשת 🔗'}</span>
+            </button>
+
             <button
               onClick={() => setIsLoginOpen(true)}
               className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl shadow-lg shadow-indigo-500/25 transition-all cursor-pointer"

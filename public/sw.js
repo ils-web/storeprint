@@ -7,6 +7,8 @@ const STATIC_ASSETS = [
   './order/index.html',
   './stock.html',
   './stock/index.html',
+  './landing.html',
+  './landing/index.html',
   './manifest.json',
   './order-manifest.json',
   './stock-manifest.json',
@@ -82,6 +84,9 @@ self.addEventListener('fetch', (event) => {
             }
             if (event.request.url.includes('/stock')) {
               return caches.match('./stock.html') || caches.match('./stock/index.html');
+            }
+            if (event.request.url.includes('/landing')) {
+              return caches.match('./landing.html') || caches.match('./landing/index.html');
             }
             return caches.match('./index.html');
           }

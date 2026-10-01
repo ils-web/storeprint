@@ -98,9 +98,20 @@ const DEPARTMENTS_CACHE_KEY = 'storeprint_departments_cache_v1';
 const PRODUCTS_CACHE_KEY = 'storeprint_products_cache_v1';
 
 export default function App() {
-  // Navigation View ('app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock')
   const [authSession, setAuthSession] = useState<AuthSession | null>(() => getActiveAuthSession());
-  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock'>('app');
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'superadmin' | 'portal_pwa' | 'mobile_stock'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const v = p.get('view');
+        if (v === 'landing' || p.get('landing') === 'true' || v === 'about') return 'landing';
+        if (v === 'portal_pwa') return 'portal_pwa';
+        if (v === 'mobile_stock') return 'mobile_stock';
+        if (v === 'superadmin') return 'superadmin';
+      } catch {}
+    }
+    return 'app';
+  });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [preselectedDept, setPreselectedDept] = useState<string>('');
@@ -173,6 +184,8 @@ export default function App() {
         setCurrentView('mobile_stock');
       } else if (viewParam === 'superadmin') {
         setCurrentView('superadmin');
+      } else if (viewParam === 'landing' || viewParam === 'about' || params.get('landing') === 'true') {
+        setCurrentView('landing');
       }
     }
   }, [activeTenantId, tenants]);
