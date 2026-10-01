@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Tenant,
   Warehouse,
@@ -19,6 +19,9 @@ import {
   saveAuthSession,
   getTenantDepartments,
   saveTenantDepartments,
+  fetchTenantsFromFirestore,
+  subscribeToTenantsFirestore,
+  fetchWarehousesFromFirestore,
 } from '../../services/multiTenantDb';
 import {
   Building2,
@@ -56,6 +59,24 @@ export function SuperAdminDashboard({
   const [tenantsList, setTenantsList] = useState<Tenant[]>(() => getTenants());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | TenantStatus>('all');
+
+  useEffect(() => {
+    fetchTenantsFromFirestore().then((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setTenantsList(fresh);
+      }
+    });
+
+    fetchWarehousesFromFirestore().catch(console.warn);
+
+    const unsubscribe = subscribeToTenantsFirestore((fresh) => {
+      if (fresh && fresh.length > 0) {
+        setTenantsList(fresh);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Modal States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

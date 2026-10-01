@@ -87,6 +87,8 @@ import {
   getTenantDepartments,
   getInventory,
   fetchInventoryFromFirestore,
+  fetchTenantsFromFirestore,
+  fetchWarehousesFromFirestore,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
 import { organizeStockLogically } from './utils/stockGrouper';
@@ -146,6 +148,9 @@ export default function App() {
 
   // Deep Link Routing (URL params ?view=... &dept=... &tenant=...) on initial load
   useEffect(() => {
+    fetchTenantsFromFirestore().catch(console.warn);
+    fetchWarehousesFromFirestore().catch(console.warn);
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get('view');

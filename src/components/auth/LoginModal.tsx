@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthSession } from '../../types/multiTenant';
-import { authenticate, getTenants, SUPERADMIN_CREDENTIALS } from '../../services/multiTenantDb';
+import { authenticate, getTenants, fetchTenantsFromFirestore, SUPERADMIN_CREDENTIALS } from '../../services/multiTenantDb';
 import {
   ShieldCheck,
   Building2,
@@ -34,15 +34,27 @@ export function LoginModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      fetchTenantsFromFirestore().catch(console.warn);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setIsLoading(true);
 
     try {
-      const session = authenticate(login, password);
+      let session = authenticate(login, password);
+      if (!session) {
+        // Fallback: try refreshing tenants from Firestore in case they were added/updated on another device
+        await fetchTenantsFromFirestore();
+        session = authenticate(login, password);
+      }
+
       if (session) {
         onSuccess(session);
         onClose();
@@ -50,7 +62,7 @@ export function LoginModal({
         setErrorMessage('שם משתמש או סיסמה שגויים. אנא נסה שוב.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'שגיאת אימות');
+      setErrorMessage(err?.message || 'שגיאת אימות');
     } finally {
       setIsLoading(false);
     }

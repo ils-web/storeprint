@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { LandingPage } from './components/landing/LandingPage';
 import { AuthSession } from './types/multiTenant';
-import { saveAuthSession } from './services/multiTenantDb';
+import { saveAuthSession, fetchTenantsFromFirestore } from './services/multiTenantDb';
 
 export default function LandingApp() {
+  useEffect(() => {
+    fetchTenantsFromFirestore().catch(console.warn);
+  }, []);
   const getBasePath = () => {
     if (typeof window === 'undefined') return './';
     const origin = window.location.origin;
