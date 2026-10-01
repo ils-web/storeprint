@@ -57,14 +57,34 @@ export function LoginModal({
     setLogin(SUPERADMIN_CREDENTIALS.login);
     setPassword(SUPERADMIN_CREDENTIALS.password);
     setActiveTab('superadmin');
+    setErrorMessage(null);
+    try {
+      const session = authenticate(SUPERADMIN_CREDENTIALS.login, SUPERADMIN_CREDENTIALS.password);
+      if (session) {
+        onSuccess(session);
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'שגיאת אימות');
+    }
   };
 
   const handleQuickTenant = () => {
     const tenants = getTenants();
-    if (tenants.length > 0) {
-      setLogin(tenants[0].login);
-      setPassword(tenants[0].passwordHash);
-      setActiveTab('tenant');
+    const tLogin = tenants.length > 0 ? tenants[0].login : 'center1';
+    const tPass = tenants.length > 0 ? tenants[0].passwordHash : 'pass123';
+    setLogin(tLogin);
+    setPassword(tPass);
+    setActiveTab('tenant');
+    setErrorMessage(null);
+    try {
+      const session = authenticate(tLogin, tPass);
+      if (session) {
+        onSuccess(session);
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'שגיאת אימות');
     }
   };
 
@@ -175,25 +195,34 @@ export function LoginModal({
           </button>
 
           {/* Quick Demo Pre-fill helpers */}
-          <div className="pt-4 border-t border-slate-800">
-            <p className="text-xs text-slate-400 text-center mb-2.5 font-medium">כניסת הדגמה מהירה (בדיקה):</p>
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="text-center">
+              <span className="text-xs text-amber-300 font-black">⚡ כניסת הדגמה מיידית (בלחיצה אחת):</span>
+              <p className="text-[11px] text-slate-400 mt-0.5">לחצו על אחד הכפתורים כדי להיכנס למערכת מיד ללא צורך בהקלדה</p>
+            </div>
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={handleQuickTenant}
-                className="py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="py-3 px-3 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-white rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
               >
-                <Building2 className="w-4 h-4 text-indigo-400" />
-                <span>סניף ראשי</span>
+                <div className="flex items-center gap-1.5 font-black text-indigo-300">
+                  <Building2 className="w-4 h-4 text-indigo-400" />
+                  <span>סניף ראשי (מחסן)</span>
+                </div>
+                <span className="text-[10px] text-slate-300 font-mono">center1 / pass123</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleQuickSuperadmin}
-                className="py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="py-3 px-3 bg-purple-950/70 hover:bg-purple-900 border border-purple-700/60 text-white rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
               >
-                <ShieldCheck className="w-4 h-4 text-purple-400" />
-                <span>סופר-אדמין</span>
+                <div className="flex items-center gap-1.5 font-black text-purple-300">
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                  <span>סופר-אדמין (ניהול)</span>
+                </div>
+                <span className="text-[10px] text-slate-300 font-mono">admin / admin123</span>
               </button>
             </div>
           </div>

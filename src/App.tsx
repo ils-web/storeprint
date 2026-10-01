@@ -144,7 +144,7 @@ export default function App() {
     }
   }, [authSession, activeTenantId]);
 
-  // Deep Link Routing (URL params ?view=... &dept=... &tenant=...)
+  // Deep Link Routing (URL params ?view=... &dept=... &tenant=...) on initial load
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -188,7 +188,8 @@ export default function App() {
         setCurrentView('landing');
       }
     }
-  }, [activeTenantId, tenants]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
   const ACTIVE_TAB_KEY = 'storeprint_active_tab_v1';
@@ -1765,6 +1766,19 @@ export default function App() {
   // Auth & View Handlers
   const handleLoginSuccess = (session: AuthSession) => {
     setAuthSession(session);
+
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('view');
+        url.searchParams.delete('landing');
+        if (session.tenantId && session.userRole !== 'superadmin') {
+          url.searchParams.set('tenant', session.tenantId);
+        }
+        window.history.replaceState({}, '', url.toString());
+      } catch {}
+    }
+
     if (session.userRole === 'superadmin') {
       setCurrentView('superadmin');
     } else if (session.tenantId) {
