@@ -10,6 +10,8 @@ import {
   AlertCircle,
   Key,
   X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface LoginModalProps {
@@ -28,6 +30,7 @@ export function LoginModal({
   const [activeTab, setActiveTab] = useState<'tenant' | 'superadmin'>('tenant');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,41 +53,6 @@ export function LoginModal({
       setErrorMessage(err.message || 'שגיאת אימות');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleQuickSuperadmin = () => {
-    setLogin(SUPERADMIN_CREDENTIALS.login);
-    setPassword(SUPERADMIN_CREDENTIALS.password);
-    setActiveTab('superadmin');
-    setErrorMessage(null);
-    try {
-      const session = authenticate(SUPERADMIN_CREDENTIALS.login, SUPERADMIN_CREDENTIALS.password);
-      if (session) {
-        onSuccess(session);
-        onClose();
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'שגיאת אימות');
-    }
-  };
-
-  const handleQuickTenant = () => {
-    const tenants = getTenants();
-    const tLogin = tenants.length > 0 ? tenants[0].login : 'center1';
-    const tPass = tenants.length > 0 ? tenants[0].passwordHash : 'pass123';
-    setLogin(tLogin);
-    setPassword(tPass);
-    setActiveTab('tenant');
-    setErrorMessage(null);
-    try {
-      const session = authenticate(tLogin, tPass);
-      if (session) {
-        onSuccess(session);
-        onClose();
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'שגיאת אימות');
     }
   };
 
@@ -175,57 +143,32 @@ export function LoginModal({
             <div className="relative">
               <Lock className="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pr-12 pl-4 py-3 bg-slate-800 border-2 border-slate-700 rounded-xl text-base text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono shadow-inner"
+                className="w-full pr-12 pl-12 py-3 bg-slate-800 border-2 border-slate-700 rounded-xl text-base text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono shadow-inner"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה (בדוק מה הוקלד)'}
+              >
+                {showPassword ? <EyeOff className="w-5 h-5 text-indigo-400" /> : <Eye className="w-5 h-5" />}
+              </button>
             </div>
           </div>
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl text-base font-black shadow-xl shadow-indigo-500/25 flex items-center justify-center gap-2.5 transition-all transform active:scale-95 cursor-pointer"
+            className="w-full py-3.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl text-base font-black shadow-xl shadow-indigo-500/25 flex items-center justify-center gap-2.5 transition-all transform active:scale-95 cursor-pointer mt-6"
           >
             <span>כניסה למערכת</span>
             <ArrowLeft className="w-5 h-5" />
           </button>
-
-          {/* Quick Demo Pre-fill helpers */}
-          <div className="pt-4 border-t border-slate-800 space-y-3">
-            <div className="text-center">
-              <span className="text-xs text-amber-300 font-black">⚡ כניסת הדגמה מיידית (בלחיצה אחת):</span>
-              <p className="text-[11px] text-slate-400 mt-0.5">לחצו על אחד הכפתורים כדי להיכנס למערכת מיד ללא צורך בהקלדה</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={handleQuickTenant}
-                className="py-3 px-3 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-white rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
-              >
-                <div className="flex items-center gap-1.5 font-black text-indigo-300">
-                  <Building2 className="w-4 h-4 text-indigo-400" />
-                  <span>סניף ראשי (מחסן)</span>
-                </div>
-                <span className="text-[10px] text-slate-300 font-mono">center1 / pass123</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleQuickSuperadmin}
-                className="py-3 px-3 bg-purple-950/70 hover:bg-purple-900 border border-purple-700/60 text-white rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
-              >
-                <div className="flex items-center gap-1.5 font-black text-purple-300">
-                  <ShieldCheck className="w-4 h-4 text-purple-400" />
-                  <span>סופר-אדמין (ניהול)</span>
-                </div>
-                <span className="text-[10px] text-slate-300 font-mono">admin / admin123</span>
-              </button>
-            </div>
-          </div>
         </form>
       </div>
     </div>

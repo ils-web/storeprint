@@ -15,11 +15,10 @@ import {
   Zap,
   Copy,
   Share2,
-  Lock,
 } from 'lucide-react';
 import { LoginModal } from '../auth/LoginModal';
 import { AuthSession } from '../../types/multiTenant';
-import { BILLING_PLANS, authenticate } from '../../services/multiTenantDb';
+import { BILLING_PLANS } from '../../services/multiTenantDb';
 
 interface LandingPageProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -107,59 +106,15 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
             בקרה מלאה על יתרות מלאי בסניפים, תמיכה מלאה בסוגי אריזות (יחידות, חבילות, קופסאות, קרטונים), פורטל הזמנות PWA לצוותי המחלקות והדפסת טפסי ניפוק בלחיצה אחת.
           </p>
 
-          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={() => {
-                const session = authenticate('center1', 'pass123');
-                if (session) onLoginSuccess(session);
-                else setIsLoginOpen(true);
-              }}
-              className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-indigo-500 via-purple-600 to-indigo-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-2xl text-base font-black shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-95"
-            >
-              <Zap className="w-5 h-5 text-amber-300" />
-              <span>כניסה מהירה להדגמה (1-Click) 🚀</span>
-            </button>
-
-            {onOpenOrderPortal && (
-              <button
-                onClick={onOpenOrderPortal}
-                className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-base font-black shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
-              >
-                <Smartphone className="w-5 h-5" />
-                <span>פורטל הזמנות מחלקה 🩺</span>
-              </button>
-            )}
-
+          <div className="pt-4 flex items-center justify-center">
             <button
               onClick={() => setIsLoginOpen(true)}
-              className="w-full sm:w-auto px-6 py-3.5 bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white rounded-2xl text-base font-bold border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-base font-bold shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
-              <Lock className="w-4 h-4 text-slate-400" />
-              <span>התחברות עם סיסמה</span>
+              <Building2 className="w-5 h-5" />
+              <span>כניסה למערכת</span>
+              <ArrowLeft className="w-5 h-5 mr-1" />
             </button>
-          </div>
-
-          {/* Quick Demo Credentials Info Badge */}
-          <div className="max-w-xl mx-auto p-4 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-xs text-slate-300 space-y-2 text-right shadow-lg">
-            <div className="flex items-center justify-between text-indigo-300 font-black text-xs border-b border-slate-800 pb-2">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>פרטי כניסה והתחברות לבדיקת המערכת (Demo Passwords):</span>
-              </span>
-              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold">פעיל כעת</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
-              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-0.5">
-                <div className="font-sans font-bold text-slate-300 text-xs">🏥 סניף מחסן בית חולים:</div>
-                <div className="text-slate-400">משתמש: <strong className="text-white">center1</strong></div>
-                <div className="text-slate-400">סיסמה: <strong className="text-white">pass123</strong></div>
-              </div>
-              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-0.5">
-                <div className="font-sans font-bold text-slate-300 text-xs">🛡️ סופר-אדמין (מנהל רשת):</div>
-                <div className="text-slate-400">משתמש: <strong className="text-white">admin</strong></div>
-                <div className="text-slate-400">סיסמה: <strong className="text-white">admin123</strong></div>
-              </div>
-            </div>
           </div>
         </div>
       </section>

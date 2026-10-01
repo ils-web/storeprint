@@ -12,6 +12,7 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    root: __dirname,
     build: {
       rollupOptions: {
         input: {
