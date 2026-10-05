@@ -54,6 +54,7 @@ import {
   ChevronDown,
   Sun,
   Moon,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -202,7 +203,9 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       if (d) {
         return decodeURIComponent(d).trim();
       }
-      const saved = localStorage.getItem(`storeprint_portal_saved_dept_${selectedTenantId}`);
+      const saved =
+        localStorage.getItem(`storeprint_portal_saved_dept_${selectedTenantId}`) ||
+        localStorage.getItem('storeprint_portal_saved_dept');
       if (saved) {
         return saved.trim();
       }
@@ -210,12 +213,34 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     return selectedTenantId === 'tenant-main-01' ? CANONICAL_DEPARTMENTS[4] : '';
   });
 
+  // Session verification: Has user verified their department in this session?
+  const [isDeptConfirmedForSession, setIsDeptConfirmedForSession] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('dept')) return true;
+      return sessionStorage.getItem(`storeprint_dept_confirmed_${selectedTenantId}`) === 'true';
+    }
+    return false;
+  });
+  const [isDeptWelcomeModalOpen, setIsDeptWelcomeModalOpen] = useState(false);
+  const [isFinalConfirmOpen, setIsFinalConfirmOpen] = useState(false);
+
   // Keep selected department in sync if tenant changes or departments list updates
   useEffect(() => {
     if (departmentsList.length > 0 && !departmentsList.includes(selectedDepartmentName)) {
       setSelectedDepartmentName(departmentsList[0]);
     }
   }, [departmentsList, selectedDepartmentName]);
+
+  // Prompt department verification on initial session entry
+  useEffect(() => {
+    if (!isDeptConfirmedForSession && selectedDepartmentName) {
+      const timer = setTimeout(() => {
+        setIsDeptWelcomeModalOpen(true);
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [isDeptConfirmedForSession, selectedDepartmentName]);
 
   const [deptSearchTerm, setDeptSearchTerm] = useState('');
   const [patientsCount, setPatientsCount] = useState<string>(() => {
@@ -271,12 +296,13 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     setLiveStock(getInitialStockForTenant(selectedTenantId));
   }, [selectedTenantId]);
 
-  // Save selected department
+  // Save selected department across all storage keys
   useEffect(() => {
     if (selectedDepartmentName && typeof window !== 'undefined') {
       localStorage.setItem('storeprint_portal_saved_dept', selectedDepartmentName);
+      localStorage.setItem(`storeprint_portal_saved_dept_${selectedTenantId}`, selectedDepartmentName);
     }
-  }, [selectedDepartmentName]);
+  }, [selectedDepartmentName, selectedTenantId]);
 
   // Save requester name
   useEffect(() => {
@@ -537,10 +563,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     setIsCartOpen(true);
   };
 
-  const handleSubmitOrder = async (e: React.FormEvent) => {
+  const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDepartmentName.trim()) {
       alert('נא לבחור את שם המחלקה המזמינה');
+      setIsDeptModalOpen(true);
       return;
     }
     if (!requesterName.trim()) {
@@ -556,6 +583,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       return;
     }
 
+    // All fields valid -> Trigger Final Pre-Submit Department Verification Modal
+    setIsFinalConfirmOpen(true);
+  };
+
+  const handleFinalSubmitOrder = async () => {
     setIsSubmitting(true);
     try {
       const formattedNotes = [
@@ -590,6 +622,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       setOrderSuccessNumber(newOrder.orderNumber);
       setCart({});
       setNotes('');
+      setIsFinalConfirmOpen(false);
       setIsCartOpen(false);
       window.dispatchEvent(new Event('storeprint_order_created'));
     } catch (err: any) {
@@ -1330,6 +1363,40 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
               {/* Order Info Fields */}
               <div className={`space-y-3 pt-3 border-t ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
+                {/* Prominent Active Department Banner inside Cart */}
+                <div
+                  className={`p-3.5 rounded-2xl border-2 flex items-center justify-between gap-3 shadow-xs ${
+                    isLight
+                      ? 'bg-gradient-to-r from-indigo-50 to-sky-50 border-indigo-200 text-indigo-950'
+                      : 'bg-gradient-to-r from-indigo-950/40 to-slate-900 border-indigo-800 text-indigo-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-2.5 bg-indigo-600 text-white rounded-xl shrink-0 shadow-xs">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                        ההזמנה תירשם ותישלח עבור:
+                      </div>
+                      <div className="text-base font-black truncate">
+                        מחלקת {selectedDepartmentName}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsDeptModalOpen(true)}
+                    className={`px-3 py-1.5 rounded-xl border font-bold text-xs shrink-0 cursor-pointer transition-all active:scale-95 shadow-2xs ${
+                      isLight
+                        ? 'bg-white hover:bg-indigo-50 text-indigo-700 border-indigo-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-700'
+                    }`}
+                  >
+                    החלף מחלקה ✏️
+                  </button>
+                </div>
+
                 <div>
                   <label
                     className={`text-xs font-bold block mb-1.5 ${
@@ -1495,7 +1562,14 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                       key={dept}
                       onClick={() => {
                         setSelectedDepartmentName(dept);
+                        setIsDeptConfirmedForSession(true);
+                        try {
+                          sessionStorage.setItem(`storeprint_dept_confirmed_${selectedTenantId}`, 'true');
+                          localStorage.setItem('storeprint_portal_saved_dept', dept);
+                          localStorage.setItem(`storeprint_portal_saved_dept_${selectedTenantId}`, dept);
+                        } catch {}
                         setIsDeptModalOpen(false);
+                        setIsDeptWelcomeModalOpen(false);
                       }}
                       className={`w-full p-3 rounded-xl text-right font-bold text-xs sm:text-sm flex items-center justify-between transition-all cursor-pointer ${
                         isSelected
@@ -1510,6 +1584,213 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                     </button>
                   );
                 })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Start: Department Verification Modal */}
+      {isDeptWelcomeModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          dir="rtl"
+        >
+          <div
+            className={`${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+            } border rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200`}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-500/20 shrink-0">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight">אימות מחלקה מזמינה</h3>
+                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'} mt-0.5`}>
+                  נא לוודא את שם המחלקה לפני תחילת ההזמנה
+                </p>
+              </div>
+            </div>
+
+            {/* Department Card */}
+            <div className="p-4 rounded-2xl bg-indigo-50/80 border-2 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 text-center space-y-1">
+              <div className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                המכשיר מוגדר כעת עבור:
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-indigo-950 dark:text-white">
+                מחלקת {selectedDepartmentName}
+              </div>
+              {activeTenant?.name && (
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  {activeTenant.name} {activeWarehouse ? `• ${activeWarehouse.name}` : ''}
+                </div>
+              )}
+            </div>
+
+            <p className={`text-xs text-center leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+              האם את/ה מזמין/ה כעת עבור מחלקה זו? אימות זה מונע שליחת הזמנה למחלקה שגויה.
+            </p>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeptConfirmedForSession(true);
+                  try {
+                    sessionStorage.setItem(`storeprint_dept_confirmed_${selectedTenantId}`, 'true');
+                  } catch {}
+                  setIsDeptWelcomeModalOpen(false);
+                }}
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
+              >
+                <Check className="w-4 h-4" />
+                <span>כן, המשך כמחלקת {selectedDepartmentName}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeptWelcomeModalOpen(false);
+                  setIsDeptModalOpen(true);
+                }}
+                className={`w-full py-3 px-4 rounded-2xl font-bold text-xs border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>לא, זו מחלקה אחרת — החלף מחלקה</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Final Pre-Submit Confirmation Modal */}
+      {isFinalConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+          dir="rtl"
+        >
+          <div
+            className={`${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+            } border rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-150`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl border border-amber-500/30">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">אישור סופי לפני שליחה</h3>
+                  <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    בדיקת פרטי ההזמנה ומחלקת היעד
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFinalConfirmOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Department Highlight Box */}
+            <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 dark:bg-amber-950/50 dark:border-amber-700/80 text-center space-y-1 shadow-xs">
+              <div className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>יעד ההזמנה — נא לוודא בקפידה:</span>
+              </div>
+              <div className="text-2xl font-black text-amber-950 dark:text-amber-100">
+                מחלקת {selectedDepartmentName}
+              </div>
+              {activeWarehouse && (
+                <div className="text-xs font-bold text-amber-800/80 dark:text-amber-300/80">
+                  נשלח למחסן: {activeWarehouse.name}
+                </div>
+              )}
+            </div>
+
+            {/* Order Summary Details */}
+            <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+              isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">איש קשר / מזמין:</span>
+                <span className="font-black text-slate-900 dark:text-white">{requesterName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">מספר מטופלים במחלקה:</span>
+                <span className="font-black text-slate-900 dark:text-white">{patientsCount} מטופלים</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">כמות פריטים בסל:</span>
+                <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {cartItemsList.length} פריטים ({totalCartCount} יחידות)
+                </span>
+              </div>
+              {notes.trim() && (
+                <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex items-start justify-between gap-2">
+                  <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">הערות:</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200 text-left truncate">{notes}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleFinalSubmitOrder}
+                className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 active:scale-[0.99]"
+              >
+                {isSubmitting ? (
+                  <span>שולח הזמנה למחסן...</span>
+                ) : (
+                  <>
+                    <Send className="w-5 h-5" />
+                    <span>כן, אשר ושלח הזמנה למחסן 🚀</span>
+                  </>
+                )}
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFinalConfirmOpen(false);
+                    setIsDeptModalOpen(true);
+                  }}
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isLight
+                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-amber-950/40 hover:bg-amber-900/40 text-amber-300 border-amber-700'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>טעות! החלף מחלקה</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsFinalConfirmOpen(false)}
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  <span>חזור לעריכת הסל</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
