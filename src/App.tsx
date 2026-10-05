@@ -1445,11 +1445,57 @@ export default function App() {
     setIsPrintConfirmOpen(true);
   };
 
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = (orderId: string, restoreStock: boolean = false) => {
     const targetOrder = orders.find(
       (o) => o.id === orderId || getOrderPrintKey(o) === orderId || (o.rowNumber && String(o.rowNumber) === orderId)
     );
     const key = targetOrder ? getOrderPrintKey(targetOrder) : orderId;
+
+    // 0. Stock Restitution (Rollback items into warehouse inventory)
+    if (restoreStock && targetOrder && targetOrder.items && targetOrder.items.length > 0) {
+      let nextStock: Record<string, StockItem>;
+      if (activeTenantId === 'tenant-main-01') {
+        const currentDbStock = getDbStock();
+        nextStock = { ...currentDbStock, ...(stock || {}) };
+        targetOrder.items.forEach((item) => {
+          const targetKey = nextStock[item.name]
+            ? item.name
+            : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+          if (nextStock[targetKey]) {
+            const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+            const prevQty = nextStock[targetKey].currentStock || 0;
+            nextStock[targetKey] = {
+              ...nextStock[targetKey],
+              currentStock: prevQty + itemQty,
+              lastUpdated: new Date().toISOString(),
+            };
+          }
+        });
+        saveDbStock(nextStock, true);
+        saveStoredStock(nextStock);
+      } else {
+        nextStock = { ...stock };
+        targetOrder.items.forEach((item) => {
+          const targetKey = nextStock[item.name]
+            ? item.name
+            : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+          if (nextStock[targetKey]) {
+            const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+            const prevQty = nextStock[targetKey].currentStock || 0;
+            nextStock[targetKey] = {
+              ...nextStock[targetKey],
+              currentStock: prevQty + itemQty,
+              lastUpdated: new Date().toISOString(),
+            };
+          }
+        });
+      }
+      setStock(nextStock);
+      syncToMultiTenantDb(productHeaders, departments, nextStock);
+      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+        debouncedPushStockToCloud(nextStock, cloudConfig, 1500).catch(console.warn);
+      }
+    }
 
     // 1. Add composite keys to permanent blacklist
     setDeletedOrderIds((prev) => {
@@ -1515,17 +1561,78 @@ export default function App() {
     // 6. Notify all components
     window.dispatchEvent(new Event('storeprint_order_created'));
 
-    setSuccessMessage('ההזמנה נמחקה לצמיתות מהמערכת 🗑️');
-    setTimeout(() => setSuccessMessage(null), 3000);
+    if (restoreStock) {
+      setSuccessMessage('ההזמנה בוטלה, כל הפריטים הוחזרו למלאי המחסן והיא הוסרה מהסטטיסטיקה 🔄📦✨');
+    } else {
+      setSuccessMessage('ההזמנה נמחקה לצמיתות מהמערכת 🗑️');
+    }
+    setTimeout(() => setSuccessMessage(null), 3500);
   };
 
-  const handleMassDeleteOrders = (orderIds: string[]) => {
+  const handleMassDeleteOrders = (orderIds: string[], restoreStock: boolean = false) => {
     if (!orderIds || orderIds.length === 0) return;
+
+    if (restoreStock) {
+      const ordersToRestore = orders.filter((o) => orderIds.includes(o.id) && o.printed);
+      if (ordersToRestore.length > 0) {
+        let nextStock: Record<string, StockItem>;
+        if (activeTenantId === 'tenant-main-01') {
+          const currentDbStock = getDbStock();
+          nextStock = { ...currentDbStock, ...(stock || {}) };
+          ordersToRestore.forEach((ord) => {
+            ord.items.forEach((item) => {
+              const targetKey = nextStock[item.name]
+                ? item.name
+                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+              if (nextStock[targetKey]) {
+                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+                const prevQty = nextStock[targetKey].currentStock || 0;
+                nextStock[targetKey] = {
+                  ...nextStock[targetKey],
+                  currentStock: prevQty + itemQty,
+                  lastUpdated: new Date().toISOString(),
+                };
+              }
+            });
+          });
+          saveDbStock(nextStock, true);
+          saveStoredStock(nextStock);
+        } else {
+          nextStock = { ...stock };
+          ordersToRestore.forEach((ord) => {
+            ord.items.forEach((item) => {
+              const targetKey = nextStock[item.name]
+                ? item.name
+                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+              if (nextStock[targetKey]) {
+                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+                const prevQty = nextStock[targetKey].currentStock || 0;
+                nextStock[targetKey] = {
+                  ...nextStock[targetKey],
+                  currentStock: prevQty + itemQty,
+                  lastUpdated: new Date().toISOString(),
+                };
+              }
+            });
+          });
+        }
+        setStock(nextStock);
+        syncToMultiTenantDb(productHeaders, departments, nextStock);
+        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+          debouncedPushStockToCloud(nextStock, cloudConfig, 1500).catch(console.warn);
+        }
+      }
+    }
+
     orderIds.forEach((id) => {
-      handleDeleteOrder(id);
+      handleDeleteOrder(id, false);
     });
     setSelectedOrderIds([]);
-    setSuccessMessage(`${orderIds.length} הזמנות נמחקו לצמיתות מהמערכת 🗑️`);
+    if (restoreStock) {
+      setSuccessMessage(`${orderIds.length} הזמנות בוטלו, המלאי הוחזר למחסן והן הוסרו מהסטטיסטיקה 🔄📦✨`);
+    } else {
+      setSuccessMessage(`${orderIds.length} הזמנות נמחקו לצמיתות מהמערכת 🗑️`);
+    }
     setTimeout(() => setSuccessMessage(null), 3500);
   };
 

@@ -47,8 +47,8 @@ interface OrderTableProps {
   onPreviewOrder: (order: Order) => void;
   onMassPrint: () => void;
   onTogglePrintedStatus: (orderId: string) => void;
-  onDeleteOrder?: (orderId: string) => void;
-  onMassDeleteOrders?: (orderIds: string[]) => void;
+  onDeleteOrder?: (orderId: string, restoreStock?: boolean) => void;
+  onMassDeleteOrders?: (orderIds: string[], restoreStock?: boolean) => void;
   isSheetLoaded: boolean;
 }
 
@@ -266,6 +266,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
   const activeSelectedDept = useMemo(() => {
     return selectedOrders.length > 0 ? selectedOrders[0].department : null;
+  }, [selectedOrders]);
+
+  const selectedPrintedOrders = useMemo(() => {
+    return selectedOrders.filter((o) => o.printed);
   }, [selectedOrders]);
 
   const handleToggleSelectSingleDept = (order: Order) => {
@@ -732,7 +736,11 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                             <button
                               onClick={() => setOrderToDelete(order)}
                               className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 p-2 rounded-xl transition-colors cursor-pointer"
-                              title="מחק הזמנה זו מהמאגר"
+                              title={
+                                order.printed
+                                  ? 'ביטול הזמנה, החזרת מלאי למחסן והסרה מהסטטיסטיקה 🔄📦'
+                                  : 'מחק הזמנה זו מהמאגר'
+                              }
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -841,22 +849,34 @@ export const OrderTable: React.FC<OrderTableProps> = ({
         </div>
       </div>
 
-      {/* Modern Safe Delete Confirmation Modal */}
+      {/* Modern Safe Delete & Rollback Confirmation Modal */}
       {orderToDelete && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
           dir="rtl"
         >
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-100 text-right space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-3 bg-rose-100 rounded-2xl">
-                <Trash2 className="w-6 h-6 text-rose-600" />
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 text-right space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            {orderToDelete.printed ? (
+              <div className="flex items-center gap-3 text-emerald-700">
+                <div className="p-3 bg-emerald-100 rounded-2xl">
+                  <RotateCcw className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">ביטול הזמנה והחזרת מלאי</h3>
+                  <p className="text-xs text-emerald-600 font-bold">ההזמנה סומנה כמודפסת והמלאי שלה קוזז מהמחסן</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900">מחיקת הזמנה מהמערכת</h3>
-                <p className="text-xs text-slate-500">הפעולה תסיר את ההזמנה מלוח הבקרה לצמיתות</p>
+            ) : (
+              <div className="flex items-center gap-3 text-rose-600">
+                <div className="p-3 bg-rose-100 rounded-2xl">
+                  <Trash2 className="w-6 h-6 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">מחיקת הזמנה מהמערכת</h3>
+                  <p className="text-xs text-slate-500">הזמנה זו טרם הודפסה (מלאי המחסן טרם קוזז)</p>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm space-y-1.5">
               <div className="flex justify-between">
@@ -868,38 +888,124 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 <span className="font-mono text-slate-800">{orderToDelete.timestamp}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500 font-bold">כמות פריטים:</span>
+                <span className="text-slate-500 font-bold">כמות פריטים בהזמנה:</span>
                 <span className="font-bold text-indigo-600">
                   {orderToDelete.totalItemsCount || orderToDelete.items.length} פריטים
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">סטטוס הדפסה / קיזוז:</span>
+                <span className={`font-bold ${orderToDelete.printed ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {orderToDelete.printed ? 'הודפסה וקוזזה מהמלאי ✓' : 'ממתינה (לא קוזזה) ⏱'}
+                </span>
+              </div>
             </div>
 
+            {/* If order is printed: Display items restitution preview list */}
+            {orderToDelete.printed && orderToDelete.items && orderToDelete.items.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-emerald-800 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <RotateCcw className="w-4 h-4 text-emerald-600" />
+                    <span>פריטים וכמויות שיוחזרו למלאי המחסן ({orderToDelete.items.length}):</span>
+                  </span>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1.5 p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-xs">
+                  {orderToDelete.items.map((it, idx) => {
+                    const qty = it.numericQty ?? (parseFloat(String(it.qty).replace(/[^\d.]/g, '')) || 0);
+                    return (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center bg-white/90 px-3 py-1.5 rounded-xl border border-emerald-100 shadow-2xs text-slate-800"
+                      >
+                        <span className="font-semibold truncate max-w-[260px]">{it.name}</span>
+                        <span className="font-black text-emerald-700 font-mono shrink-0">
+                          +{qty} {it.unit || "יח'"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              ⚠️ האם אתה בטוח שברצונך למחוק הזמנה זו? ההזמנה תימחק ולא תוצג יותר במערכת (גם לאחר רענון דף).
+              {orderToDelete.printed ? (
+                <span>
+                  💡 <strong>ביטול והחזרת מלאי:</strong> יחזיר את כל הכמויות שלעיל ישירות למלאי המחסן, ויסיר את ההזמנה לצמיתות מלוח הבקרה, מההיסטוריה, מדוחות הסטטיסטיקה ומהענן.
+                </span>
+              ) : (
+                <span>
+                  ⚠️ <strong>מחיקה לצמיתות:</strong> הזמנה זו טרם קוזזה מהמחסן. בלחיצה על מחיקה היא תוסר לצמיתות מהמערכת ומדוחות הסטטיסטיקה.
+                </span>
+              )}
             </p>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setOrderToDelete(null)}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-              >
-                ביטול
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onDeleteOrder) {
-                    onDeleteOrder(orderToDelete.id);
-                  }
-                  setOrderToDelete(null);
-                }}
-                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>מחק הזמנה לצמיתות</span>
-              </button>
+            <div className="pt-2 space-y-2">
+              {orderToDelete.printed ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDeleteOrder) {
+                        onDeleteOrder(orderToDelete.id, true);
+                      }
+                      setOrderToDelete(null);
+                    }}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>בטל הזמנה, החזר מלאי ומחק 🔄📦</span>
+                  </button>
+
+                  <div className="flex gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setOrderToDelete(null)}
+                      className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      סגור (ללא שינוי)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onDeleteOrder) {
+                          onDeleteOrder(orderToDelete.id, false);
+                        }
+                        setOrderToDelete(null);
+                      }}
+                      className="flex-1 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      title="מחיקת ההזמנה בלבד מבלי לשנות את המלאי במחסן"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>מחק ללא החזרת מלאי</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setOrderToDelete(null)}
+                    className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDeleteOrder) {
+                        onDeleteOrder(orderToDelete.id, false);
+                      }
+                      setOrderToDelete(null);
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>מחק הזמנה לצמיתות</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -910,9 +1016,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150"
           onClick={() => setIsMassDeleteConfirmOpen(false)}
+          dir="rtl"
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-rose-100 text-right space-y-4 animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-right space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-rose-600">
@@ -920,36 +1027,93 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 <Trash2 className="w-6 h-6 text-rose-600" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">מחיקת הזמנות נבחרות</h3>
-                <p className="text-xs text-slate-500">הפעולה תסיר {safeSelectedOrderIds.length} הזמנות מהמערכת לצמיתות</p>
+                <h3 className="text-lg font-black text-slate-900">מחיקת / ביטול הזמנות נבחרות</h3>
+                <p className="text-xs text-slate-500">
+                  נבחרו {safeSelectedOrderIds.length} הזמנות להסרה מהמערכת
+                </p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              ⚠️ האם אתה בטוח שברצונך למחוק {safeSelectedOrderIds.length} הזמנות מסומנות? הן יימחקו ולא יוצגו יותר במערכת.
-            </p>
+            {selectedPrintedOrders.length > 0 ? (
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-2 text-amber-900">
+                <div className="font-black flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>שים לב: {selectedPrintedOrders.length} מתוך ההזמנות הנבחרות כבר הודפסו וקוזזו מהמלאי!</span>
+                </div>
+                <p className="leading-relaxed">
+                  באפשרותך לבחור האם להחזיר את כמויות הפריטים של ההזמנות המודפסות חזרה למלאי המחסן או למחוק בלבד.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                ⚠️ האם אתה בטוח שברצונך למחוק {safeSelectedOrderIds.length} הזמנות מסומנות? כולן טרם הודפסו. הן יימחקו ולא יוצגו יותר במערכת ובלוחות הסטטיסטיקה.
+              </p>
+            )}
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsMassDeleteConfirmOpen(false)}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-              >
-                ביטול
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onMassDeleteOrders) {
-                    onMassDeleteOrders(safeSelectedOrderIds);
-                  }
-                  setIsMassDeleteConfirmOpen(false);
-                }}
-                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>מחק {safeSelectedOrderIds.length} הזמנות</span>
-              </button>
+            <div className="space-y-2 pt-2">
+              {selectedPrintedOrders.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onMassDeleteOrders) {
+                        onMassDeleteOrders(safeSelectedOrderIds, true);
+                      }
+                      setIsMassDeleteConfirmOpen(false);
+                    }}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>בטל הכל, החזר מלאי מודפס ומחק 🔄📦</span>
+                  </button>
+
+                  <div className="flex gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsMassDeleteConfirmOpen(false)}
+                      className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onMassDeleteOrders) {
+                          onMassDeleteOrders(safeSelectedOrderIds, false);
+                        }
+                        setIsMassDeleteConfirmOpen(false);
+                      }}
+                      className="flex-1 py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>מחק ללא החזרת מלאי</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsMassDeleteConfirmOpen(false)}
+                    className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onMassDeleteOrders) {
+                        onMassDeleteOrders(safeSelectedOrderIds, false);
+                      }
+                      setIsMassDeleteConfirmOpen(false);
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>מחק {safeSelectedOrderIds.length} הזמנות</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
