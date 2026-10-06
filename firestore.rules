@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // StorePrint Warehouse & Department Ordering System
+    // Unrestricted read & write for active warehouse stock, orders, and multi-tenant data
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

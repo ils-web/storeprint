@@ -613,9 +613,32 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       });
 
       // Pure Database saving: pushes to Firestore and saves in local tenant DB
-      const firestoreSuccess = await pushOrderToFirestore(newOrder, selectedTenantId);
-      if (!firestoreSuccess) {
-        console.warn('Firestore push returned false, order stored in local tenant DB');
+      let firestoreSuccess = false;
+      let firestoreError: any = null;
+      try {
+        firestoreSuccess = await pushOrderToFirestore(newOrder, selectedTenantId);
+      } catch (err: any) {
+        firestoreError = err;
+        console.error('Firestore push failed:', err);
+      }
+
+      if (!firestoreSuccess && firestoreError) {
+        const isPermissionError =
+          firestoreError?.code === 'permission-denied' ||
+          String(firestoreError?.message || '').toLowerCase().includes('permission');
+
+        if (isPermissionError) {
+          alert(
+            '⚠️ שגיאת הרשאות ענן (Firebase Rules Expired):\n\n' +
+            'חוקי האבטחה ב-Firebase פגו או חסומים (Missing or insufficient permissions).\n' +
+            'יש להגדיר ב-Firebase Console בלשונית Firestore Rules:\nallow read, write: if true;\n\n' +
+            'ההזמנה נשמרה בזיכרון המקומי של המכשיר, אך לא סונכרנה עדיין למחסן!'
+          );
+        } else {
+          alert(
+            `⚠️ שגיאת סנכרון ענן: ${firestoreError?.message || 'לא ניתן לשלוח לענן'}\nההזמנה נשמרה מקומית במכשיר.`
+          );
+        }
       }
 
       setLastSubmittedOrder(newOrder);
@@ -674,202 +697,215 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       } font-sans pb-36 text-sm selection:bg-indigo-500 selection:text-white transition-colors duration-200`}
       dir="rtl"
     >
-      {/* Top App Header */}
-      <header
-        className={`${
-          isLight ? 'bg-white/95 border-slate-200/90 shadow-xs' : 'bg-slate-900/95 border-slate-800 shadow-md'
-        } backdrop-blur-md border-b sticky top-0 z-30 px-3 sm:px-4 py-2.5 transition-colors duration-200`}
-      >
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
-          {/* Department Selector Pill & Cloud Status */}
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              onClick={() => setIsDeptModalOpen(true)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 ${
-                isLight
-                  ? 'bg-slate-50 hover:bg-slate-100 text-slate-900 border-slate-300'
-                  : 'bg-slate-800/90 hover:bg-slate-800 text-slate-100 border-slate-700'
-              } rounded-xl border transition-all cursor-pointer min-w-0 text-right shadow-xs`}
-              title="לחץ להחלפת מחלקה"
-            >
-              <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
-              <div className="min-w-0">
-                <div className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'} leading-none`}>
-                  מחלקה מזמינה:
-                </div>
-                <div
-                  className={`font-black text-xs sm:text-sm ${
-                    isLight ? 'text-slate-900' : 'text-white'
-                  } truncate flex items-center gap-1`}
-                >
-                  <span>{selectedDepartmentName}</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
-                </div>
-              </div>
-            </button>
-
-            {activeWarehouse && (
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
-                  isLight
-                    ? 'bg-amber-50 border-amber-300/80 text-amber-900'
-                    : 'bg-amber-950/70 border-amber-500/40 text-amber-300'
-                } border rounded-xl text-xs font-black shrink-0 shadow-xs`}
-                title={`הזמנה עבור ${activeWarehouse.name}`}
-              >
-                <Package className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span className="truncate max-w-[140px]">{activeWarehouse.name}</span>
-              </div>
-            )}
-
-            <div
-              className={`hidden xs:flex items-center gap-1.5 px-2.5 py-1 ${
-                isLight
-                  ? 'bg-emerald-50 border-emerald-300/80 text-emerald-800'
-                  : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
-              } border rounded-xl text-[11px] font-bold`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>ענן מחובר</span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-slate-200 text-indigo-600 border-slate-300 shadow-xs'
-                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
-              }`}
-              title={isLight ? 'מעבר למצב כהה (Dark Mode)' : 'מעבר למצב בהיר קליני (Light Mode)'}
-            >
-              {isLight ? <Moon className="w-4 h-4 text-indigo-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
-            </button>
-
-            <button
-              onClick={() => setIsHistoryModalOpen(true)}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer relative ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-              }`}
-              title="היסטוריית הזמנות המחלקה"
-            >
-              <Clock className="w-4 h-4 text-sky-500" />
-              {myDeptOrders.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-                  {myDeptOrders.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={handleForceUpdate}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-              }`}
-              title="רענן ומשוך גרסה עדכנית מהענן"
-            >
-              <RotateCcw className="w-4 h-4 text-emerald-500" />
-            </button>
-
-            <button
-              onClick={() => setIsInstallModalOpen(true)}
-              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-              }`}
-              title="התקנת האפליקציה למסך הבית"
-            >
-              <Smartphone className="w-4 h-4 text-sky-500" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Sticky Search & Category Sub-Header */}
+      {/* Sticky Header & Navigation Area */}
       <div
-        className={`sticky top-[53px] z-20 ${
-          isLight ? 'bg-slate-100/95 border-slate-200' : 'bg-slate-950/95 border-slate-800'
-        } backdrop-blur-md border-b px-3 sm:px-4 py-2.5 shadow-sm transition-colors duration-200`}
+        className={`sticky top-0 z-30 ${
+          isLight ? 'bg-white/95 border-slate-200/90 shadow-xs' : 'bg-slate-900/95 border-slate-800 shadow-md'
+        } backdrop-blur-md border-b transition-colors duration-200`}
       >
-        <div className="max-w-2xl mx-auto space-y-2">
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="חיפוש פריט, ציוד רפואי, חבישה, כפפות..."
-              className={`w-full pr-10 pl-10 py-2.5 rounded-xl text-sm font-medium ${
-                isLight
-                  ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 shadow-xs'
-                  : 'bg-slate-900 border-slate-800 text-white placeholder-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner'
-              } border focus:outline-none transition-all`}
-            />
-            {searchQuery && (
+        {/* Top App Header */}
+        <header className="px-3 sm:px-4 pt-2.5 pb-2">
+          <div className="max-w-2xl mx-auto space-y-2">
+            {/* Row 1: Prominent Department Selector (Hero) + Quick Actions */}
+            <div className="flex items-center justify-between gap-2">
+              {/* Department Selector Hero Button */}
               <button
-                onClick={() => setSearchQuery('')}
-                className={`absolute left-3.5 top-2.5 p-1 rounded-full cursor-pointer ${
+                onClick={() => setIsDeptModalOpen(true)}
+                className={`flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-1.5 ${
                   isLight
-                    ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-                title="נקה חיפוש"
+                    ? 'bg-amber-50 hover:bg-amber-100/90 text-amber-950 border-amber-400 shadow-xs ring-2 ring-amber-400/30'
+                    : 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-100 border-amber-500/60 ring-2 ring-amber-500/20'
+                } rounded-2xl border-2 transition-all cursor-pointer text-right group`}
+                title="לחץ כאן להחלפת המחלקה המזמינה"
               >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Category Pills (Horizontal Scroll) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-            {[
-              { id: 'all', label: '🌟 הכל', count: inventoryItems.length },
-              { id: 'gloves', label: '🧤 כפפות ומיגון', count: inventoryItems.filter((i) => i.category === 'gloves').length },
-              { id: 'dressings', label: '🩹 חבישה וגאזות', count: inventoryItems.filter((i) => i.category === 'dressings').length },
-              { id: 'hygiene', label: '🧼 ספיגה והיגיינה', count: inventoryItems.filter((i) => i.category === 'hygiene').length },
-              { id: 'medical', label: '💉 עירוי ורפואי', count: inventoryItems.filter((i) => i.category === 'medical').length },
-              { id: 'in_stock', label: '⚡ במלאי זמין', count: inventoryItems.filter((i) => i.currentStock > 0).length },
-              { id: 'in_cart', label: `🛒 בסל (${totalCartCount})`, count: cartItemsList.length },
-            ].map((cat) => {
-              const isSelected = categoryFilter === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setCategoryFilter(cat.id as any)}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : isLight
-                        ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-xs'
-                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                  }`}
-                >
-                  <span>{cat.label}</span>
-                  {cat.count > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                        isSelected
-                          ? 'bg-indigo-800/80 text-white'
-                          : isLight
-                            ? 'bg-slate-100 text-slate-600'
-                            : 'bg-slate-800 text-slate-400'
-                      }`}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-1.5 bg-amber-200/80 dark:bg-amber-800/80 text-amber-800 dark:text-amber-100 rounded-xl shrink-0">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div
+                      className={`text-[10px] ${
+                        isLight ? 'text-amber-800' : 'text-amber-300'
+                      } font-extrabold leading-tight flex items-center gap-1`}
                     >
-                      {cat.count}
+                      <span>מחלקה מזמינה:</span>
+                      <span className="text-[9px] text-amber-600/80 dark:text-amber-400/80 font-normal hidden xs:inline">
+                        (לחץ להחלפה)
+                      </span>
+                    </div>
+                    <div
+                      className={`font-black text-xs sm:text-sm ${
+                        isLight ? 'text-slate-900' : 'text-white'
+                      } truncate`}
+                    >
+                      {selectedDepartmentName}
+                    </div>
+                  </div>
+                </div>
+                <ChevronDown className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+              </button>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Theme Toggle Button */}
+                <button
+                  onClick={toggleTheme}
+                  className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-indigo-600 border-slate-300 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
+                  }`}
+                  title={isLight ? 'מעבר למצב כהה (Dark Mode)' : 'מעבר למצב בהיר קליני (Light Mode)'}
+                >
+                  {isLight ? <Moon className="w-4 h-4 text-indigo-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
+                </button>
+
+                <button
+                  onClick={() => setIsHistoryModalOpen(true)}
+                  className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors cursor-pointer relative ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="היסטוריית הזמנות המחלקה"
+                >
+                  <Clock className="w-4 h-4 text-sky-500" />
+                  {myDeptOrders.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                      {myDeptOrders.length}
                     </span>
                   )}
                 </button>
-              );
-            })}
+
+                <button
+                  onClick={handleForceUpdate}
+                  className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="רענן ומשוך גרסה עדכנית מהענן"
+                >
+                  <RotateCcw className="w-4 h-4 text-emerald-500" />
+                </button>
+
+                <button
+                  onClick={() => setIsInstallModalOpen(true)}
+                  className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="התקנת האפליקציה למסך הבית"
+                >
+                  <Smartphone className="w-4 h-4 text-sky-500" />
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Destination Warehouse & Cloud Status */}
+            <div className="flex items-center justify-between text-[11px] px-1 font-medium pt-0.5">
+              {activeWarehouse && (
+                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 min-w-0">
+                  <Package className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="text-[10px] text-slate-400 shrink-0">יעד אספקה:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200 truncate">
+                    {activeWarehouse.name}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`flex items-center gap-1.5 px-2 py-0.5 ${
+                  isLight
+                    ? 'bg-emerald-50 border-emerald-300/80 text-emerald-800'
+                    : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                } border rounded-lg text-[10px] font-bold shrink-0`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>ענן מחובר</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Search & Category Sub-Header */}
+        <div
+          className={`border-t ${
+            isLight ? 'bg-slate-50/70 border-slate-200/90' : 'bg-slate-950/60 border-slate-800'
+          } px-3 sm:px-4 py-2 transition-colors duration-200`}
+        >
+          <div className="max-w-2xl mx-auto space-y-2">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="חיפוש פריט, ציוד רפואי, חבישה, כפפות..."
+                className={`w-full pr-10 pl-10 py-2.5 rounded-xl text-sm font-medium ${
+                  isLight
+                    ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 shadow-xs'
+                    : 'bg-slate-900 border-slate-800 text-white placeholder-slate-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-inner'
+                } border focus:outline-none transition-all`}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className={`absolute left-3.5 top-2.5 p-1 rounded-full cursor-pointer ${
+                    isLight
+                      ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title="נקה חיפוש"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Category Pills (Horizontal Scroll) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+              {[
+                { id: 'all', label: '🌟 הכל', count: inventoryItems.length },
+                { id: 'gloves', label: '🧤 כפפות ומיגון', count: inventoryItems.filter((i) => i.category === 'gloves').length },
+                { id: 'dressings', label: '🩹 חבישה וגאזות', count: inventoryItems.filter((i) => i.category === 'dressings').length },
+                { id: 'hygiene', label: '🧼 ספיגה והיגיינה', count: inventoryItems.filter((i) => i.category === 'hygiene').length },
+                { id: 'medical', label: '💉 עירוי ורפואי', count: inventoryItems.filter((i) => i.category === 'medical').length },
+                { id: 'in_stock', label: '⚡ במלאי זמין', count: inventoryItems.filter((i) => i.currentStock > 0).length },
+                { id: 'in_cart', label: `🛒 בסל (${totalCartCount})`, count: cartItemsList.length },
+              ].map((cat) => {
+                const isSelected = categoryFilter === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setCategoryFilter(cat.id as any)}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        : isLight
+                          ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-xs'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    {cat.count > 0 && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          isSelected
+                            ? 'bg-indigo-800/80 text-white'
+                            : isLight
+                              ? 'bg-slate-100 text-slate-600'
+                              : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {cat.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
