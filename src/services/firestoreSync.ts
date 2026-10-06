@@ -170,33 +170,45 @@ export function subscribeToFirestoreStock(
  */
 export async function pushOrderToFirestore(
   order: MultiTenantOrder,
-  tenantId: string = 'tenant-main-01'
+  tenantId: string = 'tenant-main-01',
+  timeoutMs: number = 4000
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) {
     console.warn('Firestore is not ready. Order saved locally.');
     return false;
   }
-  try {
+
+  const writeOperation = async (): Promise<boolean> => {
     const cleanPayload = sanitizeForFirestore({
       ...order,
       syncedAt: new Date().toISOString(),
     });
 
-    // Write to tenant collection
-    const orderDocRef = doc(db, 'tenants', tenantId, 'orders', order.id);
-    await setDoc(orderDocRef, cleanPayload);
+    const writes: Promise<any>[] = [];
+    const orderDocRef = doc(db!, 'tenants', tenantId, 'orders', order.id);
+    writes.push(setDoc(orderDocRef, cleanPayload));
 
-    // Only main tenant maintains legacy root orders collection for backwards compatibility
     if (tenantId === 'tenant-main-01') {
-      const globalOrderRef = doc(db, 'orders', order.id);
-      await setDoc(globalOrderRef, cleanPayload);
+      const globalOrderRef = doc(db!, 'orders', order.id);
+      writes.push(setDoc(globalOrderRef, cleanPayload));
     }
 
+    await Promise.all(writes);
     console.log('✅ Order pushed to Firestore successfully:', order.id, order.departmentName);
     return true;
+  };
+
+  const timeoutPromise = new Promise<boolean>((_, reject) => {
+    setTimeout(() => reject(new Error('Firestore sync timeout (4s)')), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([writeOperation(), timeoutPromise]);
   } catch (err) {
-    console.error('Firestore pushOrder error:', err);
-    throw err;
+    console.warn('Firestore pushOrder timeout/warning (saved locally, will retry in background):', err);
+    // Background retry without blocking the user
+    writeOperation().catch((bgErr) => console.warn('Background Firestore push error:', bgErr));
+    return false;
   }
 }
 

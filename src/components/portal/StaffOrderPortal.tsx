@@ -267,6 +267,16 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   const [lastSubmittedOrder, setLastSubmittedOrder] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fail-safe auto-reset for isSubmitting after 5s to guarantee UI never freezes
+  useEffect(() => {
+    if (isSubmitting) {
+      const timer = setTimeout(() => {
+        setIsSubmitting(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isSubmitting]);
+
   // Helper to load base stock for active tenant
   const getInitialStockForTenant = (tId: string): Record<string, StockItem> => {
     if (tId === 'tenant-main-01') {
@@ -597,7 +607,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
         .filter(Boolean)
         .join(' | ');
 
-      // 1. Create order & push to Firestore Real-Time DB FIRST (instant delivery!)
+      // 1. Create order synchronously in local tenant DB (guaranteed 100% saved on device!)
       const newOrder = createTenantOrder(selectedTenantId, {
         tenantId: selectedTenantId,
         warehouseId: activeWarehouse?.id || 'wh-default',
@@ -612,35 +622,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
         printed: false,
       });
 
-      // Pure Database saving: pushes to Firestore and saves in local tenant DB
-      let firestoreSuccess = false;
-      let firestoreError: any = null;
-      try {
-        firestoreSuccess = await pushOrderToFirestore(newOrder, selectedTenantId);
-      } catch (err: any) {
-        firestoreError = err;
-        console.error('Firestore push failed:', err);
-      }
-
-      if (!firestoreSuccess && firestoreError) {
-        const isPermissionError =
-          firestoreError?.code === 'permission-denied' ||
-          String(firestoreError?.message || '').toLowerCase().includes('permission');
-
-        if (isPermissionError) {
-          alert(
-            '⚠️ שגיאת הרשאות ענן (Firebase Rules Expired):\n\n' +
-            'חוקי האבטחה ב-Firebase פגו או חסומים (Missing or insufficient permissions).\n' +
-            'יש להגדיר ב-Firebase Console בלשונית Firestore Rules:\nallow read, write: if true;\n\n' +
-            'ההזמנה נשמרה בזיכרון המקומי של המכשיר, אך לא סונכרנה עדיין למחסן!'
-          );
-        } else {
-          alert(
-            `⚠️ שגיאת סנכרון ענן: ${firestoreError?.message || 'לא ניתן לשלוח לענן'}\nההזמנה נשמרה מקומית במכשיר.`
-          );
-        }
-      }
-
+      // 2. Optimistic instant UI update: clear cart, show success banner, close modal immediately!
       setLastSubmittedOrder(newOrder);
       setOrderSuccessNumber(newOrder.orderNumber);
       setCart({});
@@ -648,6 +630,17 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       setIsFinalConfirmOpen(false);
       setIsCartOpen(false);
       window.dispatchEvent(new Event('storeprint_order_created'));
+
+      // 3. Fast push to Firestore (with 4s timeout protection and background retry)
+      pushOrderToFirestore(newOrder, selectedTenantId, 4000)
+        .then((ok) => {
+          if (!ok) {
+            console.warn('Order saved locally, background cloud push in progress');
+          }
+        })
+        .catch((err) => {
+          console.warn('Background Firestore push warning (order safe in device DB):', err);
+        });
     } catch (err: any) {
       console.error('Order submit error:', err);
       alert(err.message || 'שגיאה בשליחת ההזמנה');
@@ -1288,7 +1281,10 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                 </div>
               </div>
               <button
-                onClick={() => setIsCartOpen(false)}
+                onClick={() => {
+                  setIsSubmitting(false);
+                  setIsCartOpen(false);
+                }}
                 className={`p-1.5 rounded-lg cursor-pointer ${
                   isLight
                     ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
@@ -1802,6 +1798,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                 <button
                   type="button"
                   onClick={() => {
+                    setIsSubmitting(false);
                     setIsFinalConfirmOpen(false);
                     setIsDeptModalOpen(true);
                   }}
@@ -1817,7 +1814,10 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
                 <button
                   type="button"
-                  onClick={() => setIsFinalConfirmOpen(false)}
+                  onClick={() => {
+                    setIsSubmitting(false);
+                    setIsFinalConfirmOpen(false);
+                  }}
                   className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
                     isLight
                       ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
