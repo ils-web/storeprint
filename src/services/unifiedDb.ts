@@ -1,6 +1,13 @@
 import { Order, OrderItem, StockItem } from '../types';
 import initialMasterStock from '../utils/initialMasterStock.json';
-import { normalizeProductName, detectPackagingUnitFromProductName } from '../utils/stockManager';
+import {
+  normalizeProductName,
+  detectPackagingUnitFromProductName,
+  findMatchingStockKey,
+  extractOrderItemQuantity,
+  stripPackagingInfo,
+  cleanBidiAndQuotes,
+} from '../utils/stockManager';
 import { loadCloudConfig, debouncedPushStockToCloud } from '../utils/cloudSync';
 import { parseSheetDate, coerceDate } from '../utils/dateUtils';
 import { pushStockToFirestore } from './firestoreSync';
@@ -520,36 +527,59 @@ export function updateDbStockItem(
 /**
  * Deducts orders from stock in DB upon print confirmation
  */
-export function deductOrdersFromDbStock(orders: Order[]): {
+export function deductOrdersFromDbStock(
+  orders: Order[],
+  baseStock?: Record<string, StockItem>
+): {
   updatedStock: Record<string, StockItem>;
   totalDeducted: number;
+  deductedItemsCount: number;
 } {
   const current = getDbStock();
-  const updated: Record<string, StockItem> = { ...current };
+  const updated: Record<string, StockItem> = { ...current, ...(baseStock || {}) };
   let totalDeducted = 0;
+  let deductedItemsCount = 0;
 
   orders.forEach((order) => {
-    order.items.forEach((item) => {
-      const targetKey = updated[item.name]
-        ? item.name
-        : Object.keys(updated).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+    (order.items || []).forEach((item) => {
+      const targetKey = findMatchingStockKey(item, updated) || item.name;
+      const itemQty = extractOrderItemQuantity(item);
 
-      if (updated[targetKey]) {
-        const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
-        const prevQty = updated[targetKey].currentStock || 0;
-        updated[targetKey] = {
-          ...updated[targetKey],
-          currentStock: Math.max(0, prevQty - itemQty),
-          lastDeducted: new Date().toISOString(),
-          lastUpdated: new Date().toISOString(),
-        };
-        totalDeducted += itemQty;
+      if (itemQty > 0) {
+        if (updated[targetKey]) {
+          const prevQty = typeof updated[targetKey].currentStock === 'number' && !isNaN(updated[targetKey].currentStock)
+            ? updated[targetKey].currentStock
+            : 0;
+          updated[targetKey] = {
+            ...updated[targetKey],
+            currentStock: Math.max(0, prevQty - itemQty),
+            lastDeducted: new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
+          };
+          totalDeducted += itemQty;
+          deductedItemsCount++;
+        } else {
+          // If item was ordered but wasn't in stock map yet, add it so it is tracked and accounted for
+          updated[item.name] = {
+            id: item.productId || item.id || `stock-auto-${Date.now()}`,
+            name: item.name,
+            colIndex: item.colIndex || Object.keys(updated).length + 4,
+            currentStock: 0,
+            minThreshold: 10,
+            unit: item.unit || detectPackagingUnitFromProductName(item.name),
+            isActive: true,
+            lastDeducted: new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
+          };
+          totalDeducted += itemQty;
+          deductedItemsCount++;
+        }
       }
     });
   });
 
   saveDbStock(updated);
-  return { updatedStock: updated, totalDeducted };
+  return { updatedStock: updated, totalDeducted, deductedItemsCount };
 }
 
 export const CANONICAL_DEPARTMENTS: string[] = [
@@ -647,7 +677,8 @@ export function isOrderInSet(
   const rawDate = (order.rawDate || '').trim().replace(/\s+/g, ' ');
 
   if (dept && ts && idSet.has(`forms_order_${dept}:::${ts}`)) return true;
-  if (dept && rawDate && idSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
+  // Strictly only match date-only key if the order lacks both a unique ID and a timestamp
+  if (!id && !ts && dept && rawDate && idSet.has(`forms_order_${dept}:::${rawDate}`)) return true;
 
   // Check timestamp with date/time position permutations ("DD/MM/YYYY HH:MM:SS" vs "HH:MM:SS DD/MM/YYYY")
   if (ts.includes(' ')) {
@@ -691,6 +722,7 @@ export function isOrderPrintedInSet(
 
 /**
  * Sanitizes printed order IDs by purging legacy pure row numbers ("1", "5", "42")
+ * and legacy date-only keys that would falsely block multiple orders on the same day.
  */
 export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
   const clean = new Set<string>();
@@ -700,6 +732,9 @@ export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
     // Discard pure numbers (e.g. "5", "42", "1")
     if (/^\d+$/.test(trimmed)) continue;
     if (/^שורה\s*\d+$/i.test(trimmed)) continue;
+    // Discard corrupted date-only composite keys like "forms_order_X:::07/10/2026"
+    // which incorrectly block all subsequent orders of that department on that date
+    if (/^forms_order_[^:]+:::\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) continue;
     clean.add(trimmed);
   }
   return clean;
@@ -870,13 +905,14 @@ export function ingestGoogleFormsOrders(
       const itemName = cleanHeaderName(rawHeaders[c] || '', c);
       if (!itemName) continue;
 
-      const numVal = parseFloat(cellQty.replace(/[^\d.]/g, ''));
+      const parsedQty = parseNumericQty(cellQty) || 1;
 
       orderItems.push({
         id: `item-${r}-${c}`,
         name: itemName,
         qty: cellQty,
-        numericQty: isNaN(numVal) ? 1 : numVal,
+        numericQty: parsedQty,
+        unit: detectPackagingUnitFromProductName(itemName),
         colIndex: c,
         checked: false,
       });

@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Order, StockItem } from '../types';
+import { findMatchingStockKey, extractOrderItemQuantity } from '../utils/stockManager';
 import {
   getIsraelWeekRange,
   isDateInWeek,
@@ -589,7 +590,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                             <div className="flex flex-wrap items-center gap-1.5">
                               {/* Display first 5 items */}
                               {order.items.slice(0, 5).map((item) => {
-                                const stockItem = stock[item.name];
+                                const stockKey = findMatchingStockKey(item, stock);
+                                const stockItem = stockKey ? stock[stockKey] : stock[item.name];
                                 const isLow = stockItem && stockItem.currentStock < (stockItem.minThreshold || 10);
                                 const isOut = stockItem && stockItem.currentStock === 0;
 
@@ -912,7 +914,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 </div>
                 <div className="max-h-40 overflow-y-auto space-y-1.5 p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200 text-xs">
                   {orderToDelete.items.map((it, idx) => {
-                    const qty = it.numericQty ?? (parseFloat(String(it.qty).replace(/[^\d.]/g, '')) || 0);
+                    const qty = extractOrderItemQuantity(it);
                     return (
                       <div
                         key={idx}

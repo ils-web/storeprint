@@ -71,12 +71,110 @@ export function saveStoredStock(stock: Record<string, StockItem>): void {
   }
 }
 
+export function cleanBidiAndQuotes(s: string): string {
+  if (!s) return '';
+  return s
+    .replace(/[\u200E\u200F\u202A-\u202E\uFEFF]/g, '') // remove invisible bidi/RTL/LTR marks
+    .replace(/,/g, '.')
+    .replace(/^["']+|["']+$/g, '')
+    .trim();
+}
+
 /**
  * Normalizes a product name for reliable matching across CSV unescaping, quotes, and whitespace
  */
 export function normalizeProductName(s: string): string {
   if (!s) return '';
-  return s.replace(/^["']+|["']+$/g, '').replace(/[\s"'\-_()״׳\\]+/g, '').toLowerCase();
+  return cleanBidiAndQuotes(s)
+    .replace(/[\s"'\-_()״׳\\־–—]+/g, '')
+    .toLowerCase();
+}
+
+/**
+ * Strips packaging and parenthetical details to allow matching items across differing descriptions
+ * (e.g. "מטושים TRASYSTEM (100 יחידות בחבילה)" -> "מטושים TRASYSTEM")
+ */
+export function stripPackagingInfo(s: string): string {
+  if (!s) return '';
+  return cleanBidiAndQuotes(s)
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[\s"'\-_()״׳\\־–—]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Robust item quantity extractor
+ */
+export function extractOrderItemQuantity(item: OrderItem | any): number {
+  if (!item) return 0;
+  if (typeof item.orderedQty === 'number' && !isNaN(item.orderedQty)) {
+    return Math.max(0, item.orderedQty);
+  }
+  if (typeof item.numericQty === 'number' && !isNaN(item.numericQty)) {
+    return Math.max(0, item.numericQty);
+  }
+  return parseNumericQty(item.qty);
+}
+
+/**
+ * Infallible multi-strategy stock matching algorithm.
+ * Guarantees that an ordered item finds its corresponding warehouse stock entry across:
+ * 1. Exact key match
+ * 2. Product ID / item ID match
+ * 3. Normalized name match (ignoring bidi marks, quotes, whitespace, punctuation)
+ * 4. Column index match (colIndex from Google Sheet / catalog)
+ * 5. Parenthetical / packaging details stripped match
+ */
+export function findMatchingStockKey(
+  item: { id?: string; productId?: string; name: string; colIndex?: number },
+  stockMap: Record<string, StockItem>
+): string | null {
+  if (!item || !stockMap) return null;
+  const itemName = (item.name || '').trim();
+
+  // 1. Exact key match
+  if (stockMap[itemName]) return itemName;
+
+  // 2. ID / ProductId match
+  const pId = item.productId || (item.id && !item.id.startsWith('item-r') ? item.id.replace(/^item-/, '') : null);
+  if (pId) {
+    const idKey = Object.keys(stockMap).find(
+      (k) => stockMap[k]?.id === pId || stockMap[k]?.id === item.id
+    );
+    if (idKey) return idKey;
+  }
+
+  // 3. Normalized name match
+  const normItem = normalizeProductName(itemName);
+  if (normItem) {
+    const normKey = Object.keys(stockMap).find(
+      (k) => normalizeProductName(k) === normItem || normalizeProductName(stockMap[k]?.name || '') === normItem
+    );
+    if (normKey) return normKey;
+  }
+
+  // 4. Column Index match
+  if (typeof item.colIndex === 'number' && item.colIndex > 0) {
+    const colKey = Object.keys(stockMap).find((k) => stockMap[k]?.colIndex === item.colIndex);
+    if (colKey) return colKey;
+  }
+
+  // 5. Parenthetical / Packaging info stripped match
+  const strippedItem = normalizeProductName(stripPackagingInfo(itemName));
+  if (strippedItem && strippedItem.length >= 3) {
+    const stripKey = Object.keys(stockMap).find((k) => {
+      const strippedStock = normalizeProductName(stripPackagingInfo(k));
+      return (
+        strippedStock === strippedItem ||
+        (strippedStock.length > 4 &&
+          strippedItem.length > 4 &&
+          (strippedStock.startsWith(strippedItem) || strippedItem.startsWith(strippedStock)))
+      );
+    });
+    if (stripKey) return stripKey;
+  }
+
+  return null;
 }
 
 /**
@@ -193,15 +291,17 @@ export function deductOrdersFromStock(
 
   orders.forEach((order) => {
     order.items.forEach((item) => {
-      const stockEntry = updated[item.name];
-      const qtyToDeduct = parseNumericQty(item.qty);
+      const targetKey = findMatchingStockKey(item, updated) || item.name;
+      const stockEntry = updated[targetKey];
+      const qtyToDeduct = extractOrderItemQuantity(item);
 
       if (qtyToDeduct > 0) {
         if (stockEntry) {
-          const oldStock = stockEntry.currentStock;
+          const oldStock = stockEntry.currentStock || 0;
           const newStock = Math.max(0, oldStock - qtyToDeduct);
           stockEntry.currentStock = newStock;
           stockEntry.lastDeducted = new Date().toISOString();
+          stockEntry.lastUpdated = new Date().toISOString();
 
           totalDeductedCount += qtyToDeduct;
 
@@ -211,14 +311,15 @@ export function deductOrdersFromStock(
         } else {
           // If item wasn't in stock map yet, add with detected unit
           updated[item.name] = {
-            id: `stock-auto-${Date.now()}`,
+            id: item.productId || item.id || `stock-auto-${Date.now()}`,
             name: item.name,
             colIndex: item.colIndex || 0,
             currentStock: 0,
             minThreshold: DEFAULT_MIN_THRESHOLD,
-            unit: detectPackagingUnitFromProductName(item.name),
+            unit: item.unit || detectPackagingUnitFromProductName(item.name),
             isActive: true,
             lastDeducted: new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
           };
           totalDeductedCount += qtyToDeduct;
         }

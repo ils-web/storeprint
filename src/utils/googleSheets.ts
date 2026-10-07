@@ -1,6 +1,7 @@
 import { SheetTab, Order, OrderItem, StockItem } from '../types';
 import { parseSheetDate } from './dateUtils';
 import initialMasterStock from './initialMasterStock.json';
+import { parseNumericQty, detectPackagingUnitFromProductName } from './stockManager';
 
 const SEED_STOCK: Record<string, StockItem> = initialMasterStock as Record<string, StockItem>;
 
@@ -325,6 +326,8 @@ export function processRawRowsToOrders(
         id: `item-${r}-${c}`,
         name: itemName,
         qty: cellQty,
+        numericQty: parseNumericQty(cellQty),
+        unit: detectPackagingUnitFromProductName(itemName),
         colIndex: c,
         checked: false,
       });

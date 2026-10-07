@@ -1,8 +1,10 @@
 export interface OrderItem {
   id: string;
+  productId?: string;
   name: string;
   qty: string;
   numericQty?: number;
+  unit?: string;
   colIndex?: number;
   checked?: boolean;
 }

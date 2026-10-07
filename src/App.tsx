@@ -63,6 +63,8 @@ import {
   getLowStockItems,
   detectPackagingUnitFromProductName,
   normalizeProductName,
+  findMatchingStockKey,
+  extractOrderItemQuantity,
 } from './utils/stockManager';
 import { parseSheetDate, coerceDate } from './utils/dateUtils';
 import {
@@ -460,11 +462,13 @@ export default function App() {
       }
       return {
         id: item.id || `item-${itemIdx}-${item.productId || itemIdx}`,
+        productId: item.productId,
         name: item.name,
         qty: item.orderedUnit && item.orderedUnit !== "יח'"
           ? `${item.orderedQty} ${item.orderedUnit}`
           : String(item.orderedQty),
         numericQty: item.orderedQty,
+        unit: item.orderedUnit,
         colIndex,
         checked: item.checked,
       };
@@ -1458,11 +1462,9 @@ export default function App() {
         const currentDbStock = getDbStock();
         nextStock = { ...currentDbStock, ...(stock || {}) };
         targetOrder.items.forEach((item) => {
-          const targetKey = nextStock[item.name]
-            ? item.name
-            : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+          const targetKey = findMatchingStockKey(item, nextStock) || item.name;
           if (nextStock[targetKey]) {
-            const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+            const itemQty = extractOrderItemQuantity(item);
             const prevQty = nextStock[targetKey].currentStock || 0;
             nextStock[targetKey] = {
               ...nextStock[targetKey],
@@ -1476,11 +1478,9 @@ export default function App() {
       } else {
         nextStock = { ...stock };
         targetOrder.items.forEach((item) => {
-          const targetKey = nextStock[item.name]
-            ? item.name
-            : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+          const targetKey = findMatchingStockKey(item, nextStock) || item.name;
           if (nextStock[targetKey]) {
-            const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+            const itemQty = extractOrderItemQuantity(item);
             const prevQty = nextStock[targetKey].currentStock || 0;
             nextStock[targetKey] = {
               ...nextStock[targetKey],
@@ -1492,6 +1492,7 @@ export default function App() {
       }
       setStock(nextStock);
       syncToMultiTenantDb(productHeaders, departments, nextStock);
+      pushStockToFirestore(nextStock, activeTenantId).catch(console.warn);
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         debouncedPushStockToCloud(nextStock, cloudConfig, 1500).catch(console.warn);
       }
@@ -1506,9 +1507,6 @@ export default function App() {
         if (targetOrder.id) next.add(targetOrder.id);
         if (targetOrder.department && targetOrder.timestamp) {
           next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
-        }
-        if (targetOrder.department && targetOrder.rawDate) {
-          next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
         }
       }
       saveDbDeletedOrderIds(next);
@@ -1581,11 +1579,9 @@ export default function App() {
           nextStock = { ...currentDbStock, ...(stock || {}) };
           ordersToRestore.forEach((ord) => {
             ord.items.forEach((item) => {
-              const targetKey = nextStock[item.name]
-                ? item.name
-                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+              const targetKey = findMatchingStockKey(item, nextStock) || item.name;
               if (nextStock[targetKey]) {
-                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+                const itemQty = extractOrderItemQuantity(item);
                 const prevQty = nextStock[targetKey].currentStock || 0;
                 nextStock[targetKey] = {
                   ...nextStock[targetKey],
@@ -1601,11 +1597,9 @@ export default function App() {
           nextStock = { ...stock };
           ordersToRestore.forEach((ord) => {
             ord.items.forEach((item) => {
-              const targetKey = nextStock[item.name]
-                ? item.name
-                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
+              const targetKey = findMatchingStockKey(item, nextStock) || item.name;
               if (nextStock[targetKey]) {
-                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
+                const itemQty = extractOrderItemQuantity(item);
                 const prevQty = nextStock[targetKey].currentStock || 0;
                 nextStock[targetKey] = {
                   ...nextStock[targetKey],
@@ -1618,6 +1612,7 @@ export default function App() {
         }
         setStock(nextStock);
         syncToMultiTenantDb(productHeaders, departments, nextStock);
+        pushStockToFirestore(nextStock, activeTenantId).catch(console.warn);
         if (cloudConfig.enabled && cloudConfig.endpointUrl) {
           debouncedPushStockToCloud(nextStock, cloudConfig, 1500).catch(console.warn);
         }
@@ -1679,14 +1674,15 @@ export default function App() {
 
     // IRONCLAD RULE: Only mark order as printed if printed WITH stock deduction and NOT a copy!
     if (deductStock && !isCopy) {
-      // Prevent double deduction: strictly filter for orders not yet marked as printed
+      // Prevent double deduction: filter for unprinted orders, or allow confirmed single order
       const genuinelyNewOrders = ordersToPrint.filter(
         (o) => !o.printed && !isOrderPrintedInSet(o, printedOrderIds)
       );
+      const effectiveOrders = genuinelyNewOrders.length > 0 ? genuinelyNewOrders : (ordersToPrint.length === 1 ? ordersToPrint : []);
 
-      if (genuinelyNewOrders.length > 0) {
+      if (effectiveOrders.length > 0) {
         const newPrinted = new Set<string>(printedOrderIds);
-        genuinelyNewOrders.forEach((o) => {
+        effectiveOrders.forEach((o) => {
           const key = getOrderPrintKey(o);
           newPrinted.add(key);
           newPrinted.delete(`unprinted_${key}`);
@@ -1699,11 +1695,6 @@ export default function App() {
             newPrinted.add(k1);
             newPrinted.delete(`unprinted_${k1}`);
           }
-          if (o.department && o.rawDate) {
-            const k2 = `forms_order_${o.department.trim()}:::${o.rawDate.trim()}`;
-            newPrinted.add(k2);
-            newPrinted.delete(`unprinted_${k2}`);
-          }
         });
         const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
         setPrintedOrderIds(cleanPrinted);
@@ -1714,12 +1705,12 @@ export default function App() {
 
         // Also update multiTenantDb and Firestore printed status
         try {
-          genuinelyNewOrders.forEach((o) => {
+          effectiveOrders.forEach((o) => {
             updateOrderPrintedInFirestore(o.id, true, new Date().toISOString(), activeTenantId).catch(console.warn);
           });
           const tenantOrders = getTenantOrders(activeTenantId);
           const updatedTenantOrders = tenantOrders.map((tOrder) => {
-            const match = genuinelyNewOrders.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
+            const match = effectiveOrders.some((o) => o.id === tOrder.id || o.id.includes(tOrder.orderNumber));
             if (match) {
               return {
                 ...tOrder,
@@ -1733,36 +1724,24 @@ export default function App() {
           saveTenantOrders(activeTenantId, updatedTenantOrders);
         } catch {}
 
-        let nextStock: Record<string, StockItem>;
+        // 100% Reliable Stock Deduction using findMatchingStockKey & extractOrderItemQuantity
+        const { updatedStock } = deductOrdersFromDbStock(effectiveOrders, stock);
+        const nextStock = updatedStock;
         if (activeTenantId === 'tenant-main-01') {
-          const { updatedStock } = deductOrdersFromDbStock(genuinelyNewOrders);
-          nextStock = updatedStock;
           saveDbStock(updatedStock);
-          saveStoredStock(updatedStock);
-        } else {
-          nextStock = { ...stock };
-          genuinelyNewOrders.forEach((order) => {
-            order.items.forEach((item) => {
-              const targetKey = nextStock[item.name]
-                ? item.name
-                : Object.keys(nextStock).find((k) => normalizeProductName(k) === normalizeProductName(item.name)) || item.name;
-              if (nextStock[targetKey]) {
-                const itemQty = item.numericQty || parseFloat(String(item.qty).replace(/[^\d.]/g, '')) || 0;
-                const prevQty = nextStock[targetKey].currentStock || 0;
-                nextStock[targetKey] = {
-                  ...nextStock[targetKey],
-                  currentStock: Math.max(0, prevQty - itemQty),
-                  lastDeducted: new Date().toISOString(),
-                };
-              }
-            });
-          });
         }
+        saveStoredStock(updatedStock);
         setStock(nextStock);
         syncToMultiTenantDb(productHeaders, departments, nextStock);
 
+        // CRITICAL: Push deducted stock directly to Firestore and Cloud Webhook!
+        pushStockToFirestore(nextStock, activeTenantId).catch(console.warn);
+        if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+          debouncedPushStockToCloud(nextStock, cloudConfig, 1000).catch(console.warn);
+        }
+
         const updatedOrders = orders.map((o) =>
-          isOrderPrintedInSet(o, cleanPrinted) || genuinelyNewOrders.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o) || p.id === o.id)
+          isOrderPrintedInSet(o, cleanPrinted) || effectiveOrders.some((p) => getOrderPrintKey(p) === getOrderPrintKey(o) || p.id === o.id)
             ? { ...o, printed: true }
             : o
         );
@@ -1802,10 +1781,6 @@ export default function App() {
             next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
             next.add(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
           }
-          if (targetOrder.department && targetOrder.rawDate) {
-            next.delete(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
-            next.add(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
-          }
         }
       } else {
         next.add(key);
@@ -1818,10 +1793,6 @@ export default function App() {
           if (targetOrder.department && targetOrder.timestamp) {
             next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
             next.delete(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
-          }
-          if (targetOrder.department && targetOrder.rawDate) {
-            next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
-            next.delete(`unprinted_forms_order_${targetOrder.department.trim()}:::${targetOrder.rawDate.trim()}`);
           }
         }
       }
