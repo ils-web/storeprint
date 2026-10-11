@@ -592,10 +592,11 @@ export const CANONICAL_DEPARTMENTS: string[] = [
   "ג' 2 סיעוד מורכב",
   "ג' 3 סיעוד מורכב",
   "פיזיו",
+  "משען חולון",
 ];
 
 /**
- * Loads departments from DB, strictly aligned with canonical 9 hospital departments
+ * Loads departments from DB, ensuring canonical hospital departments and any custom additions are preserved
  */
 export function getDbDepartments(): string[] {
   if (typeof window === 'undefined') return [...CANONICAL_DEPARTMENTS];
@@ -604,10 +605,12 @@ export function getDbDepartments(): string[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-        const filtered = parsed.filter((d: string) => canonicalSet.has(d));
-        if (filtered.length === CANONICAL_DEPARTMENTS.length) {
-          return filtered;
+        const valid = parsed
+          .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+          .map((d) => d.trim());
+        if (valid.length > 0) {
+          const merged = Array.from(new Set([...CANONICAL_DEPARTMENTS, ...valid]));
+          return merged;
         }
       }
     }
@@ -620,14 +623,15 @@ export function getDbDepartments(): string[] {
 }
 
 /**
- * Saves departments to DB, strictly sanitizing against canonical list
+ * Saves departments to DB, preserving canonical and custom departments
  */
 export function saveDbDepartments(departments: string[]): void {
   if (typeof window === 'undefined') return;
   try {
-    const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-    const cleaned = (departments || []).filter((d) => canonicalSet.has(d));
-    const finalDepts = cleaned.length > 0 ? cleaned : CANONICAL_DEPARTMENTS;
+    const cleaned = (departments || [])
+      .filter((d): d is string => typeof d === 'string' && d.trim().length > 0)
+      .map((d) => d.trim());
+    const finalDepts = cleaned.length > 0 ? Array.from(new Set([...CANONICAL_DEPARTMENTS, ...cleaned])) : CANONICAL_DEPARTMENTS;
     localStorage.setItem(DB_STORAGE_KEYS.DEPARTMENTS, JSON.stringify(finalDepts));
   } catch {}
 }
@@ -946,11 +950,13 @@ export function ingestGoogleFormsOrders(
   orders.sort((a, b) => b.rowNumber - a.rowNumber);
 
   const deptsList = Array.from(deptSet);
-  saveDbDepartments(deptsList);
+  const existingDepts = getDbDepartments();
+  const mergedDepts = Array.from(new Set([...existingDepts, ...deptsList]));
+  saveDbDepartments(mergedDepts);
 
   return {
     orders,
-    departments: deptsList,
+    departments: mergedDepts,
     productHeaders,
   };
 }

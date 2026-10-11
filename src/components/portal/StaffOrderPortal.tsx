@@ -18,6 +18,8 @@ import {
   createTenantOrder,
   deleteTenantOrder,
   clearAllTenantOrders,
+  fetchTenantDepartmentsFromFirestore,
+  subscribeToTenantDepartments,
 } from '../../services/multiTenantDb';
 import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
 import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
@@ -181,17 +183,47 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     return warehouses[0] || null;
   }, [warehouses, initialWarehouseId]);
 
+  const [tenantDepartments, setTenantDepartments] = useState<TenantDepartment[]>(() => {
+    return getTenantDepartments(selectedTenantId);
+  });
+
+  // Subscribe to real-time departments from Firestore strictly for active tenant
+  useEffect(() => {
+    // 1. Initial fetch from Firestore
+    fetchTenantDepartmentsFromFirestore(selectedTenantId)
+      .then((remoteDepts) => {
+        if (remoteDepts && remoteDepts.length > 0) {
+          setTenantDepartments(remoteDepts);
+        }
+      })
+      .catch(console.warn);
+
+    // 2. Real-time subscription to departments
+    const unsub = subscribeToTenantDepartments(selectedTenantId, (remoteDepts) => {
+      if (remoteDepts && remoteDepts.length > 0) {
+        setTenantDepartments(remoteDepts);
+      }
+    });
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [selectedTenantId]);
+
   // Departments List (Loaded dynamically for active tenant)
   const departmentsList = useMemo(() => {
-    const tenantDepts = getTenantDepartments(selectedTenantId);
-    if (tenantDepts && tenantDepts.length > 0) {
-      return tenantDepts.map((d) => d.name);
+    if (tenantDepartments && tenantDepartments.length > 0) {
+      return tenantDepartments.map((d) => d.name);
+    }
+    const localDepts = getTenantDepartments(selectedTenantId);
+    if (localDepts && localDepts.length > 0) {
+      return localDepts.map((d) => d.name);
     }
     if (selectedTenantId === 'tenant-main-01') {
       return CANONICAL_DEPARTMENTS;
     }
     return [];
-  }, [selectedTenantId]);
+  }, [tenantDepartments, selectedTenantId]);
 
   const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>(() => {
     if (initialDepartment) {

@@ -23,6 +23,7 @@ import {
   subscribeToTenantsFirestore,
   fetchWarehousesFromFirestore,
 } from '../../services/multiTenantDb';
+import { saveDbDepartments } from '../../services/unifiedDb';
 import {
   Building2,
   Plus,
@@ -248,6 +249,18 @@ export function SuperAdminDashboard({
       pinCode: '1234',
     }));
     saveTenantDepartments(selectedTenant.id, newDeptItems);
+
+    if (selectedTenant.id === 'tenant-main-01') {
+      saveDbDepartments(parsedDepts);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('departments-updated', {
+          detail: { tenantId: selectedTenant.id, departments: newDeptItems },
+        })
+      );
+    }
 
     refreshTenants();
     setIsEditModalOpen(false);

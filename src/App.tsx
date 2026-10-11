@@ -90,6 +90,8 @@ import {
   fetchInventoryFromFirestore,
   fetchTenantsFromFirestore,
   fetchWarehousesFromFirestore,
+  fetchTenantDepartmentsFromFirestore,
+  subscribeToTenantDepartments,
 } from './services/multiTenantDb';
 import { printOrdersHtml } from './utils/pdfGenerator';
 import { organizeStockLogically } from './utils/stockGrouper';
@@ -406,15 +408,24 @@ export default function App() {
 
     saveInventory(activeTenant.id, items);
 
-    // Build Departments strictly for main hospital tenant
+    // Build Departments strictly for main hospital tenant, preserving all custom departments
     if (activeTenant.id === 'tenant-main-01') {
+      const existingTenantDepts = getTenantDepartments(activeTenant.id);
       const deptList = getDbDepartments();
-      const allDepts = Array.from(new Set([...deptList, ...depts]));
-      const deptItems: TenantDepartment[] = allDepts.map((dName, idx) => ({
-        id: `dept-${idx}`,
-        tenantId: activeTenant.id,
-        name: dName,
-      }));
+      const allDepts = Array.from(new Set([
+        ...existingTenantDepts.map((d) => d.name),
+        ...deptList,
+        ...depts,
+      ])).filter(Boolean);
+      const deptItems: TenantDepartment[] = allDepts.map((dName, idx) => {
+        const existing = existingTenantDepts.find((d) => d.name === dName);
+        return {
+          id: existing?.id || `dept-${idx}`,
+          tenantId: activeTenant.id,
+          name: dName,
+          pinCode: existing?.pinCode || '1234',
+        };
+      });
       saveTenantDepartments(activeTenant.id, deptItems);
     }
   }, [activeTenant]);
@@ -637,16 +648,18 @@ export default function App() {
           return finalOrders;
         });
 
-        // 3. Extract unique departments and merge with canonical list
+        // 3. Extract unique departments and merge with configured departments
         if (isMain) {
+          const tenantDepts = getTenantDepartments(activeTenantId || 'tenant-main-01');
+          const dbDepts = getDbDepartments();
           const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
-          setDepartments(() => {
-            const canonicalSet = new Set(CANONICAL_DEPARTMENTS);
-            const valid = distinctDepts.filter((d) => canonicalSet.has(d));
-            const merged = Array.from(new Set([...valid, ...CANONICAL_DEPARTMENTS]));
-            localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
-            return merged;
-          });
+          const baseDepts = tenantDepts.length > 0 ? tenantDepts.map((d) => d.name) : dbDepts;
+          const merged = Array.from(new Set([...baseDepts, ...distinctDepts, ...CANONICAL_DEPARTMENTS])).filter(Boolean);
+
+          setDepartments(merged);
+          saveDbDepartments(merged);
+          localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(merged));
+
           const dbStock = getDbStock();
           if (Object.keys(dbStock).length > 0) {
             setProductHeaders(Object.keys(dbStock));
@@ -844,6 +857,47 @@ export default function App() {
 
     return () => {
       if (unsubPrinted) unsubPrinted();
+    };
+  }, [activeTenantId]);
+
+  // Real-time departments subscription and listener for active tenant
+  useEffect(() => {
+    fetchTenantDepartmentsFromFirestore(activeTenantId || 'tenant-main-01')
+      .then((remoteDepts) => {
+        if (remoteDepts && remoteDepts.length > 0) {
+          const names = remoteDepts.map((d) => d.name);
+          setDepartments(names);
+          if (activeTenantId === 'tenant-main-01') {
+            saveDbDepartments(names);
+          }
+        }
+      })
+      .catch(console.warn);
+
+    const unsubDepts = subscribeToTenantDepartments(activeTenantId || 'tenant-main-01', (remoteDepts) => {
+      if (remoteDepts && remoteDepts.length > 0) {
+        const names = remoteDepts.map((d) => d.name);
+        setDepartments(names);
+        if (activeTenantId === 'tenant-main-01') {
+          saveDbDepartments(names);
+        }
+      }
+    });
+
+    const handleDeptsUpdated = (e: any) => {
+      const updatedTenantId = e?.detail?.tenantId;
+      if (updatedTenantId === activeTenantId) {
+        const depts = getTenantDepartments(activeTenantId);
+        if (depts.length > 0) {
+          setDepartments(depts.map((d) => d.name));
+        }
+      }
+    };
+    window.addEventListener('departments-updated', handleDeptsUpdated);
+
+    return () => {
+      if (unsubDepts) unsubDepts();
+      window.removeEventListener('departments-updated', handleDeptsUpdated);
     };
   }, [activeTenantId]);
 

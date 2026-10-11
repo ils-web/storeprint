@@ -10,7 +10,7 @@ import {
 } from '../types/multiTenant';
 import { StockItem } from '../types';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
-import { CANONICAL_DEPARTMENTS, getDbStock } from './unifiedDb';
+import { CANONICAL_DEPARTMENTS, getDbStock, saveDbDepartments } from './unifiedDb';
 import { db } from './firebase';
 import {
   doc,
@@ -785,9 +785,27 @@ export function getTenantDepartments(tenantId: string): TenantDepartment[] {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
   const stored = getStoredJson<TenantDepartment[]>(key, []);
 
-  // For main hospital tenant, preserve canonical 9 departments
+  // For main hospital tenant, preserve canonical departments and all custom additions
   if (tenantId === 'tenant-main-01') {
     if (stored.length > 0) {
+      const storedNames = new Set(stored.map((d) => d.name));
+      let missingAdded = false;
+      const updatedList = [...stored];
+      CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
+        if (!storedNames.has(cDept)) {
+          updatedList.push({
+            id: `dept-canonical-${idx}`,
+            tenantId,
+            name: cDept,
+            pinCode: '1234',
+          });
+          missingAdded = true;
+        }
+      });
+      if (missingAdded) {
+        saveTenantDepartments(tenantId, updatedList);
+        return updatedList;
+      }
       return stored;
     }
     const defaultList: TenantDepartment[] = CANONICAL_DEPARTMENTS.map((dName, idx) => ({
@@ -821,6 +839,9 @@ export function saveTenantDepartments(tenantId: string, departments: TenantDepar
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
   const cleaned = (departments || []).filter((d) => d && d.name && d.name.trim().length > 0);
   setStoredJson(key, cleaned);
+  if (tenantId === 'tenant-main-01') {
+    saveDbDepartments(cleaned.map((d) => d.name));
+  }
   if (db) {
     import('firebase/firestore').then(({ doc, setDoc }) => {
       if (!db) return;
@@ -839,14 +860,101 @@ export async function fetchTenantDepartmentsFromFirestore(tenantId: string): Pro
     if (snap.exists()) {
       const data = snap.data();
       if (Array.isArray(data?.list) && data.list.length > 0) {
-        setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, data.list);
-        return data.list;
+        let list = data.list as TenantDepartment[];
+        if (tenantId === 'tenant-main-01') {
+          const listNames = new Set(list.map((d) => d.name));
+          let changed = false;
+          CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
+            if (!listNames.has(cDept)) {
+              list.push({
+                id: `dept-canonical-${idx}`,
+                tenantId,
+                name: cDept,
+                pinCode: '1234',
+              });
+              changed = true;
+            }
+          });
+          if (changed) {
+            saveTenantDepartments(tenantId, list);
+          } else {
+            setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+            saveDbDepartments(list.map((d) => d.name));
+          }
+        } else {
+          setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+        }
+        return list;
       }
     }
   } catch (err) {
     console.warn('fetchTenantDepartmentsFromFirestore warning:', err);
   }
   return getTenantDepartments(tenantId);
+}
+
+export function subscribeToTenantDepartments(
+  tenantId: string,
+  onDepartmentsUpdated: (departments: TenantDepartment[]) => void
+): () => void {
+  let unsub: (() => void) | null = null;
+  let active = true;
+
+  if (db) {
+    import('firebase/firestore').then(({ doc, onSnapshot }) => {
+      if (!active || !db) return;
+      try {
+        const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
+        unsub = onSnapshot(
+          docRef,
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (Array.isArray(data?.list) && data.list.length > 0) {
+                let list = data.list as TenantDepartment[];
+                if (tenantId === 'tenant-main-01') {
+                  const listNames = new Set(list.map((d) => d.name));
+                  let changed = false;
+                  CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
+                    if (!listNames.has(cDept)) {
+                      list.push({
+                        id: `dept-canonical-${idx}`,
+                        tenantId,
+                        name: cDept,
+                        pinCode: '1234',
+                      });
+                      changed = true;
+                    }
+                  });
+                  if (changed) {
+                    saveTenantDepartments(tenantId, list);
+                  } else {
+                    setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+                    saveDbDepartments(list.map((d) => d.name));
+                  }
+                } else {
+                  setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+                }
+                onDepartmentsUpdated(list);
+              }
+            }
+          },
+          (err) => console.warn('subscribeToTenantDepartments error:', err)
+        );
+      } catch (e) {
+        console.warn('subscribeToTenantDepartments init error:', e);
+      }
+    });
+  }
+
+  return () => {
+    active = false;
+    if (unsub) {
+      try {
+        unsub();
+      } catch {}
+    }
+  };
 }
 
 export function addTenantDepartment(tenantId: string, name: string, pinCode?: string): TenantDepartment {
