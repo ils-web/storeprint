@@ -529,14 +529,17 @@ export function updateDbStockItem(
  */
 export function deductOrdersFromDbStock(
   orders: Order[],
-  baseStock?: Record<string, StockItem>
+  baseStock?: Record<string, StockItem>,
+  tenantId: string = 'tenant-main-01'
 ): {
   updatedStock: Record<string, StockItem>;
   totalDeducted: number;
   deductedItemsCount: number;
 } {
-  const current = getDbStock();
-  const updated: Record<string, StockItem> = { ...current, ...(baseStock || {}) };
+  const isMain = !tenantId || tenantId === 'tenant-main-01';
+  const updated: Record<string, StockItem> = isMain
+    ? { ...getDbStock(), ...(baseStock || {}) }
+    : { ...(baseStock || {}) };
   let totalDeducted = 0;
   let deductedItemsCount = 0;
 
@@ -578,7 +581,9 @@ export function deductOrdersFromDbStock(
     });
   });
 
-  saveDbStock(updated);
+  if (isMain) {
+    saveDbStock(updated);
+  }
   return { updatedStock: updated, totalDeducted, deductedItemsCount };
 }
 
@@ -745,20 +750,22 @@ export function sanitizePrintedOrderIds(rawIds: Iterable<string>): Set<string> {
 }
 
 /**
- * Loads set of printed order composite keys, automatically purged of corrupted legacy row numbers
+ * Loads set of printed order composite keys, isolated per tenantId
  */
-export function getDbPrintedOrderIds(): Set<string> {
+export function getDbPrintedOrderIds(tenantId: string = 'tenant-main-01'): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw =
-      localStorage.getItem(DB_STORAGE_KEYS.PRINTED_ORDERS) ||
-      localStorage.getItem('storeprint_printed_orders_v1');
+    const isMain = !tenantId || tenantId === 'tenant-main-01';
+    const raw = isMain
+      ? localStorage.getItem(DB_STORAGE_KEYS.PRINTED_ORDERS) ||
+        localStorage.getItem('storeprint_printed_orders_v1')
+      : localStorage.getItem(`${DB_STORAGE_KEYS.PRINTED_ORDERS}_${tenantId}`);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return new Set();
     const sanitized = sanitizePrintedOrderIds(parsed);
     // Write back cleaned set
-    saveDbPrintedOrderIds(sanitized);
+    saveDbPrintedOrderIds(sanitized, tenantId);
     return sanitized;
   } catch {
     return new Set();
@@ -766,27 +773,34 @@ export function getDbPrintedOrderIds(): Set<string> {
 }
 
 /**
- * Saves set of printed order composite keys
+ * Saves set of printed order composite keys, isolated per tenantId
  */
-export function saveDbPrintedOrderIds(ids: Set<string>): void {
+export function saveDbPrintedOrderIds(ids: Set<string>, tenantId: string = 'tenant-main-01'): void {
   if (typeof window === 'undefined') return;
   try {
+    const isMain = !tenantId || tenantId === 'tenant-main-01';
     const cleanArr = Array.from(sanitizePrintedOrderIds(ids));
     const serialized = JSON.stringify(cleanArr);
-    localStorage.setItem(DB_STORAGE_KEYS.PRINTED_ORDERS, serialized);
-    localStorage.setItem('storeprint_printed_orders_v1', serialized);
+    if (isMain) {
+      localStorage.setItem(DB_STORAGE_KEYS.PRINTED_ORDERS, serialized);
+      localStorage.setItem('storeprint_printed_orders_v1', serialized);
+    } else {
+      localStorage.setItem(`${DB_STORAGE_KEYS.PRINTED_ORDERS}_${tenantId}`, serialized);
+    }
   } catch {}
 }
 
 /**
- * Loads set of deleted order keys from permanent blacklist
+ * Loads set of deleted order keys from permanent blacklist, isolated per tenantId
  */
-export function getDbDeletedOrderIds(): Set<string> {
+export function getDbDeletedOrderIds(tenantId: string = 'tenant-main-01'): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw =
-      localStorage.getItem(DB_STORAGE_KEYS.DELETED_ORDERS) ||
-      localStorage.getItem('storeprint_deleted_orders_v2');
+    const isMain = !tenantId || tenantId === 'tenant-main-01';
+    const raw = isMain
+      ? localStorage.getItem(DB_STORAGE_KEYS.DELETED_ORDERS) ||
+        localStorage.getItem('storeprint_deleted_orders_v2')
+      : localStorage.getItem(`${DB_STORAGE_KEYS.DELETED_ORDERS}_${tenantId}`);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return new Set();
@@ -797,15 +811,20 @@ export function getDbDeletedOrderIds(): Set<string> {
 }
 
 /**
- * Saves set of deleted order keys to permanent blacklist
+ * Saves set of deleted order keys to permanent blacklist, isolated per tenantId
  */
-export function saveDbDeletedOrderIds(ids: Set<string>): void {
+export function saveDbDeletedOrderIds(ids: Set<string>, tenantId: string = 'tenant-main-01'): void {
   if (typeof window === 'undefined') return;
   try {
+    const isMain = !tenantId || tenantId === 'tenant-main-01';
     const cleanArr = Array.from(ids).filter((id) => typeof id === 'string' && id.trim().length > 0);
     const serialized = JSON.stringify(cleanArr);
-    localStorage.setItem(DB_STORAGE_KEYS.DELETED_ORDERS, serialized);
-    localStorage.setItem('storeprint_deleted_orders_v2', serialized);
+    if (isMain) {
+      localStorage.setItem(DB_STORAGE_KEYS.DELETED_ORDERS, serialized);
+      localStorage.setItem('storeprint_deleted_orders_v2', serialized);
+    } else {
+      localStorage.setItem(`${DB_STORAGE_KEYS.DELETED_ORDERS}_${tenantId}`, serialized);
+    }
   } catch {}
 }
 

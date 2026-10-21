@@ -20,7 +20,7 @@ import { EmergencyBanner } from './components/emergency/EmergencyBanner';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
-import { AuthSession, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
+import { AuthSession, Tenant, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
 import {
   getDbStock,
   saveDbStock,
@@ -33,6 +33,7 @@ import {
   resetDbStockToMasterCatalog,
   sanitizeAndDeduplicateStock,
   getDbDepartments,
+  saveDbDepartments,
   CANONICAL_DEPARTMENTS,
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
@@ -54,6 +55,8 @@ import {
   pushPrintedOrderKeysToFirestore,
   fetchPrintedOrderKeysFromFirestore,
   subscribeToFirestorePrintedOrderKeys,
+  saveCloudStockBackup,
+  restoreCloudStockBackup,
 } from './services/firestoreSync';
 import {
   loadStoredStock,
@@ -89,6 +92,7 @@ import {
   getInventory,
   fetchInventoryFromFirestore,
   fetchTenantsFromFirestore,
+  subscribeToTenantsFirestore,
   fetchWarehousesFromFirestore,
   fetchTenantDepartmentsFromFirestore,
   subscribeToTenantDepartments,
@@ -98,7 +102,6 @@ import { organizeStockLogically } from './utils/stockGrouper';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download, ArrowRight } from 'lucide-react';
 
-const PRINTED_ORDERS_STORAGE_KEY = 'storeprint_printed_orders_v1';
 const DEPARTMENTS_CACHE_KEY = 'storeprint_departments_cache_v1';
 const PRODUCTS_CACHE_KEY = 'storeprint_products_cache_v1';
 
@@ -121,24 +124,40 @@ export default function App() {
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [preselectedDept, setPreselectedDept] = useState<string>('');
 
-  // Active Tenant
-  const tenants = getTenants();
+  // Reactive Multi-Tenant List (Supports all 4+ warehouses simultaneously)
+  const [tenants, setTenants] = useState<Tenant[]>(() => getTenants());
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
+    const initialTenants = getTenants();
     if (authSession?.tenantId) return authSession.tenantId;
     if (typeof window !== 'undefined') {
       try {
         const params = new URLSearchParams(window.location.search);
         const tParam = params.get('tenant') || params.get('tenantId');
         if (tParam) {
-          const match = tenants.find((t) => t.id === tParam || t.slug === tParam);
+          const match = initialTenants.find((t) => t.id === tParam || t.slug === tParam);
           if (match) return match.id;
           return tParam;
         }
       } catch {}
     }
-    return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
+    return initialTenants.length > 0 ? initialTenants[0].id : 'tenant-main-01';
   });
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
+
+  // Keep tenants list synchronized with Firestore in real time
+  useEffect(() => {
+    fetchTenantsFromFirestore()
+      .then((fresh) => {
+        if (fresh && fresh.length > 0) setTenants(fresh);
+      })
+      .catch(console.warn);
+    fetchWarehousesFromFirestore().catch(console.warn);
+
+    const unsubTenants = subscribeToTenantsFirestore((fresh) => {
+      if (fresh && fresh.length > 0) setTenants(fresh);
+    });
+    return () => unsubTenants();
+  }, []);
 
   // Security enforcement: regular tenant users are strictly pinned to their own tenantId
   useEffect(() => {
@@ -249,6 +268,11 @@ export default function App() {
     return stockMap;
   };
 
+  const getEmergencyStorageKey = (tId: string) =>
+    !tId || tId === 'tenant-main-01'
+      ? 'storeprint_emergency_mode_v1'
+      : `storeprint_emergency_mode_v1_${tId}`;
+
   // Orders & Fast Cached Departments State (Strictly isolated by active tenant)
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
@@ -257,7 +281,7 @@ export default function App() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const currentPrinted = getDbPrintedOrderIds();
+          const currentPrinted = getDbPrintedOrderIds(activeTenantId);
           const purgedSet = new Set(['order-1788682740035-140', 'order-test-1788673384415', 'order-test-check']);
           return parsed
             .filter((o: any) =>
@@ -296,14 +320,14 @@ export default function App() {
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Printed Orders Memory Set (Strict, immutable submission keys only)
+  // Printed Orders Memory Set (Isolated per active tenant)
   const [printedOrderIds, setPrintedOrderIds] = useState<Set<string>>(() => {
-    return getDbPrintedOrderIds();
+    return getDbPrintedOrderIds(activeTenantId);
   });
 
-  // Deleted Orders Permanent Blacklist
+  // Deleted Orders Permanent Blacklist (Isolated per active tenant)
   const [deletedOrderIds, setDeletedOrderIds] = useState<Set<string>>(() => {
-    return getDbDeletedOrderIds();
+    return getDbDeletedOrderIds(activeTenantId);
   });
 
   // Warehouse Stock State (Initialized from Tenant DB)
@@ -319,11 +343,10 @@ export default function App() {
   const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
   const [ordersForConfirm, setOrdersForConfirm] = useState<Order[]>([]);
 
-  // Emergency Mode State (Hospital x3 Buffer Stock)
-  const EMERGENCY_MODE_STORAGE_KEY = 'storeprint_emergency_mode_v1';
+  // Emergency Mode State (Hospital x3 Buffer Stock, isolated per warehouse)
   const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(EMERGENCY_MODE_STORAGE_KEY) === 'true';
+      return localStorage.getItem(getEmergencyStorageKey(activeTenantId)) === 'true';
     } catch {
       return false;
     }
@@ -333,7 +356,7 @@ export default function App() {
   const handleToggleEmergencyMode = (targetState: boolean) => {
     setIsEmergencyMode(targetState);
     try {
-      localStorage.setItem(EMERGENCY_MODE_STORAGE_KEY, String(targetState));
+      localStorage.setItem(getEmergencyStorageKey(activeTenantId), String(targetState));
     } catch {}
 
     if (targetState) {
@@ -505,8 +528,18 @@ export default function App() {
     };
   }, [activeTenantId]);
 
-  // Sync departments, stock, and orders when activeTenantId changes
+  // Sync departments, stock, printed/deleted sets, emergency mode, and orders when activeTenantId changes
   useEffect(() => {
+    // 0. Reset selection & reload tenant-isolated printed/deleted sets and emergency mode
+    setSelectedOrderIds([]);
+    setPrintedOrderIds(getDbPrintedOrderIds(activeTenantId));
+    setDeletedOrderIds(getDbDeletedOrderIds(activeTenantId));
+    try {
+      setIsEmergencyMode(localStorage.getItem(getEmergencyStorageKey(activeTenantId)) === 'true');
+    } catch {
+      setIsEmergencyMode(false);
+    }
+
     // 1. Departments
     const tenantDepts = getTenantDepartments(activeTenantId);
     if (tenantDepts.length > 0) {
@@ -529,7 +562,7 @@ export default function App() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          const currentPrinted = getDbPrintedOrderIds();
+          const currentPrinted = getDbPrintedOrderIds(activeTenantId);
           const purgedSet = new Set(['order-1788682740035-140', 'order-test-1788673384415', 'order-test-check']);
           const filtered = parsed
             .filter((o: any) =>
@@ -572,12 +605,13 @@ export default function App() {
       }
 
       try {
+        const targetTenantId = activeTenantId || 'tenant-main-01';
         // 1. Fetch printed order keys from local DB and remote Firestore
         const currentPrinted = new Set<string>();
-        getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+        getDbPrintedOrderIds(targetTenantId).forEach((id) => currentPrinted.add(id));
         printedOrderIds.forEach((id) => currentPrinted.add(id));
         try {
-          const remotePrinted = await fetchPrintedOrderKeysFromFirestore(activeTenantId || 'tenant-main-01');
+          const remotePrinted = await fetchPrintedOrderKeysFromFirestore(targetTenantId);
           remotePrinted.forEach((k) => {
             if (k && !k.startsWith('unprinted_')) currentPrinted.add(k);
           });
@@ -586,13 +620,13 @@ export default function App() {
         // 2. Fetch orders from Firestore (and merge with local store if offline)
         let remoteTenantOrders: MultiTenantOrder[] = [];
         try {
-          remoteTenantOrders = await fetchOrdersFromFirestore(activeTenantId || 'tenant-main-01');
+          remoteTenantOrders = await fetchOrdersFromFirestore(targetTenantId);
         } catch (e) {
           console.warn('Could not fetch remote Firestore orders:', e);
         }
-        const localTenantOrders = getTenantOrders(activeTenantId || 'tenant-main-01');
+        const localTenantOrders = getTenantOrders(targetTenantId);
         const allTenantMap = new Map<string, MultiTenantOrder>();
-        const isMain = (activeTenantId || 'tenant-main-01') === 'tenant-main-01';
+        const isMain = targetTenantId === 'tenant-main-01';
         localTenantOrders.forEach((to) => {
           if (to && to.id && (isMain ? (!to.tenantId || to.tenantId === 'tenant-main-01') : to.tenantId === activeTenantId)) {
             allTenantMap.set(to.id, to);
@@ -611,7 +645,7 @@ export default function App() {
         };
 
         const deletedSet = new Set<string>();
-        getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
+        getDbDeletedOrderIds(targetTenantId).forEach((id) => deletedSet.add(id));
         deletedOrderIds.forEach((id) => deletedSet.add(id));
 
         const filteredOrders = convertedTenantOrders
@@ -642,7 +676,7 @@ export default function App() {
           });
 
           try {
-            const cacheKey = getTenantOrdersCacheKey(activeTenantId || 'tenant-main-01');
+            const cacheKey = getTenantOrdersCacheKey(targetTenantId);
             localStorage.setItem(cacheKey, JSON.stringify(finalOrders));
           } catch {}
           return finalOrders;
@@ -650,7 +684,7 @@ export default function App() {
 
         // 3. Extract unique departments and merge with configured departments
         if (isMain) {
-          const tenantDepts = getTenantDepartments(activeTenantId || 'tenant-main-01');
+          const tenantDepts = getTenantDepartments(targetTenantId);
           const dbDepts = getDbDepartments();
           const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
           const baseDepts = tenantDepts.length > 0 ? tenantDepts.map((d) => d.name) : dbDepts;
@@ -684,14 +718,15 @@ export default function App() {
       } catch (err: any) {
         console.warn('Firestore orders fetch error, checking cached orders:', err);
         try {
-          const cacheKey = getTenantOrdersCacheKey(activeTenantId || 'tenant-main-01');
-          const isMain = (activeTenantId || 'tenant-main-01') === 'tenant-main-01';
+          const targetTenantId = activeTenantId || 'tenant-main-01';
+          const cacheKey = getTenantOrdersCacheKey(targetTenantId);
+          const isMain = targetTenantId === 'tenant-main-01';
           const raw = localStorage.getItem(cacheKey) || (isMain ? localStorage.getItem('storeprint_orders_cache_v2') : null);
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
               const currentPrinted = new Set<string>();
-              getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+              getDbPrintedOrderIds(targetTenantId).forEach((id) => currentPrinted.add(id));
               printedOrderIds.forEach((id) => currentPrinted.add(id));
 
               const cleanCached = parsed
@@ -737,10 +772,11 @@ export default function App() {
           saveDbStock(liveStock, false);
           saveStoredStock(liveStock);
         } else {
+          const primaryWhId = getWarehouses(activeTenantId)[0]?.id || 'wh-01';
           const items: InventoryProduct[] = Object.values(liveStock).map((item, idx) => ({
             id: item.id || `prod-${activeTenantId}-${idx}`,
             tenantId: activeTenantId,
-            warehouseId: 'wh-01',
+            warehouseId: primaryWhId,
             name: item.name,
             colIndex: item.colIndex || idx + 1,
             currentStock: item.currentStock || 0,
@@ -773,11 +809,11 @@ export default function App() {
 
         setOrders((prev) => {
           const currentPrinted = new Set<string>();
-          getDbPrintedOrderIds().forEach((id) => currentPrinted.add(id));
+          getDbPrintedOrderIds(activeTenantId).forEach((id) => currentPrinted.add(id));
           printedOrderIds.forEach((id) => currentPrinted.add(id));
 
           const deletedSet = new Set<string>();
-          getDbDeletedOrderIds().forEach((id) => deletedSet.add(id));
+          getDbDeletedOrderIds(activeTenantId).forEach((id) => deletedSet.add(id));
           deletedOrderIds.forEach((id) => deletedSet.add(id));
 
           const convertedLive = filteredLiveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
@@ -838,9 +874,7 @@ export default function App() {
             if (k && !k.startsWith('unprinted_')) next.add(k);
           });
           const clean = sanitizePrintedOrderIds(next);
-          if (activeTenantId === 'tenant-main-01') {
-            saveDbPrintedOrderIds(clean);
-          }
+          saveDbPrintedOrderIds(clean, activeTenantId);
           return clean;
         });
 
@@ -1095,10 +1129,12 @@ export default function App() {
           saveDbStock(targetStock, false);
           saveStoredStock(targetStock);
         } else {
+          const whs = getWarehouses(activeTenantId);
+          const whId = whs[0]?.id || 'wh-01';
           const items: InventoryProduct[] = Object.values(targetStock).map((item, idx) => ({
             id: item.id || `prod-${activeTenantId}-${idx}`,
             tenantId: activeTenantId,
-            warehouseId: 'wh-01',
+            warehouseId: whId,
             name: item.name,
             colIndex: item.colIndex || idx + 1,
             currentStock: item.currentStock || 0,
@@ -1321,15 +1357,7 @@ export default function App() {
   const handleSaveCloudBackup = useCallback(async () => {
     try {
       setIsLoading(true);
-      const { doc, setDoc } = await import('firebase/firestore');
-      const { db } = await import('./services/firebase');
-      if (!db) throw new Error('Firebase לא מחובר');
-      const docRef = doc(db, 'tenants', activeTenantId, 'warehouse', 'stock_backup');
-      await setDoc(docRef, {
-        stock,
-        savedAt: new Date().toISOString(),
-        itemCount: Object.keys(stock).length,
-      });
+      await saveCloudStockBackup(activeTenantId, stock);
       setSuccessMessage('הסדר והמלאי הנוכחי נשמרו בהצלחה כגיבוי ענן קבוע ב-Firestore! 🛡️💾');
       setTimeout(() => setSuccessMessage(null), 4500);
     } catch (e: any) {
@@ -1343,13 +1371,8 @@ export default function App() {
   const handleRestoreCloudBackup = useCallback(async () => {
     try {
       setIsLoading(true);
-      const { doc, getDoc } = await import('firebase/firestore');
-      const { db } = await import('./services/firebase');
-      if (!db) throw new Error('Firebase לא מחובר');
-      const docRef = doc(db, 'tenants', activeTenantId, 'warehouse', 'stock_backup');
-      const snap = await getDoc(docRef);
-      if (snap.exists() && snap.data()?.stock) {
-        const backupStock = snap.data().stock as Record<string, StockItem>;
+      const backupStock = await restoreCloudStockBackup(activeTenantId);
+      if (backupStock) {
         setStock(backupStock);
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(backupStock, true);
@@ -1418,14 +1441,18 @@ export default function App() {
           }
         }
       });
-      saveStoredStock(next);
+      if (activeTenantId === 'tenant-main-01') {
+        saveDbStock(next);
+        saveStoredStock(next);
+      }
       syncToMultiTenantDb(productHeaders, departments, next);
+      pushStockToFirestore(next, activeTenantId).catch(console.warn);
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
       }
       return next;
     });
-  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
+  }, [activeTenantId, productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   const handleSetAllStock = useCallback((defaultVal: number) => {
     setStock((prev) => {
@@ -1439,14 +1466,18 @@ export default function App() {
           };
         }
       });
-      saveStoredStock(next);
+      if (activeTenantId === 'tenant-main-01') {
+        saveDbStock(next);
+        saveStoredStock(next);
+      }
       syncToMultiTenantDb(productHeaders, departments, next);
+      pushStockToFirestore(next, activeTenantId).catch(console.warn);
       if (cloudConfig.enabled && cloudConfig.endpointUrl) {
         debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
       }
       return next;
     });
-  }, [productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
+  }, [activeTenantId, productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   // Print Handlers
   const handleToggleSelectOrder = (orderId: string) => {
@@ -1563,7 +1594,7 @@ export default function App() {
           next.add(`forms_order_${targetOrder.department.trim()}:::${targetOrder.timestamp.trim()}`);
         }
       }
-      saveDbDeletedOrderIds(next);
+      saveDbDeletedOrderIds(next, activeTenantId);
       return next;
     });
 
@@ -1589,9 +1620,7 @@ export default function App() {
       const next = new Set<string>(prev);
       next.delete(orderId);
       next.delete(key);
-      if (activeTenantId === 'tenant-main-01') {
-        saveDbPrintedOrderIds(next);
-      }
+      saveDbPrintedOrderIds(next, activeTenantId);
       return next;
     });
 
@@ -1752,9 +1781,7 @@ export default function App() {
         });
         const cleanPrinted = sanitizePrintedOrderIds(newPrinted);
         setPrintedOrderIds(cleanPrinted);
-        if (activeTenantId === 'tenant-main-01') {
-          saveDbPrintedOrderIds(cleanPrinted);
-        }
+        saveDbPrintedOrderIds(cleanPrinted, activeTenantId);
         pushPrintedOrderKeysToFirestore(Array.from(cleanPrinted), activeTenantId).catch(console.warn);
 
         // Also update multiTenantDb and Firestore printed status
@@ -1779,12 +1806,12 @@ export default function App() {
         } catch {}
 
         // 100% Reliable Stock Deduction using findMatchingStockKey & extractOrderItemQuantity
-        const { updatedStock } = deductOrdersFromDbStock(effectiveOrders, stock);
+        const { updatedStock } = deductOrdersFromDbStock(effectiveOrders, stock, activeTenantId);
         const nextStock = updatedStock;
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(updatedStock);
+          saveStoredStock(updatedStock);
         }
-        saveStoredStock(updatedStock);
         setStock(nextStock);
         syncToMultiTenantDb(productHeaders, departments, nextStock);
 
@@ -1851,9 +1878,7 @@ export default function App() {
         }
       }
       const clean = sanitizePrintedOrderIds(next);
-      if (activeTenantId === 'tenant-main-01') {
-        saveDbPrintedOrderIds(clean);
-      }
+      saveDbPrintedOrderIds(clean, activeTenantId);
       pushPrintedOrderKeysToFirestore(Array.from(clean), activeTenantId).catch(console.warn);
 
       // Update Firestore

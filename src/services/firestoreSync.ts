@@ -498,3 +498,34 @@ export function subscribeToFirestorePrintedOrderKeys(
     return null;
   }
 }
+
+/**
+ * Saves a cloud stock backup for the specified tenant
+ */
+export async function saveCloudStockBackup(
+  tenantId: string,
+  stock: Record<string, StockItem>
+): Promise<void> {
+  if (!isFirebaseReady || !db) throw new Error('Firebase לא מחובר');
+  const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'stock_backup');
+  await setDoc(docRef, sanitizeForFirestore({
+    stock,
+    savedAt: new Date().toISOString(),
+    itemCount: Object.keys(stock).length,
+  }));
+}
+
+/**
+ * Restores a cloud stock backup for the specified tenant
+ */
+export async function restoreCloudStockBackup(
+  tenantId: string
+): Promise<Record<string, StockItem> | null> {
+  if (!isFirebaseReady || !db) throw new Error('Firebase לא מחובר');
+  const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'stock_backup');
+  const snap = await getDoc(docRef);
+  if (snap.exists() && snap.data()?.stock) {
+    return snap.data().stock as Record<string, StockItem>;
+  }
+  return null;
+}

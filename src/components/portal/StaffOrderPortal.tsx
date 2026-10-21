@@ -12,6 +12,7 @@ import {
   getTenants,
   getWarehouses,
   getInventory,
+  saveInventory,
   getTenantDepartments,
   getTenantOrders,
   saveTenantOrders,
@@ -20,6 +21,9 @@ import {
   clearAllTenantOrders,
   fetchTenantDepartmentsFromFirestore,
   subscribeToTenantDepartments,
+  fetchTenantsFromFirestore,
+  subscribeToTenantsFirestore,
+  fetchWarehousesFromFirestore,
 } from '../../services/multiTenantDb';
 import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
 import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
@@ -150,16 +154,32 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
   const isLight = theme === 'light';
 
-  const tenants = getTenants();
+  const [tenants, setTenants] = useState<Tenant[]>(() => getTenants());
   const [selectedTenantId, setSelectedTenantId] = useState<string>(() => {
+    const initialTenants = getTenants();
     const rawTarget = initialTenantId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tenant') : null);
     if (rawTarget) {
-      const match = tenants.find((t) => t.id === rawTarget || t.slug === rawTarget);
+      const match = initialTenants.find((t) => t.id === rawTarget || t.slug === rawTarget);
       if (match) return match.id;
       return rawTarget;
     }
-    return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
+    return initialTenants.length > 0 ? initialTenants[0].id : 'tenant-main-01';
   });
+
+  // Subscribe to tenants and warehouses from Firestore so mobile QR links for any of the 4+ warehouses resolve properly
+  useEffect(() => {
+    fetchTenantsFromFirestore()
+      .then((list) => {
+        if (list && list.length > 0) setTenants(list);
+      })
+      .catch(console.warn);
+    const unsub = subscribeToTenantsFirestore((list) => {
+      if (list && list.length > 0) setTenants(list);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
   useEffect(() => {
     if (initialTenantId) {
@@ -172,7 +192,18 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   }, [initialTenantId, selectedTenantId, tenants]);
 
   const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
-  const warehouses = getWarehouses(selectedTenantId);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(() => getWarehouses(selectedTenantId));
+
+  useEffect(() => {
+    setWarehouses(getWarehouses(selectedTenantId));
+    fetchWarehousesFromFirestore()
+      .then((allWh) => {
+        const tenantWh = allWh.filter((w) => w.tenantId === selectedTenantId);
+        if (tenantWh.length > 0) setWarehouses(tenantWh);
+      })
+      .catch(console.warn);
+  }, [selectedTenantId]);
+
   const activeWarehouse = useMemo(() => {
     if (initialWarehouseId) {
       const match = warehouses.find(
@@ -364,11 +395,28 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   useEffect(() => {
     const unsub = subscribeToFirestoreStock((newStock) => {
       setLiveStock(newStock);
+      if (selectedTenantId !== 'tenant-main-01' && newStock && Object.keys(newStock).length > 0) {
+        const whId = warehouses[0]?.id || 'wh-01';
+        const items: InventoryProduct[] = Object.values(newStock).map((item, idx) => ({
+          id: item.id || `prod-${selectedTenantId}-${idx}`,
+          tenantId: selectedTenantId,
+          warehouseId: whId,
+          name: item.name,
+          colIndex: item.colIndex || idx + 1,
+          currentStock: item.currentStock || 0,
+          minThreshold: item.minThreshold || 10,
+          unit: (item.unit || "יח'") as PackagingUnit,
+          isActive: item.isActive !== false,
+          limitByPatients: Boolean(item.limitByPatients),
+          updatedAt: item.lastUpdated || new Date().toISOString(),
+        }));
+        saveInventory(selectedTenantId, items);
+      }
     }, selectedTenantId);
     return () => {
       if (unsub) unsub();
     };
-  }, [selectedTenantId]);
+  }, [selectedTenantId, warehouses]);
 
   // Scroll to Top Listener
   useEffect(() => {

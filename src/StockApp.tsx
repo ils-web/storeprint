@@ -16,37 +16,80 @@ import {
   fetchStockFromFirestore,
   pushStockToFirestore,
 } from './services/firestoreSync';
-import { getTenants, getTenantStockMap } from './services/multiTenantDb';
+import {
+  getTenants,
+  getWarehouses,
+  getTenantStockMap,
+  saveInventory,
+  fetchTenantsFromFirestore,
+  subscribeToTenantsFirestore,
+} from './services/multiTenantDb';
+import { Tenant, InventoryProduct, PackagingUnit } from './types/multiTenant';
 
 export default function StockApp() {
-  const tenants = getTenants();
+  const [tenants, setTenants] = useState<Tenant[]>(() => getTenants());
 
   // Resolve active tenant from URL (?tenant=... or ?tenantId=...)
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
+    const initialTenants = getTenants();
     try {
       if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
         const tParam = urlParams.get('tenant') || urlParams.get('tenantId');
         if (tParam) {
-          const match = tenants.find((t) => t.id === tParam || t.slug === tParam);
+          const match = initialTenants.find((t) => t.id === tParam || t.slug === tParam);
           if (match) return match.id;
           return tParam;
         }
       }
     } catch {}
-    return tenants.length > 0 ? tenants[0].id : 'tenant-main-01';
+    return initialTenants.length > 0 ? initialTenants[0].id : 'tenant-main-01';
   });
+
+  // Subscribe to tenants from Firestore so all 4+ warehouses resolve their names properly on mobile
+  useEffect(() => {
+    fetchTenantsFromFirestore()
+      .then((list) => {
+        if (list && list.length > 0) setTenants(list);
+      })
+      .catch(console.warn);
+    const unsub = subscribeToTenantsFirestore((list) => {
+      if (list && list.length > 0) setTenants(list);
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
   const activeTenant = useMemo(() => {
     return tenants.find((t) => t.id === activeTenantId) || tenants[0];
   }, [tenants, activeTenantId]);
 
-  // Initial stock from local DB cache
+  const persistTenantInventory = useCallback((tId: string, stockMap: Record<string, StockItem>) => {
+    if (tId === 'tenant-main-01') return;
+    const whId = getWarehouses(tId)[0]?.id || 'wh-01';
+    const items: InventoryProduct[] = Object.values(stockMap).map((item, idx) => ({
+      id: item.id || `prod-${tId}-${idx}`,
+      tenantId: tId,
+      warehouseId: whId,
+      name: item.name,
+      colIndex: item.colIndex || idx + 1,
+      currentStock: item.currentStock || 0,
+      minThreshold: item.minThreshold || 10,
+      unit: (item.unit || "יח'") as PackagingUnit,
+      isActive: item.isActive !== false,
+      limitByPatients: Boolean(item.limitByPatients),
+      updatedAt: item.lastUpdated || new Date().toISOString(),
+    }));
+    saveInventory(tId, items);
+  }, []);
+
+  // Initial stock from local DB cache strictly isolated per tenant
   const [stock, setStock] = useState<Record<string, StockItem>>(() => {
     try {
       if (activeTenantId !== 'tenant-main-01') {
         const tenantMap = getTenantStockMap(activeTenantId);
-        if (tenantMap && Object.keys(tenantMap).length > 0) return tenantMap;
+        return tenantMap && Object.keys(tenantMap).length > 0 ? tenantMap : {};
       }
       return getDbStock();
     } catch {
@@ -64,6 +107,8 @@ export default function StockApp() {
       setStock(remoteStock);
       if (activeTenantId === 'tenant-main-01') {
         saveDbStock(remoteStock);
+      } else {
+        persistTenantInventory(activeTenantId, remoteStock);
       }
     }, activeTenantId);
 
@@ -72,7 +117,7 @@ export default function StockApp() {
         unsubscribe();
       }
     };
-  }, [activeTenantId]);
+  }, [activeTenantId, persistTenantInventory]);
 
   // Handle item stock updates
   const handleUpdateStockItem = useCallback(
@@ -104,6 +149,8 @@ export default function StockApp() {
 
         if (activeTenantId === 'tenant-main-01') {
           saveOrUpdateDbStockItem(updatedItem);
+        } else {
+          persistTenantInventory(activeTenantId, nextStock);
         }
 
         // Push immediately to Firestore
@@ -114,7 +161,7 @@ export default function StockApp() {
         return nextStock;
       });
     },
-    [activeTenantId]
+    [activeTenantId, persistTenantInventory]
   );
 
   // Sync with Firestore manually on demand
@@ -126,6 +173,8 @@ export default function StockApp() {
         setStock(freshStock);
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(freshStock);
+        } else {
+          persistTenantInventory(activeTenantId, freshStock);
         }
         return { count: Object.keys(freshStock).length };
       }
@@ -133,7 +182,7 @@ export default function StockApp() {
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [activeTenantId, stock]);
+  }, [activeTenantId, stock, persistTenantInventory]);
 
   // Handle moving items up or down
   const handleMoveStockItem = useCallback(
@@ -152,17 +201,20 @@ export default function StockApp() {
       updatedList.splice(targetIndex, 0, movedItem);
 
       const nextStock: Record<string, StockItem> = {};
-      updatedList.forEach((item) => {
+      updatedList.forEach((item, idx) => {
+        item.colIndex = idx + 1;
         nextStock[item.name] = item;
       });
 
       setStock(nextStock);
       if (activeTenantId === 'tenant-main-01') {
         moveDbStockItem(idOrName, direction);
+      } else {
+        persistTenantInventory(activeTenantId, nextStock);
       }
       pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
-    [stock, activeTenantId]
+    [stock, activeTenantId, persistTenantInventory]
   );
 
   // Handle saving full item
@@ -188,7 +240,8 @@ export default function StockApp() {
         }
 
         const nextStock: Record<string, StockItem> = {};
-        list.forEach((item) => {
+        list.forEach((item, idx) => {
+          item.colIndex = idx + 1;
           nextStock[item.name] = item;
         });
 
@@ -198,13 +251,15 @@ export default function StockApp() {
           } else {
             saveOrUpdateDbStockItem(savedItem, oldNameOrId);
           }
+        } else {
+          persistTenantInventory(activeTenantId, nextStock);
         }
 
         pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
         return nextStock;
       });
     },
-    [activeTenantId]
+    [activeTenantId, persistTenantInventory]
   );
 
   // Handle item deletion
@@ -225,6 +280,8 @@ export default function StockApp() {
           delete nextStock[foundKey];
           if (activeTenantId === 'tenant-main-01') {
             deleteDbStockItem(idOrName);
+          } else {
+            persistTenantInventory(activeTenantId, nextStock);
           }
           pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
         }
@@ -232,7 +289,7 @@ export default function StockApp() {
         return nextStock;
       });
     },
-    [activeTenantId]
+    [activeTenantId, persistTenantInventory]
   );
 
   // Return to main app

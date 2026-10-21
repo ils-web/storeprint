@@ -15,6 +15,11 @@ import { db } from './firebase';
 import {
   doc,
   setDoc,
+  getDoc,
+  deleteDoc,
+  collection,
+  getDocs,
+  onSnapshot,
 } from 'firebase/firestore';
 
 const STORAGE_KEY_PREFIX = 'storeprint_mt_v1_';
@@ -232,6 +237,10 @@ async function syncWarehouseToFirestore(warehouse: Warehouse): Promise<void> {
     if (!db) return;
     const docRef = doc(db, 'tenants', warehouse.tenantId, 'warehouses', warehouse.id);
     await setDoc(docRef, warehouse, { merge: true });
+
+    const allWarehouses = getStoredJson<Warehouse[]>(WAREHOUSES_KEY, DEFAULT_INITIAL_WAREHOUSES);
+    const globalRef = doc(db, 'system', 'warehouses');
+    await setDoc(globalRef, { list: allWarehouses, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (e) {}
 }
 
@@ -311,7 +320,6 @@ export function getTenants(): Tenant[] {
 export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
   try {
     if (!db) return getTenants();
-    const { collection, getDocs } = await import('firebase/firestore');
     const snap = await getDocs(collection(db, 'tenants'));
     if (!snap.empty) {
       const remoteList: Tenant[] = [];
@@ -345,31 +353,27 @@ export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
 export function subscribeToTenantsFirestore(callback: (tenants: Tenant[]) => void): () => void {
   try {
     if (!db) return () => {};
-    let unsub = () => {};
-    import('firebase/firestore').then(({ collection, onSnapshot }) => {
-      if (!db) return;
-      unsub = onSnapshot(
-        collection(db, 'tenants'),
-        (snap) => {
-          if (!snap.empty) {
-            const list: Tenant[] = [];
-            snap.forEach((d) => {
-              const item = d.data() as Tenant;
-              if (item && item.id && item.name) {
-                list.push(item);
-              }
-            });
-            if (list.length > 0) {
-              setStoredJson(TENANTS_KEY, list);
-              callback(list);
+    const unsub = onSnapshot(
+      collection(db, 'tenants'),
+      (snap) => {
+        if (!snap.empty) {
+          const list: Tenant[] = [];
+          snap.forEach((d) => {
+            const item = d.data() as Tenant;
+            if (item && item.id && item.name) {
+              list.push(item);
             }
+          });
+          if (list.length > 0) {
+            setStoredJson(TENANTS_KEY, list);
+            callback(list);
           }
-        },
-        (err) => {
-          console.warn('Realtime tenants listener warning:', err);
         }
-      );
-    });
+      },
+      (err) => {
+        console.warn('Realtime tenants listener warning:', err);
+      }
+    );
     return () => unsub();
   } catch {
     return () => {};
@@ -586,10 +590,7 @@ export function deleteTenant(tenantId: string): boolean {
 
   setStoredJson(TENANTS_KEY, tenants);
   if (db) {
-    import('firebase/firestore').then(({ doc, deleteDoc }) => {
-      if (!db) return;
-      deleteDoc(doc(db, 'tenants', tenantId)).catch(console.warn);
-    });
+    deleteDoc(doc(db, 'tenants', tenantId)).catch(console.warn);
   }
   return true;
 }
@@ -624,7 +625,6 @@ export function getWarehouses(tenantId?: string): Warehouse[] {
 export async function fetchWarehousesFromFirestore(): Promise<Warehouse[]> {
   try {
     if (!db) return getWarehouses();
-    const { doc, getDoc } = await import('firebase/firestore');
     const globalRef = doc(db, 'system', 'warehouses');
     const snap = await getDoc(globalRef);
     if (snap.exists()) {
@@ -712,7 +712,6 @@ async function syncInventoryToFirestore(tenantId: string, items: InventoryProduc
 export async function fetchInventoryFromFirestore(tenantId: string): Promise<InventoryProduct[] | null> {
   try {
     if (!db) return null;
-    const { getDoc } = await import('firebase/firestore');
     const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
@@ -843,18 +842,14 @@ export function saveTenantDepartments(tenantId: string, departments: TenantDepar
     saveDbDepartments(cleaned.map((d) => d.name));
   }
   if (db) {
-    import('firebase/firestore').then(({ doc, setDoc }) => {
-      if (!db) return;
-      const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
-      setDoc(docRef, { list: cleaned, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
-    });
+    const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
+    setDoc(docRef, { list: cleaned, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
   }
 }
 
 export async function fetchTenantDepartmentsFromFirestore(tenantId: string): Promise<TenantDepartment[]> {
   try {
     if (!db) return getTenantDepartments(tenantId);
-    const { doc, getDoc } = await import('firebase/firestore');
     const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
@@ -898,57 +893,52 @@ export function subscribeToTenantDepartments(
   onDepartmentsUpdated: (departments: TenantDepartment[]) => void
 ): () => void {
   let unsub: (() => void) | null = null;
-  let active = true;
 
   if (db) {
-    import('firebase/firestore').then(({ doc, onSnapshot }) => {
-      if (!active || !db) return;
-      try {
-        const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
-        unsub = onSnapshot(
-          docRef,
-          (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              if (Array.isArray(data?.list) && data.list.length > 0) {
-                let list = data.list as TenantDepartment[];
-                if (tenantId === 'tenant-main-01') {
-                  const listNames = new Set(list.map((d) => d.name));
-                  let changed = false;
-                  CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
-                    if (!listNames.has(cDept)) {
-                      list.push({
-                        id: `dept-canonical-${idx}`,
-                        tenantId,
-                        name: cDept,
-                        pinCode: '1234',
-                      });
-                      changed = true;
-                    }
-                  });
-                  if (changed) {
-                    saveTenantDepartments(tenantId, list);
-                  } else {
-                    setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
-                    saveDbDepartments(list.map((d) => d.name));
+    try {
+      const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
+      unsub = onSnapshot(
+        docRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (Array.isArray(data?.list) && data.list.length > 0) {
+              let list = data.list as TenantDepartment[];
+              if (tenantId === 'tenant-main-01') {
+                const listNames = new Set(list.map((d) => d.name));
+                let changed = false;
+                CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
+                  if (!listNames.has(cDept)) {
+                    list.push({
+                      id: `dept-canonical-${idx}`,
+                      tenantId,
+                      name: cDept,
+                      pinCode: '1234',
+                    });
+                    changed = true;
                   }
+                });
+                if (changed) {
+                  saveTenantDepartments(tenantId, list);
                 } else {
                   setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+                  saveDbDepartments(list.map((d) => d.name));
                 }
-                onDepartmentsUpdated(list);
+              } else {
+                setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
               }
+              onDepartmentsUpdated(list);
             }
-          },
-          (err) => console.warn('subscribeToTenantDepartments error:', err)
-        );
-      } catch (e) {
-        console.warn('subscribeToTenantDepartments init error:', e);
-      }
-    });
+          }
+        },
+        (err) => console.warn('subscribeToTenantDepartments error:', err)
+      );
+    } catch (e) {
+      console.warn('subscribeToTenantDepartments init error:', e);
+    }
   }
 
   return () => {
-    active = false;
     if (unsub) {
       try {
         unsub();

@@ -48,7 +48,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
 }) => {
   // Department & Requester Info
   const [selectedDept, setSelectedDept] = useState<string>(() => {
-    return localStorage.getItem(SAVED_DEPT_STORAGE_KEY) || (departments[0] || '');
+    return localStorage.getItem(`${SAVED_DEPT_STORAGE_KEY}_${tenantId}`) || (departments[0] || '');
   });
   const [customDept, setCustomDept] = useState<string>('');
   const [isCustomDept, setIsCustomDept] = useState<boolean>(false);
@@ -80,7 +80,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
   // Save selected department to local storage
   useEffect(() => {
     const dept = isCustomDept ? customDept : selectedDept;
-    if (dept) localStorage.setItem(SAVED_DEPT_STORAGE_KEY, dept);
+    if (dept) localStorage.setItem(`${SAVED_DEPT_STORAGE_KEY}_${tenantId}`, dept);
   }, [selectedDept, customDept, isCustomDept]);
 
   useEffect(() => {
