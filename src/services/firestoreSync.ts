@@ -24,6 +24,14 @@ export function sanitizeForFirestore<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
 }
 
+// Track local stock writes per tenant to prevent Firestore server echo from overwriting rapid local edits
+const lastLocalStockWriteAt: Record<string, number> = {};
+const activeStockWritesCount: Record<string, number> = {};
+
+export function markLocalStockWrite(tenantId: string = 'tenant-main-01'): void {
+  lastLocalStockWriteAt[tenantId] = Date.now();
+}
+
 /**
  * Pushes the full master warehouse stock to Firestore
  */
@@ -32,6 +40,8 @@ export async function pushStockToFirestore(
   tenantId: string = 'tenant-main-01'
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
+  lastLocalStockWriteAt[tenantId] = Date.now();
+  activeStockWritesCount[tenantId] = (activeStockWritesCount[tenantId] || 0) + 1;
   try {
     const payload = sanitizeForFirestore({
       stock,
@@ -40,17 +50,19 @@ export async function pushStockToFirestore(
     });
 
     const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
-    await setDoc(docRef, payload);
-
-    // Only main tenant maintains legacy root backup for backwards compatibility
     if (tenantId === 'tenant-main-01') {
       const globalDocRef = doc(db, 'warehouse', 'master_stock');
-      await setDoc(globalDocRef, payload);
+      await Promise.all([setDoc(docRef, payload), setDoc(globalDocRef, payload)]);
+    } else {
+      await setDoc(docRef, payload);
     }
+    lastLocalStockWriteAt[tenantId] = Date.now();
     return true;
   } catch (err) {
     console.warn('Firestore pushStock error:', err);
     return false;
+  } finally {
+    activeStockWritesCount[tenantId] = Math.max(0, (activeStockWritesCount[tenantId] || 1) - 1);
   }
 }
 
@@ -101,6 +113,11 @@ export function subscribeToFirestoreStock(
     const unsub1 = onSnapshot(
       docRef,
       (snapshot) => {
+        // Ignore local pending writes and immediate server echoes while user is actively editing stock
+        if (snapshot.metadata?.hasPendingWrites) return;
+        if ((activeStockWritesCount[tenantId] || 0) > 0) return;
+        if (Date.now() - (lastLocalStockWriteAt[tenantId] || 0) < 3000) return;
+
         if (snapshot.exists()) {
           const data = snapshot.data();
           if (data && data.stock && typeof data.stock === 'object') {
@@ -125,39 +142,10 @@ export function subscribeToFirestoreStock(
       }
     );
 
-    // For main hospital tenant, also listen to global warehouse collection for seamless updates
-    let unsub2: (() => void) | null = null;
-    if (tenantId === 'tenant-main-01') {
-      const globalDocRef = doc(db, 'warehouse', 'master_stock');
-      unsub2 = onSnapshot(
-        globalDocRef,
-        (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            if (data && data.stock && typeof data.stock === 'object') {
-              const firestoreStock = data.stock as Record<string, StockItem>;
-              if (Object.keys(firestoreStock).length > 0) {
-                saveDbStock(firestoreStock, false);
-                onStockUpdated(firestoreStock);
-              }
-            }
-          }
-        },
-        (err) => {
-          console.warn('Firestore global stock subscription error:', err);
-        }
-      );
-    }
-
     return () => {
       try {
         unsub1();
       } catch {}
-      if (unsub2) {
-        try {
-          unsub2();
-        } catch {}
-      }
     };
   } catch (err) {
     console.warn('Failed to start Firestore stock subscription:', err);

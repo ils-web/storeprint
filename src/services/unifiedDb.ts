@@ -222,15 +222,7 @@ export function saveDbStock(stock: Record<string, StockItem>, syncCloud: boolean
     localStorage.setItem('storeprint_products_cache_v1', JSON.stringify(Object.keys(cleanStock)));
     saveDbProducts(cleanStock);
     if (syncCloud) {
-      let activeTenantId = 'tenant-main-01';
-      try {
-        const rawAuth = localStorage.getItem('storeprint_auth_session_v1');
-        if (rawAuth) {
-          const parsedAuth = JSON.parse(rawAuth);
-          if (parsedAuth?.tenantId) activeTenantId = parsedAuth.tenantId;
-        }
-      } catch {}
-      pushStockToFirestore(cleanStock, activeTenantId).catch(console.warn);
+      pushStockToFirestore(cleanStock, 'tenant-main-01').catch(console.warn);
       const config = loadCloudConfig();
       if (config.enabled && config.endpointUrl) {
         debouncedPushStockToCloud(cleanStock, config, 1200).catch(console.warn);
@@ -436,9 +428,10 @@ export function updateDbStockItem(
   minThreshold?: number,
   unit?: string,
   isActive?: boolean,
-  limitByPatients?: boolean
+  limitByPatients?: boolean,
+  baseStock?: Record<string, StockItem>
 ): Record<string, StockItem> {
-  const current = getDbStock();
+  const current = baseStock && Object.keys(baseStock).length > 0 ? { ...baseStock } : getDbStock();
   const normSearch = normalizeProductName(nameOrId);
   const targetKey = current[nameOrId]
     ? nameOrId
@@ -455,31 +448,11 @@ export function updateDbStockItem(
   const nowIso = new Date().toISOString();
   const finalName = (existing?.name || nameOrId).trim();
 
-  // Purge any duplicates sharing this name
-  const updated: Record<string, StockItem> = {};
-  Object.keys(current).forEach((k) => {
-    const it = current[k];
-    const isTarget =
-      k === targetKey ||
-      k === finalName ||
-      it?.id === nameOrId ||
-      it?.name === finalName ||
-      normalizeProductName(k) === normSearch ||
-      normalizeProductName(it?.name || '') === normSearch;
-
-    if (!isTarget) {
-      updated[it.name || k] = it;
-    }
-  });
-
-  const wasActive = existing?.isActive !== false;
-  const isNowActive = cleanIsActive;
-
-  updated[finalName] = {
+  const updatedItem: StockItem = {
     ...(existing || {
-      id: `stock-${Date.now()}`,
+      id: `stock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: finalName,
-      colIndex: Object.keys(updated).length + 4,
+      colIndex: Object.keys(current).length + 4,
     }),
     name: finalName,
     currentStock: cleanStock,
@@ -489,6 +462,34 @@ export function updateDbStockItem(
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
   };
+
+  // Update in-place to strictly preserve object key order and prevent any row shifting
+  const updated: Record<string, StockItem> = {};
+  let inserted = false;
+  Object.keys(current).forEach((k) => {
+    const it = current[k];
+    const isTarget =
+      k === targetKey ||
+      k === finalName ||
+      it?.id === nameOrId ||
+      it?.name === finalName;
+
+    if (isTarget) {
+      if (!inserted) {
+        updated[finalName] = updatedItem;
+        inserted = true;
+      }
+    } else {
+      updated[it.name || k] = it;
+    }
+  });
+
+  if (!inserted) {
+    updated[finalName] = updatedItem;
+  }
+
+  const wasActive = existing?.isActive !== false;
+  const isNowActive = cleanIsActive;
 
   // When active/frozen status changes, automatically reorder:
   // Active items first (1..K), frozen items at the bottom (K+1..N)

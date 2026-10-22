@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Package,
   AlertTriangle,
@@ -57,23 +57,36 @@ interface StockRowInputProps {
 const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, onUpdate, isMobile = false }) => {
   const safeStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
   const [val, setVal] = useState<string>(String(safeStock));
-  const [isFocused, setIsFocused] = useState(false);
+  const isFocusedRef = useRef(false);
   const isLow = safeStock < (item.minThreshold || globalThreshold);
 
   useEffect(() => {
-    if (!isFocused) {
+    if (!isFocusedRef.current) {
       const current = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
       setVal(String(current));
     }
-  }, [item.currentStock, isFocused]);
+  }, [item.currentStock]);
 
   const commit = () => {
-    const parsed = parseInt(val, 10);
-    const finalQty = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    const trimmed = val.trim();
+    if (trimmed === '') {
+      setVal(String(safeStock));
+      return;
+    }
+    const parsed = parseInt(trimmed, 10);
+    const finalQty = isNaN(parsed) ? safeStock : Math.max(0, parsed);
     setVal(String(finalQty));
     if (finalQty !== safeStock) {
       onUpdate(item.name, finalQty);
     }
+  };
+
+  const adjustBy = (delta: number) => {
+    const parsed = parseInt(val.trim(), 10);
+    const baseQty = isFocusedRef.current && !isNaN(parsed) ? parsed : safeStock;
+    const nextQty = Math.max(0, baseQty + delta);
+    setVal(String(nextQty));
+    onUpdate(item.name, nextQty);
   };
 
   return (
@@ -85,7 +98,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* -10 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, Math.max(0, safeStock - 10))}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => adjustBy(-10)}
         className={`flex items-center justify-center rounded-lg bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-black transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7.5 h-7.5 sm:w-8 sm:h-8 text-xs'
         }`}
@@ -97,7 +111,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* -1 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, Math.max(0, safeStock - 1))}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => adjustBy(-1)}
         className={`flex items-center justify-center rounded-lg bg-slate-100 active:bg-slate-300 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10' : 'w-7.5 h-7.5 sm:w-8 sm:h-8'
         }`}
@@ -106,22 +121,29 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
         <Minus className={isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
       </button>
 
-      {/* Input - commits on Blur or Enter, with mobile numeric keypad and no clipped numbers */}
+      {/* Input - commits on Blur or Enter, immune to mouse-wheel/arrow mutation */}
       <div className="relative flex items-center justify-center shrink-0">
         <input
-          type="number"
+          type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          min={0}
           value={val}
-          onFocus={() => setIsFocused(true)}
-          onChange={(e) => setVal(e.target.value)}
+          onFocus={(e) => {
+            isFocusedRef.current = true;
+            e.target.select();
+          }}
+          onChange={(e) => setVal(e.target.value.replace(/[^\d]/g, ''))}
+          onWheel={(e) => (e.target as HTMLElement).blur()}
           onBlur={() => {
-            setIsFocused(false);
+            isFocusedRef.current = false;
             commit();
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === 'Escape') {
+              isFocusedRef.current = false;
+              setVal(String(safeStock));
               (e.target as HTMLInputElement).blur();
             }
           }}
@@ -138,7 +160,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* +1 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, safeStock + 1)}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => adjustBy(1)}
         className={`flex items-center justify-center rounded-lg bg-sky-50 active:bg-sky-200 hover:bg-sky-100 text-sky-700 font-bold transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10' : 'w-7.5 h-7.5 sm:w-8 sm:h-8'
         }`}
@@ -150,7 +173,8 @@ const StockRowInput: React.FC<StockRowInputProps> = ({ item, globalThreshold, on
       {/* +10 */}
       <button
         type="button"
-        onClick={() => onUpdate(item.name, safeStock + 10)}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => adjustBy(10)}
         className={`flex items-center justify-center rounded-lg bg-sky-100 active:bg-sky-300 hover:bg-sky-200 text-sky-800 font-black transition-colors cursor-pointer shrink-0 ${
           isMobile ? 'w-11 h-10 text-xs' : 'w-7.5 h-7.5 sm:w-8 sm:h-8 text-xs'
         }`}
@@ -182,18 +206,23 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   const emergencyTh = safeTh * 3;
   const currentUnit = item.unit || "יח'";
   const [val, setVal] = useState<string>(String(safeTh));
-  const [isFocused, setIsFocused] = useState(false);
+  const isFocusedRef = useRef(false);
 
   useEffect(() => {
-    if (!isFocused) {
+    if (!isFocusedRef.current) {
       const current = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (globalThreshold || 10);
       setVal(String(current));
     }
-  }, [item.minThreshold, globalThreshold, isFocused]);
+  }, [item.minThreshold, globalThreshold]);
 
   const commitThreshold = () => {
-    const parsed = parseInt(val, 10);
-    const finalTh = isNaN(parsed) ? 10 : Math.max(1, parsed);
+    const trimmed = val.trim();
+    if (trimmed === '') {
+      setVal(String(safeTh));
+      return;
+    }
+    const parsed = parseInt(trimmed, 10);
+    const finalTh = isNaN(parsed) ? safeTh : Math.max(1, parsed);
     setVal(String(finalTh));
     if (finalTh !== safeTh) {
       onUpdate(item.name, safeStock, finalTh, currentUnit);
@@ -201,7 +230,7 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
   };
 
   const handleUnitChange = (newUnit: string) => {
-    const parsed = parseInt(val, 10);
+    const parsed = parseInt(val.trim(), 10);
     const finalTh = isNaN(parsed) ? safeTh : Math.max(1, parsed);
     onUpdate(item.name, safeStock, finalTh, newUnit);
   };
@@ -220,19 +249,26 @@ const ThresholdAndUnitInput: React.FC<ThresholdAndUnitInputProps> = ({
           {isEmergencyMode ? 'שגרה:' : 'סף:'}
         </span>
         <input
-          type="number"
+          type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          min={1}
           value={val}
-          onFocus={() => setIsFocused(true)}
-          onChange={(e) => setVal(e.target.value)}
+          onFocus={(e) => {
+            isFocusedRef.current = true;
+            e.target.select();
+          }}
+          onChange={(e) => setVal(e.target.value.replace(/[^\d]/g, ''))}
+          onWheel={(e) => (e.target as HTMLElement).blur()}
           onBlur={() => {
-            setIsFocused(false);
+            isFocusedRef.current = false;
             commitThreshold();
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === 'Escape') {
+              isFocusedRef.current = false;
+              setVal(String(safeTh));
               (e.target as HTMLInputElement).blur();
             }
           }}
@@ -309,11 +345,32 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
+  const [filterSession, setFilterSession] = useState(0);
   const [globalThreshold, setGlobalThreshold] = useState<number>(10);
   const [isDeptQRModalOpen, setIsDeptQRModalOpen] = useState(false);
   const [isMobileStockQRModalOpen, setIsMobileStockQRModalOpen] = useState(false);
   const [isOrganizeConfirmOpen, setIsOrganizeConfirmOpen] = useState(false);
   const [isRestoreBackupModalOpen, setIsRestoreBackupModalOpen] = useState(false);
+
+  // Keep rows pinned while editing inside a filtered tab ('low', 'out', 'ok', 'inactive')
+  // so that updating an item's quantity never makes the row vanish under the user's cursor
+  // or shift the neighboring item into the current row's position.
+  const pinnedItemNamesRef = useRef<Set<string>>(new Set());
+  const lastFilterContextRef = useRef({ filterType, searchTerm, filterSession });
+  if (
+    lastFilterContextRef.current.filterType !== filterType ||
+    lastFilterContextRef.current.searchTerm !== searchTerm ||
+    lastFilterContextRef.current.filterSession !== filterSession
+  ) {
+    pinnedItemNamesRef.current.clear();
+    lastFilterContextRef.current = { filterType, searchTerm, filterSession };
+  }
+
+  const selectFilterType = (nextFilter: 'all' | 'low' | 'out' | 'ok' | 'inactive') => {
+    pinnedItemNamesRef.current.clear();
+    setFilterType(nextFilter);
+    setFilterSession((s) => s + 1);
+  };
 
   // Strictly deduplicated stock list: guarantees no duplicate product names in UI
   const stockList = useMemo(() => {
@@ -327,7 +384,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const aInactive = a.isActive === false;
       const bInactive = b.isActive === false;
       if (aInactive !== bInactive) return aInactive ? 1 : -1;
-      return (a.colIndex || 0) - (b.colIndex || 0);
+      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
     });
 
     rawList.forEach((item) => {
@@ -387,47 +444,65 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return getCategorizedSortedStockItems(raw);
   }, [stockList, getEffectiveTh]);
 
-  // Filtered display list
+  // Filtered display list (with row-pinning protection against mid-edit row jumps)
   const filteredItems = useMemo(() => {
     return stockList.filter((item) => {
       if (!item || !item.name) return false;
-      const isItemInactive = item.isActive === false;
-
-      if (filterType === 'inactive') {
-        if (!isItemInactive) return false;
-      } else if (filterType === 'all') {
-        // Show all
-      } else {
-        // For 'low', 'out', 'ok': exclude inactive items
-        if (isItemInactive) return false;
-        const th = getEffectiveTh(item);
-        const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-        if (filterType === 'low' && safeQty >= th) return false;
-        if (filterType === 'out' && safeQty > 0) return false;
-        if (filterType === 'ok' && safeQty < th) return false;
-      }
 
       if (searchTerm.trim() !== '') {
         const q = searchTerm.toLowerCase();
         const nameMatch = item.name ? item.name.toLowerCase().includes(q) : false;
         const colMatch = item.colIndex ? String(item.colIndex).includes(q) : false;
-        return nameMatch || colMatch;
+        if (!nameMatch && !colMatch) return false;
       }
 
-      return true;
+      const isItemInactive = item.isActive === false;
+      let matchesStatus = true;
+
+      if (filterType === 'inactive') {
+        matchesStatus = isItemInactive;
+      } else if (filterType === 'all') {
+        matchesStatus = true;
+      } else {
+        // For 'low', 'out', 'ok': exclude inactive items
+        if (isItemInactive) {
+          matchesStatus = false;
+        } else {
+          const th = getEffectiveTh(item);
+          const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+          if (filterType === 'low' && safeQty >= th) matchesStatus = false;
+          if (filterType === 'out' && safeQty > 0) matchesStatus = false;
+          if (filterType === 'ok' && safeQty < th) matchesStatus = false;
+        }
+      }
+
+      if (matchesStatus) {
+        if (filterType !== 'all') {
+          pinnedItemNamesRef.current.add(item.name);
+        }
+        return true;
+      }
+
+      // Keep already-displayed rows pinned in place during the current filter session
+      // so rows never jump when their stock quantity crosses the threshold
+      if (filterType !== 'all' && pinnedItemNamesRef.current.has(item.name)) {
+        return true;
+      }
+
+      return false;
     }).sort((a, b) => {
       if (filterType === 'low' || filterType === 'out') {
         const catA = categorizeItem(a.name);
         const catB = categorizeItem(b.name);
         if (catA.group !== catB.group) return catA.group - catB.group;
-        return (a.colIndex || 0) - (b.colIndex || 0);
+        return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
       }
       const aInactive = a.isActive === false;
       const bInactive = b.isActive === false;
       if (aInactive !== bInactive) return aInactive ? 1 : -1;
-      return (a.colIndex || 0) - (b.colIndex || 0);
+      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
     });
-  }, [stockList, filterType, searchTerm, getEffectiveTh]);
+  }, [stockList, filterType, searchTerm, filterSession, getEffectiveTh]);
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<StockItem | null>(null);
@@ -557,7 +632,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             {/* Filter Tabs */}
             <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1.5 text-xs sm:text-sm overflow-x-auto">
               <button
-                onClick={() => setFilterType('all')}
+                onClick={() => selectFilterType('all')}
                 className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'all'
                     ? 'bg-white text-slate-900 shadow-xs'
@@ -567,7 +642,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 הכל ({stats.total})
               </button>
               <button
-                onClick={() => setFilterType('low')}
+                onClick={() => selectFilterType('low')}
                 className={`px-3.5 py-2 rounded-xl font-black whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'low'
                     ? 'bg-red-600 text-white shadow-xs'
@@ -577,7 +652,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 ⚠️ חוסרים ({stats.low})
               </button>
               <button
-                onClick={() => setFilterType('out')}
+                onClick={() => selectFilterType('out')}
                 className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'out'
                     ? 'bg-white text-slate-900 shadow-xs'
@@ -587,7 +662,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 אזל ({stats.out})
               </button>
               <button
-                onClick={() => setFilterType('ok')}
+                onClick={() => selectFilterType('ok')}
                 className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'ok'
                     ? 'bg-white text-emerald-700 shadow-xs'
@@ -597,7 +672,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 תקין ({stats.ok})
               </button>
               <button
-                onClick={() => setFilterType('inactive')}
+                onClick={() => selectFilterType('inactive')}
                 className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
                   filterType === 'inactive'
                     ? 'bg-slate-800 text-white shadow-xs'
@@ -677,7 +752,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               return (
                 <div
-                  key={item.id}
+                  key={item.name}
                   className={`p-3.5 space-y-3 transition-colors ${
                     isOut
                       ? 'bg-slate-100/70'
@@ -783,7 +858,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                   return (
                     <tr
-                      key={item.id}
+                      key={item.name}
                       className={`transition-colors ${
                         isInactive
                           ? 'bg-slate-100/70 opacity-70'

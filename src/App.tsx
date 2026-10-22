@@ -1077,35 +1077,31 @@ export default function App() {
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  // Hydrate stock from Firebase Firestore on startup only if local stock is empty
+  // Hydrate stock from Firebase Firestore inventory_data on startup ONLY if master_stock is completely empty
   useEffect(() => {
-    if (activeTenantId) {
+    if (activeTenantId && activeTenantId !== 'tenant-main-01') {
       fetchInventoryFromFirestore(activeTenantId).then((items) => {
         if (items && items.length > 0) {
           setStock((prev) => {
-            const updated = { ...prev };
+            if (prev && Object.keys(prev).length > 0) return prev;
+            const updated: Record<string, StockItem> = {};
             items.forEach((item) => {
               if (item.name && item.currentStock !== undefined) {
-                const existing = prev[item.name];
-                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : (existing?.currentStock ?? 0);
-                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (existing?.minThreshold ?? 10);
+                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
                 updated[item.name] = {
-                  id: item.id || existing?.id || `stock-${item.colIndex}`,
+                  id: item.id || `stock-${item.colIndex}`,
                   name: item.name,
-                  colIndex: typeof item.colIndex === 'number' && item.colIndex > 0 ? item.colIndex : (existing?.colIndex || 0),
+                  colIndex: typeof item.colIndex === 'number' && item.colIndex > 0 ? item.colIndex : 0,
                   currentStock: cleanStock,
                   minThreshold: cleanMin,
-                  unit: item.unit || existing?.unit || "יח'",
-                  isActive: item.isActive !== undefined ? item.isActive : (existing?.isActive !== false),
-                  limitByPatients: item.limitByPatients !== undefined ? Boolean(item.limitByPatients) : Boolean(existing?.limitByPatients),
-                  lastUpdated: item.updatedAt || existing?.lastUpdated || new Date().toISOString(),
+                  unit: item.unit || "יח'",
+                  isActive: item.isActive !== false,
+                  limitByPatients: Boolean(item.limitByPatients),
+                  lastUpdated: item.updatedAt || new Date().toISOString(),
                 };
               }
             });
-            if (activeTenantId === 'tenant-main-01') {
-              saveDbStock(updated, false);
-              saveStoredStock(updated);
-            }
             return updated;
           });
         }
@@ -1188,11 +1184,12 @@ export default function App() {
     limitByPatients?: boolean
   ) => {
     if (activeTenantId === 'tenant-main-01') {
-      const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients);
-      setStock(updated);
-      saveStoredStock(updated);
-      syncToMultiTenantDb(productHeaders, departments, updated);
-      pushStockToFirestore(updated, 'tenant-main-01').catch(console.warn);
+      setStock((prev) => {
+        const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients, prev);
+        saveStoredStock(updated);
+        syncToMultiTenantDb(productHeaders, departments, updated);
+        return updated;
+      });
     } else {
       setStock((prev) => {
         const next = { ...prev };

@@ -89,20 +89,24 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
   const isOut = !isInactive && safeQty === 0;
   const isLimitedByPatients = Boolean(item.limitByPatients);
 
-  // Local state for quantity input to allow free typing and clearing without premature resets
+  // Local state for quantity input to allow free typing without premature resets or wheel mutations
   const [qtyVal, setQtyVal] = useState<string>(String(safeQty));
-  const [isQtyFocused, setIsQtyFocused] = useState(false);
+  const isQtyFocusedRef = useRef(false);
 
   useEffect(() => {
-    if (!isQtyFocused) {
+    if (!isQtyFocusedRef.current) {
       setQtyVal(String(safeQty));
     }
-  }, [safeQty, isQtyFocused]);
+  }, [safeQty]);
 
   const commitQty = (rawVal: string) => {
     const trimmed = (rawVal || '').trim();
+    if (trimmed === '') {
+      setQtyVal(String(safeQty));
+      return;
+    }
     const parsed = parseInt(trimmed, 10);
-    const finalQty = isNaN(parsed) ? 0 : Math.max(0, parsed);
+    const finalQty = isNaN(parsed) ? safeQty : Math.max(0, parsed);
     setQtyVal(String(finalQty));
     if (finalQty !== safeQty) {
       onItemChange(item.name, finalQty, routineTh, currentUnit, !isInactive, isLimitedByPatients);
@@ -110,23 +114,29 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
   };
 
   const adjustQty = (delta: number) => {
-    const nextQty = Math.max(0, safeQty + delta);
+    const parsed = parseInt((qtyVal || '').trim(), 10);
+    const baseQty = isQtyFocusedRef.current && !isNaN(parsed) ? parsed : safeQty;
+    const nextQty = Math.max(0, baseQty + delta);
     setQtyVal(String(nextQty));
     onItemChange(item.name, nextQty, routineTh, currentUnit, !isInactive, isLimitedByPatients);
   };
 
-  // Local state for minimum threshold input to allow free typing and clearing
+  // Local state for minimum threshold input
   const [thVal, setThVal] = useState<string>(String(routineTh));
-  const [isThFocused, setIsThFocused] = useState(false);
+  const isThFocusedRef = useRef(false);
 
   useEffect(() => {
-    if (!isThFocused) {
+    if (!isThFocusedRef.current) {
       setThVal(String(routineTh));
     }
-  }, [routineTh, isThFocused]);
+  }, [routineTh]);
 
   const commitTh = (rawVal: string) => {
     const trimmed = (rawVal || '').trim();
+    if (trimmed === '') {
+      setThVal(String(routineTh));
+      return;
+    }
     const parsed = parseInt(trimmed, 10);
     const finalTh = isNaN(parsed) ? routineTh : Math.max(1, parsed);
     setThVal(String(finalTh));
@@ -136,7 +146,9 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
   };
 
   const adjustTh = (delta: number) => {
-    const nextTh = Math.max(1, routineTh + delta);
+    const parsed = parseInt((thVal || '').trim(), 10);
+    const baseTh = isThFocusedRef.current && !isNaN(parsed) ? parsed : routineTh;
+    const nextTh = Math.max(1, baseTh + delta);
     setThVal(String(nextTh));
     onItemChange(item.name, safeQty, nextTh, currentUnit, !isInactive, isLimitedByPatients);
   };
@@ -250,6 +262,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
         {/* -10 */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(-10)}
           className="w-12 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer border border-slate-700"
           title="הורד 10"
@@ -260,6 +273,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
         {/* -1 */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(-1)}
           className="w-12 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer border border-slate-700"
           title="הורד 1"
@@ -270,22 +284,26 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
         {/* Actual Stock Direct Input - fully editable, auto-selects, commits on blur/enter */}
         <div className="flex-1 max-w-[110px] relative">
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            min={0}
             value={qtyVal}
             onFocus={(e) => {
-              setIsQtyFocused(true);
+              isQtyFocusedRef.current = true;
               e.target.select();
             }}
-            onChange={(e) => setQtyVal(e.target.value)}
+            onChange={(e) => setQtyVal(e.target.value.replace(/[^\d]/g, ''))}
+            onWheel={(e) => (e.target as HTMLElement).blur()}
             onBlur={() => {
-              setIsQtyFocused(false);
+              isQtyFocusedRef.current = false;
               commitQty(qtyVal);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              } else if (e.key === 'Escape') {
+                isQtyFocusedRef.current = false;
+                setQtyVal(String(safeQty));
                 (e.target as HTMLInputElement).blur();
               }
             }}
@@ -297,6 +315,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
         {/* +1 */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(1)}
           className="w-12 h-11 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer shadow-md shadow-sky-600/30"
           title="הוסף 1"
@@ -307,6 +326,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
         {/* +10 */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(10)}
           className="w-12 h-11 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer shadow-md shadow-indigo-600/30"
           title="הוסף 10"
@@ -322,6 +342,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
           <span className="text-[11px] font-bold text-slate-400 shrink-0">סף מינימום:</span>
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => adjustTh(-1)}
             className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 active:scale-90 text-slate-300 font-bold flex items-center justify-center cursor-pointer text-xs border border-slate-700"
             title="הורד סף מינימום ב-1"
@@ -329,22 +350,26 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
             <Minus className="w-3 h-3" />
           </button>
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            min={1}
             value={thVal}
             onFocus={(e) => {
-              setIsThFocused(true);
+              isThFocusedRef.current = true;
               e.target.select();
             }}
-            onChange={(e) => setThVal(e.target.value)}
+            onChange={(e) => setThVal(e.target.value.replace(/[^\d]/g, ''))}
+            onWheel={(e) => (e.target as HTMLElement).blur()}
             onBlur={() => {
-              setIsThFocused(false);
+              isThFocusedRef.current = false;
               commitTh(thVal);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              } else if (e.key === 'Escape') {
+                isThFocusedRef.current = false;
+                setThVal(String(routineTh));
                 (e.target as HTMLInputElement).blur();
               }
             }}
@@ -353,6 +378,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
           />
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => adjustTh(1)}
             className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 active:scale-90 text-slate-300 font-bold flex items-center justify-center cursor-pointer text-xs border border-slate-700"
             title="העלה סף מינימום ב-1"
@@ -431,6 +457,7 @@ export function MobileStockManager({
 }: MobileStockManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'low' | 'out' | 'ok' | 'inactive'>('all');
+  const [filterSession, setFilterSession] = useState(0);
   const [globalThreshold] = useState<number>(10);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -442,6 +469,24 @@ export function MobileStockManager({
   });
   const [isLocalSyncing, setIsLocalSyncing] = useState(false);
   const toastTimeoutRef = useRef<any>(null);
+
+  // Pin displayed items during a filtered tab session so rows never disappear/jump mid-edit
+  const pinnedItemNamesRef = useRef<Set<string>>(new Set());
+  const lastFilterContextRef = useRef({ filterType, searchQuery, filterSession });
+  if (
+    lastFilterContextRef.current.filterType !== filterType ||
+    lastFilterContextRef.current.searchQuery !== searchQuery ||
+    lastFilterContextRef.current.filterSession !== filterSession
+  ) {
+    pinnedItemNamesRef.current.clear();
+    lastFilterContextRef.current = { filterType, searchQuery, filterSession };
+  }
+
+  const selectFilterType = (nextFilter: 'all' | 'low' | 'out' | 'ok' | 'inactive') => {
+    pinnedItemNamesRef.current.clear();
+    setFilterType(nextFilter);
+    setFilterSession((s) => s + 1);
+  };
 
   const isSyncing = isSyncingCloud || isLocalSyncing;
 
@@ -598,48 +643,63 @@ export function MobileStockManager({
     setTimeout(() => setIsWhatsAppCopied(false), 3000);
   };
 
-  // Filtered Items strictly synced with PC sorting:
-  // In 'low' and 'out' tabs: grouped by item category and ordered by warehouse layout (colIndex)
+  // Filtered Items strictly synced with PC sorting & row-pinning protection
   const filteredItems = useMemo(() => {
     return stockList
       .filter((item) => {
-        const isInactive = item.isActive === false;
-
-        if (filterType === 'inactive') {
-          if (!isInactive) return false;
-        } else if (filterType === 'all') {
-          // Show all
-        } else {
-          // Exclude inactive from active tabs
-          if (isInactive) return false;
-          const th = getEffectiveTh(item);
-          const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-          if (filterType === 'low' && safeQty >= th) return false;
-          if (filterType === 'out' && safeQty > 0) return false;
-          if (filterType === 'ok' && safeQty < th) return false;
-        }
+        if (!item || !item.name) return false;
 
         if (searchQuery.trim() !== '') {
           const q = searchQuery.toLowerCase();
-          return (
+          const matchesQuery =
             item.name.toLowerCase().includes(q) ||
             String(item.colIndex).includes(q) ||
-            (item.unit && item.unit.toLowerCase().includes(q))
-          );
+            (item.unit && item.unit.toLowerCase().includes(q));
+          if (!matchesQuery) return false;
         }
 
-        return true;
+        const isInactive = item.isActive === false;
+        let matchesStatus = true;
+
+        if (filterType === 'inactive') {
+          matchesStatus = isInactive;
+        } else if (filterType === 'all') {
+          matchesStatus = true;
+        } else {
+          if (isInactive) {
+            matchesStatus = false;
+          } else {
+            const th = getEffectiveTh(item);
+            const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+            if (filterType === 'low' && safeQty >= th) matchesStatus = false;
+            if (filterType === 'out' && safeQty > 0) matchesStatus = false;
+            if (filterType === 'ok' && safeQty < th) matchesStatus = false;
+          }
+        }
+
+        if (matchesStatus) {
+          if (filterType !== 'all') {
+            pinnedItemNamesRef.current.add(item.name);
+          }
+          return true;
+        }
+
+        if (filterType !== 'all' && pinnedItemNamesRef.current.has(item.name)) {
+          return true;
+        }
+
+        return false;
       })
       .sort((a, b) => {
         if (filterType === 'low' || filterType === 'out') {
           const catA = categorizeItem(a.name);
           const catB = categorizeItem(b.name);
           if (catA.group !== catB.group) return catA.group - catB.group;
-          return (a.colIndex || 0) - (b.colIndex || 0);
+          return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
         }
-        return (a.colIndex || 0) - (b.colIndex || 0);
+        return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
       });
-  }, [stockList, filterType, searchQuery, isEmergencyMode, globalThreshold]);
+  }, [stockList, filterType, searchQuery, filterSession, isEmergencyMode, globalThreshold]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-32 text-sm selection:bg-sky-500 selection:text-white" dir="rtl">
@@ -736,7 +796,7 @@ export function MobileStockManager({
           {/* Quick Filter Tabs */}
           <div className="grid grid-cols-5 gap-1 text-[11px] font-black">
             <button
-              onClick={() => setFilterType('all')}
+              onClick={() => selectFilterType('all')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
                 filterType === 'all'
                   ? 'bg-sky-600 text-white shadow font-black'
@@ -746,7 +806,7 @@ export function MobileStockManager({
               הכל ({stats.total})
             </button>
             <button
-              onClick={() => setFilterType('low')}
+              onClick={() => selectFilterType('low')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
                 filterType === 'low'
                   ? isEmergencyMode
@@ -758,7 +818,7 @@ export function MobileStockManager({
               {isEmergencyMode ? 'חירום' : 'חוסרים'} ({stats.low})
             </button>
             <button
-              onClick={() => setFilterType('out')}
+              onClick={() => selectFilterType('out')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
                 filterType === 'out'
                   ? 'bg-red-700 text-white shadow font-black'
@@ -768,7 +828,7 @@ export function MobileStockManager({
               אזל ({stats.out})
             </button>
             <button
-              onClick={() => setFilterType('ok')}
+              onClick={() => selectFilterType('ok')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
                 filterType === 'ok'
                   ? 'bg-emerald-600 text-white shadow font-black'
@@ -778,7 +838,7 @@ export function MobileStockManager({
               תקין ({stats.ok})
             </button>
             <button
-              onClick={() => setFilterType('inactive')}
+              onClick={() => selectFilterType('inactive')}
               className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
                 filterType === 'inactive'
                   ? 'bg-slate-700 text-white shadow font-black'
@@ -854,7 +914,7 @@ export function MobileStockManager({
             <div className="min-w-0">
               <div className="text-xs font-black text-amber-300 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>דוח חוסרים והזמנת רכש ({filteredItems.length} פריטים)</span>
+                <span>דוח חוסרים והזמנת רכש ({stats.low} פריטים)</span>
               </div>
               <div className="text-[10px] text-slate-300 mt-0.5">
                 מקובץ לפי קטגוריות ומסודר לפי סדר המחסן שלך
@@ -900,7 +960,7 @@ export function MobileStockManager({
               const showCategoryDivider = currentCat && currentCat !== prevCat;
 
               return (
-                <React.Fragment key={item.id || item.name || idx}>
+                <React.Fragment key={item.name}>
                   {showCategoryDivider && (
                     <div className="pt-2 pb-0.5 flex items-center gap-2">
                       <div className="bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-xl text-xs font-black text-sky-400 flex items-center gap-1.5 shadow-xs">
@@ -947,7 +1007,7 @@ export function MobileStockManager({
               <span>•</span>
               <button
                 type="button"
-                onClick={() => setFilterType('low')}
+                onClick={() => selectFilterType('low')}
                 className={`transition-colors cursor-pointer ${
                   stats.low > 0
                     ? 'text-amber-400 font-bold hover:underline'
