@@ -10,6 +10,7 @@ import {
 } from '../../types/multiTenant';
 import {
   getTenants,
+  sortTenants,
   getWarehouses,
   getInventory,
   saveInventory,
@@ -155,27 +156,29 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
   const isLight = theme === 'light';
 
-  const [tenants, setTenants] = useState<Tenant[]>(() => getTenants());
+  const [tenants, setTenants] = useState<Tenant[]>(() => sortTenants(getTenants()));
   const [selectedTenantId, setSelectedTenantId] = useState<string>(() => {
-    const initialTenants = getTenants();
+    const initialTenants = sortTenants(getTenants());
     const rawTarget = initialTenantId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tenant') : null);
     if (rawTarget) {
       const match = initialTenants.find((t) => t.id === rawTarget || t.slug === rawTarget);
       if (match) return match.id;
       return rawTarget;
     }
-    return initialTenants.length > 0 ? initialTenants[0].id : 'tenant-main-01';
+    // ALWAYS default to tenant-main-01 (Naot Hatichon) unless a specific tenant parameter was provided
+    const mainTenant = initialTenants.find((t) => t.id === 'tenant-main-01');
+    return mainTenant ? mainTenant.id : 'tenant-main-01';
   });
 
   // Subscribe to tenants and warehouses from Firestore so mobile QR links for any of the 4+ warehouses resolve properly
   useEffect(() => {
     fetchTenantsFromFirestore()
       .then((list) => {
-        if (list && list.length > 0) setTenants(list);
+        if (list && list.length > 0) setTenants(sortTenants(list));
       })
       .catch(console.warn);
     const unsub = subscribeToTenantsFirestore((list) => {
-      if (list && list.length > 0) setTenants(list);
+      if (list && list.length > 0) setTenants(sortTenants(list));
     });
     return () => {
       if (unsub) unsub();
@@ -192,7 +195,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     }
   }, [initialTenantId, selectedTenantId, tenants]);
 
-  const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
+  const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants.find((t) => t.id === 'tenant-main-01') || tenants[0];
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() => getWarehouses(selectedTenantId));
 
   useEffect(() => {
@@ -212,6 +215,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       );
       if (match) return match;
     }
+    const primary = warehouses.find((w) => w.isPrimary) || warehouses.find((w) => w.id === 'wh-main-01');
+    if (primary) return primary;
     return warehouses[0] || null;
   }, [warehouses, initialWarehouseId]);
 
@@ -487,6 +492,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
           name: item.name,
           unit: item.unit,
           packageSize: item.packageSize || detectPackageSize(item.name),
+          packagingMode: item.packagingMode,
           currentStock: item.currentStock || 0,
           minThreshold: item.minThreshold || 10,
           colIndex: item.colIndex || idx + 1,
@@ -508,19 +514,28 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
           const colB = typeof b.colIndex === 'number' ? b.colIndex : 999;
           return colA - colB;
         })
-        .map((item, idx) => ({
-          id: item.id || item.name,
-          warehouseId: activeWarehouse?.id || 'wh-default',
-          name: item.name,
-          unit: (!item.unit || item.unit === 'ליטר' ? "יח'" : (item.unit as PackagingUnit)),
-          packageSize: item.packageSize || detectPackageSize(item.name),
-          currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
-          minThreshold: item.minThreshold || 10,
-          colIndex: item.colIndex || idx + 1,
-          isActive: true,
-          limitByPatients: Boolean(item.limitByPatients),
-          category: detectItemCategory(item.name),
-        }));
+        .map((item, idx) => {
+          const pkgSize = item.packageSize || detectPackageSize(item.name);
+          let cleanUnit = item.unit || "יח'";
+          if (cleanUnit === 'ליטר' || cleanUnit === 'מטר') {
+            cleanUnit = pkgSize && pkgSize > 1 ? 'מארז' : "יח'";
+          }
+          const defaultMode = item.packagingMode || (pkgSize && pkgSize > 1 ? 'both' : (cleanUnit === "יח'" ? 'pieces_only' : 'package_only'));
+          return {
+            id: item.id || item.name,
+            warehouseId: activeWarehouse?.id || 'wh-default',
+            name: item.name,
+            unit: cleanUnit as PackagingUnit,
+            packageSize: pkgSize,
+            packagingMode: defaultMode,
+            currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
+            minThreshold: item.minThreshold || 10,
+            colIndex: item.colIndex || idx + 1,
+            isActive: true,
+            limitByPatients: Boolean(item.limitByPatients),
+            category: detectItemCategory(item.name),
+          };
+        });
     }
 
     if (!activeTenant || !activeWarehouse) return [];
@@ -529,6 +544,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       .map((p) => ({
         ...p,
         packageSize: p.packageSize || detectPackageSize(p.name),
+        packagingMode: p.packagingMode,
         category: detectItemCategory(p.name),
       }));
   }, [liveStock, selectedTenantId, activeTenant, activeWarehouse]);
@@ -634,13 +650,32 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   };
 
   const getProductActiveUnit = (product: any): PackagingUnit => {
+    // 1. If packagingMode is pieces_only, strictly return "יח'"
+    if (product.packagingMode === 'pieces_only') {
+      return "יח'";
+    }
+
+    const primaryPackUnit = (product.unit && product.unit !== "יח'" && product.unit !== 'מטר' ? product.unit : 'חבילה') as PackagingUnit;
+    // 2. If packagingMode is package_only, strictly return package unit
+    if (product.packagingMode === 'package_only') {
+      return primaryPackUnit;
+    }
+
+    // 3. If in cart, prioritize selected cart unit
     if (cart[product.id]?.orderedUnit) {
       return cart[product.id].orderedUnit as PackagingUnit;
     }
+
+    // 4. If selected by user toggle
     if (selectedUnits[product.id]) {
       return selectedUnits[product.id];
     }
-    return (product.unit || "יח'") as PackagingUnit;
+
+    // 5. Default: if both mode, default to primaryPackUnit if packageSize > 1
+    if (product.packageSize && product.packageSize > 1) {
+      return primaryPackUnit;
+    }
+    return (product.unit && product.unit !== 'מטר' ? product.unit : "יח'") as PackagingUnit;
   };
 
   const handleToggleProductUnit = (product: any, newUnit: PackagingUnit) => {
@@ -1201,39 +1236,80 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                           </span>
                         )}
 
-                        {/* Packaging Unit & Package Size Badge */}
-                        {product.packageSize && product.packageSize > 1 ? (
-                          <span
-                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
-                              isLight
-                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                : 'bg-indigo-950/60 text-indigo-300 border-indigo-800'
-                            }`}
-                            title="כמות יחידות במארז"
-                          >
-                            <span>📦</span>
-                            <span>מארז של {product.packageSize} יח'</span>
-                          </span>
-                        ) : (
-                          <span
-                            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
-                              isLight
-                                ? 'bg-slate-50 text-slate-700 border-slate-200'
-                                : 'bg-slate-800/80 text-slate-300 border-slate-700'
-                            }`}
-                          >
-                            <span>אריזה:</span>
-                            <strong className={isLight ? 'text-slate-900' : 'text-white'}>
-                              {product.unit}
-                            </strong>
-                          </span>
-                        )}
+                        {/* Packaging Unit & Mode Badge */}
+                        {(() => {
+                          if (product.packagingMode === 'pieces_only') {
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                                  isLight
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                                }`}
+                                title="מוצר המוזמן ביחידות בודדות בלבד"
+                              >
+                                <span>🔹</span>
+                                <span>בודדים בלבד (יח')</span>
+                              </span>
+                            );
+                          }
+
+                          if (product.packagingMode === 'package_only') {
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                                  isLight
+                                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                    : 'bg-indigo-950/60 text-indigo-300 border-indigo-800'
+                                }`}
+                                title="מוצר המוזמן באריזות שלמות בלבד"
+                              >
+                                <span>📦</span>
+                                <span>
+                                  אריזה בלבד: {product.unit}
+                                  {product.packageSize && product.packageSize > 1 ? ` (${product.packageSize} יח')` : ''}
+                                </span>
+                              </span>
+                            );
+                          }
+
+                          // Both / Default: Can order either package or individual units
+                          return product.packageSize && product.packageSize > 1 ? (
+                            <span
+                              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                                isLight
+                                  ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                  : 'bg-sky-950/60 text-sky-300 border-sky-800'
+                              }`}
+                              title="כמות יחידות במארז"
+                            >
+                              <span>📦</span>
+                              <span>מארז של {product.packageSize} יח' ({product.unit})</span>
+                            </span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
+                                isLight
+                                  ? 'bg-slate-50 text-slate-700 border-slate-200'
+                                  : 'bg-slate-800/80 text-slate-300 border-slate-700'
+                              }`}
+                            >
+                              <span>אריזה:</span>
+                              <strong className={isLight ? 'text-slate-900' : 'text-white'}>
+                                {product.unit}
+                              </strong>
+                            </span>
+                          );
+                        })()}
                       </div>
 
-                      {/* Unit Choice Toggle: Package vs Pieces */}
+                      {/* Unit Choice Toggle: Package vs Pieces (ONLY when packagingMode === 'both' or allows choice) */}
                       {(() => {
+                        if (product.packagingMode === 'pieces_only' || product.packagingMode === 'package_only') {
+                          return null;
+                        }
                         const itemPkgSize = product.packageSize || detectPackageSize(product.name);
-                        const primaryPackUnit = (product.unit && product.unit !== "יח'" ? product.unit : 'חבילה') as PackagingUnit;
+                        const primaryPackUnit = (product.unit && product.unit !== "יח'" && product.unit !== 'מטר' ? product.unit : 'חבילה') as PackagingUnit;
                         const hasPackagingChoice = Boolean(itemPkgSize && itemPkgSize > 1) || (Boolean(product.unit) && product.unit !== "יח'");
                         const activeUnit = getProductActiveUnit(product);
 

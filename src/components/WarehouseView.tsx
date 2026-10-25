@@ -41,7 +41,6 @@ export const PACKAGING_UNITS = [
   { value: "גליל", label: "גליל (גלילים)" },
   { value: "בקבוק", label: "בקבוק (בקבוקים)" },
   { value: "דלי", label: "דלי (דליים)" },
-  { value: "מטר", label: "מטר (מטרים)" },
   { value: "סט", label: "סט (ערכות)" },
   { value: "זוג", label: "זוג (זוגות)" },
   { value: "ק״ג", label: "ק״ג (קילוגרם)" },

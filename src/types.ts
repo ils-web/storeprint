@@ -25,6 +25,8 @@ export interface Order {
   rawRow: Record<string, string>;
 }
 
+export type PackagingMode = 'both' | 'package_only' | 'pieces_only';
+
 export interface StockItem {
   id: string;
   name: string;
@@ -33,6 +35,7 @@ export interface StockItem {
   minThreshold: number;   // default 10
   unit?: string;
   packageSize?: number;   // units/pieces per package or box (e.g. 100 in box)
+  packagingMode?: PackagingMode;
   isActive?: boolean;     // true = in active use (default), false = paused / not in use
   limitByPatients?: boolean; // true = order quantity is restricted to current department patient count
   lastDeducted?: string;

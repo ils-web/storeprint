@@ -7,6 +7,8 @@ export interface PackagingUnitOption {
   defaultRatio?: number;
 }
 
+export type PackagingMode = 'both' | 'package_only' | 'pieces_only';
+
 export const STANDARD_PACKAGING_UNITS: PackagingUnitOption[] = [
   { value: "יח'", labelHe: "יחידה (יח')", labelRu: 'Штука (шт)', defaultRatio: 1 },
   { value: 'חבילה', labelHe: 'חבילה / מארז', labelRu: 'Пачка / Упаковка', defaultRatio: 10 },
@@ -14,7 +16,6 @@ export const STANDARD_PACKAGING_UNITS: PackagingUnitOption[] = [
   { value: 'קרטון', labelHe: 'קרטון (יצוא)', labelRu: 'Картон (ящик)', defaultRatio: 48 },
   { value: 'גליל', labelHe: 'גליל', labelRu: 'Рулон', defaultRatio: 1 },
   { value: 'בקבוק', labelHe: 'בקבוק / בקבוקון', labelRu: 'Флакон / Бутылка', defaultRatio: 1 },
-  { value: 'מטר', labelHe: 'מטר (מ\')', labelRu: 'Метр', defaultRatio: 1 },
   { value: 'ק״ג', labelHe: 'קילוגרם (ק״ג)', labelRu: 'Килограмм (кг)', defaultRatio: 1 },
   { value: 'ליטר', labelHe: 'ליטר (ל\')', labelRu: 'Лיתר (ל\')', defaultRatio: 1 },
 ];
@@ -81,6 +82,7 @@ export interface InventoryProduct {
   minThreshold: number;
   unit: string;             // "יח'", "חבילה", "קופסה", "קרטון", etc.
   packageSize?: number;     // units/pieces per package or box (e.g. 100 in box)
+  packagingMode?: PackagingMode;
   unitRatio?: number;
   category?: string;
   barcode?: string;

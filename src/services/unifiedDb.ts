@@ -101,10 +101,15 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
 
     const safeStock = typeof rawItem.currentStock === 'number' && !isNaN(rawItem.currentStock) ? Math.max(0, rawItem.currentStock) : 0;
     const safeMin = typeof rawItem.minThreshold === 'number' && !isNaN(rawItem.minThreshold) ? Math.max(1, rawItem.minThreshold) : 10;
-    const safeUnit = rawItem.unit || detectPackagingUnitFromProductName(name);
+    let safeUnit = rawItem.unit || detectPackagingUnitFromProductName(name);
     const safePackageSize = typeof rawItem.packageSize === 'number' && rawItem.packageSize > 0
       ? rawItem.packageSize
       : detectPackageSize(name);
+    // Eliminate 'מטר' completely: no medical hospital item uses meter as an ordering unit
+    if (safeUnit === 'מטר') {
+      safeUnit = (safePackageSize && safePackageSize > 1) ? 'מארז' : "יח'";
+    }
+    const safePackagingMode = rawItem.packagingMode || (safePackageSize && safePackageSize > 1 ? 'both' : undefined);
     const safeIsActive = rawItem.isActive !== false;
     const safeLimit = Boolean(rawItem.limitByPatients);
     const safeCol = typeof rawItem.colIndex === 'number' && rawItem.colIndex > 0 ? rawItem.colIndex : undefined;
@@ -114,8 +119,9 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
       const existing = cleanMap[existingKey];
       existing.currentStock = Math.max(existing.currentStock, safeStock);
       if (rawItem.minThreshold !== undefined) existing.minThreshold = safeMin;
-      if (rawItem.unit) existing.unit = safeUnit;
+      if (rawItem.unit || existing.unit === 'מטר') existing.unit = safeUnit;
       if (safePackageSize !== undefined) existing.packageSize = safePackageSize;
+      if (rawItem.packagingMode !== undefined) existing.packagingMode = safePackagingMode;
       if (rawItem.isActive !== undefined) existing.isActive = safeIsActive;
       if (rawItem.limitByPatients !== undefined) existing.limitByPatients = safeLimit;
       if (safeCol && (!existing.colIndex || existing.colIndex > safeCol)) existing.colIndex = safeCol;
@@ -129,6 +135,7 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
         minThreshold: safeMin,
         unit: safeUnit,
         packageSize: safePackageSize,
+        packagingMode: safePackagingMode,
         isActive: safeIsActive,
         limitByPatients: safeLimit,
         lastUpdated: rawItem.lastUpdated || new Date().toISOString(),
@@ -272,10 +279,14 @@ export function saveOrUpdateDbStockItem(
   const targetKey = savedItem.name.trim();
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
   const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
-  const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(targetKey);
+  let cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(targetKey);
   const cleanPackageSize = typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
     ? savedItem.packageSize
     : detectPackageSize(targetKey);
+  if (cleanUnit === 'מטר') {
+    cleanUnit = (cleanPackageSize && cleanPackageSize > 1) ? 'מארז' : "יח'";
+  }
+  const cleanPackagingMode = savedItem.packagingMode || (cleanPackageSize && cleanPackageSize > 1 ? 'both' : undefined);
   const cleanIsActive = savedItem.isActive !== false;
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -288,6 +299,7 @@ export function saveOrUpdateDbStockItem(
     minThreshold: cleanMin,
     unit: cleanUnit,
     packageSize: cleanPackageSize,
+    packagingMode: cleanPackagingMode,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
@@ -401,10 +413,14 @@ export function insertDbStockItemAtPosition(
 
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
   const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
-  const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
+  let cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
   const cleanPackageSize = typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
     ? savedItem.packageSize
     : detectPackageSize(savedItem.name);
+  if (cleanUnit === 'מטר') {
+    cleanUnit = (cleanPackageSize && cleanPackageSize > 1) ? 'מארז' : "יח'";
+  }
+  const cleanPackagingMode = savedItem.packagingMode || (cleanPackageSize && cleanPackageSize > 1 ? 'both' : undefined);
   const cleanIsActive = savedItem.isActive !== false;
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -417,6 +433,7 @@ export function insertDbStockItemAtPosition(
     minThreshold: cleanMin,
     unit: cleanUnit,
     packageSize: cleanPackageSize,
+    packagingMode: cleanPackagingMode,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
@@ -476,8 +493,9 @@ export function updateDbStockItem(
     name: finalName,
     currentStock: cleanStock,
     minThreshold: cleanMin,
-    unit: cleanUnit,
+    unit: cleanUnit === 'מטר' ? ((cleanPackageSize && cleanPackageSize > 1) ? 'מארז' : "יח'") : cleanUnit,
     packageSize: cleanPackageSize,
+    packagingMode: existing?.packagingMode,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,

@@ -35,7 +35,6 @@ export function detectPackagingUnitFromProductName(name: string): string {
   if (n.includes('גליל') || n.includes('roll')) return 'גליל';
   if (n.includes('בקבוק') || n.includes('bottle')) return 'בקבוק';
   if (n.includes('דלי') || n.includes('bucket')) return 'דלי';
-  if (n.includes('מטר') || n.includes('meter')) return 'מטר';
   if (n.includes('סט') || n.includes('ערכה') || n.includes('set')) return 'סט';
   if (n.includes('זוג') || n.includes('pair')) return 'זוג';
   if (n.includes('ק״ג') || n.includes('ק"ג') || n.includes('kg')) return 'ק״ג';

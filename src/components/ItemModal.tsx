@@ -42,6 +42,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [minThreshold, setMinThreshold] = useState<number>(10);
   const [unit, setUnit] = useState<string>("יח'");
   const [packageSize, setPackageSize] = useState<number | undefined>(undefined);
+  const [packagingMode, setPackagingMode] = useState<'both' | 'package_only' | 'pieces_only'>('both');
   const [limitByPatients, setLimitByPatients] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
   const [targetPosition, setTargetPosition] = useState<number>(1);
@@ -53,8 +54,14 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setName(itemToEdit.name || '');
       setCurrentStock(typeof itemToEdit.currentStock === 'number' ? itemToEdit.currentStock : 0);
       setMinThreshold(typeof itemToEdit.minThreshold === 'number' ? itemToEdit.minThreshold : 10);
-      setUnit(itemToEdit.unit || "יח'");
-      setPackageSize(itemToEdit.packageSize || detectPackageSize(itemToEdit.name));
+      const rawUnit = itemToEdit.unit === 'מטר' ? "יח'" : (itemToEdit.unit || "יח'");
+      setUnit(rawUnit);
+      const pkgSz = itemToEdit.packageSize || detectPackageSize(itemToEdit.name);
+      setPackageSize(pkgSz);
+
+      const defaultMode = itemToEdit.packagingMode || (pkgSz && pkgSz > 1 ? 'both' : (rawUnit === "יח'" ? 'pieces_only' : 'package_only'));
+      setPackagingMode(defaultMode);
+
       setLimitByPatients(Boolean(itemToEdit.limitByPatients));
       setIsActive(itemToEdit.isActive !== false);
       setTargetPosition(itemIndex || (itemToEdit.colIndex ? Math.max(1, itemToEdit.colIndex - 3) : 1));
@@ -64,6 +71,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setMinThreshold(10);
       setUnit("יח'");
       setPackageSize(undefined);
+      setPackagingMode('pieces_only');
       setLimitByPatients(false);
       setIsActive(true);
       setTargetPosition(totalItemsCount ? totalItemsCount + 1 : 1);
@@ -81,14 +89,16 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       return;
     }
 
+    const cleanUnit = (unit === 'מטר' ? (packageSize ? 'מארז' : "יח'") : (unit || "יח'"));
     const savedItem: StockItem = {
       id: itemToEdit?.id || `stock-${Date.now()}`,
       name: name.trim(),
       colIndex: itemToEdit?.colIndex || 0,
       currentStock: Math.max(0, currentStock),
       minThreshold: Math.max(1, minThreshold),
-      unit: unit || "יח'",
-      packageSize: packageSize && packageSize > 0 ? packageSize : undefined,
+      unit: packagingMode === 'pieces_only' ? "יח'" : cleanUnit,
+      packageSize: packagingMode !== 'pieces_only' && packageSize && packageSize > 0 ? packageSize : undefined,
+      packagingMode,
       limitByPatients,
       isActive,
       lastUpdated: new Date().toISOString(),
@@ -180,46 +190,120 @@ export const ItemModal: React.FC<ItemModalProps> = ({
             </div>
           </div>
 
-          {/* Packaging Unit & Units Per Package */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">
-                יחידת מידה / אריזה
-              </label>
-              <select
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-              >
-                {PACKAGING_UNITS.map((u) => (
-                  <option key={u.value} value={u.value}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>כמות במארז (יח')</span>
-                <span className="text-[10px] text-slate-400 font-normal">אופציונלי</span>
-              </label>
-              <input
-                type="number"
-                min="0"
-                placeholder="למשל: 100, 50, 12..."
-                value={packageSize !== undefined ? packageSize : ''}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  setPackageSize(isNaN(v) || v <= 0 ? undefined : v);
+          {/* Packaging Mode Selection */}
+          <div className="space-y-2 pt-1">
+            <label className="text-xs font-bold text-slate-700 block">
+              אופן הזמנה באפליקציית מחלקות (PWA) <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPackagingMode('both');
+                  if (unit === "יח'") setUnit('חבילה');
                 }}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
-              />
+                className={`p-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                  packagingMode === 'both'
+                    ? 'bg-sky-50 border-sky-500 text-sky-900 font-black shadow-xs ring-2 ring-sky-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-bold'
+                }`}
+              >
+                <span className="text-sm">📦 + 🔹</span>
+                <span className="text-xs font-black">גם וגם</span>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">אריזה או בודדים</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPackagingMode('package_only');
+                  if (unit === "יח'") setUnit('חבילה');
+                }}
+                className={`p-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                  packagingMode === 'package_only'
+                    ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-black shadow-xs ring-2 ring-indigo-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-bold'
+                }`}
+              >
+                <span className="text-sm">📦 בלבד</span>
+                <span className="text-xs font-black">אריזה בלבד</span>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">ללא בודדים</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPackagingMode('pieces_only');
+                  setUnit("יח'");
+                }}
+                className={`p-2 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                  packagingMode === 'pieces_only'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-black shadow-xs ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-bold'
+                }`}
+              >
+                <span className="text-sm">🔹 בלבד</span>
+                <span className="text-xs font-black">בודדים בלבד</span>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">יחידות בלבד</span>
+              </button>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500 -mt-1">
-            * מציין כמה יחידות יש בתוך מארז/קופסה. באפליקציית ההזמנות המחלקות יוכלו לראות זאת ולבחור בין אריזה ליחידות בודדות.
-          </p>
+
+          {/* Packaging Unit & Units Per Package */}
+          {packagingMode === 'pieces_only' ? (
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center justify-between">
+              <div>
+                <span className="font-bold block">יחידות מידה: יח' (בודדים בלבד)</span>
+                <span className="text-[11px] text-emerald-700">הפריט יוזמן אך ורק ביחידות בודדות, ללא אפשרות מארז או אריזה שלמה.</span>
+              </div>
+              <span className="text-xl">🔹</span>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    סוג אריזה / מארז
+                  </label>
+                  <select
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                  >
+                    {PACKAGING_UNITS.filter((u) => u.value !== 'מטר').map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>כמות יחידות באריזה</span>
+                    <span className="text-[10px] text-sky-600 font-bold">חובה באריזה</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="למשל: 12, 50, 100..."
+                    value={packageSize !== undefined ? packageSize : ''}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setPackageSize(isNaN(v) || v <= 0 ? undefined : v);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                * מציין כמה יחידות יש בתוך כל {unit || 'אריזה'} (לדוגמה: 12 יחידות בפלסטר, 100 כפפות בחבילה).
+                {packagingMode === 'both'
+                  ? ' באפליקציית ההזמנות הצוות יוכל לבחור אם להזמין לפי אריזה או יחידות בודדות.'
+                  : ' באפליקציה הצוות יוכל להזמין אך ורק אריזות שלמות.'}
+              </p>
+            </div>
+          )}
 
           {/* Position in Stock List */}
           <div className="space-y-1">

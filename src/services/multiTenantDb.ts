@@ -264,6 +264,14 @@ async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
 // TENANT OPERATIONS
 // ----------------------------------------------------------------------------
 
+export function sortTenants(list: Tenant[]): Tenant[] {
+  return [...list].sort((a, b) => {
+    if (a.id === 'tenant-main-01') return -1;
+    if (b.id === 'tenant-main-01') return 1;
+    return a.name.localeCompare(b.name, 'he');
+  });
+}
+
 export function getTenants(): Tenant[] {
   initMultiTenantDb();
   let list = getStoredJson<Tenant[]>(TENANTS_KEY, DEFAULT_INITIAL_TENANTS);
@@ -308,10 +316,11 @@ export function getTenants(): Tenant[] {
     changed = true;
   }
 
-  if (changed) {
-    setStoredJson(TENANTS_KEY, list);
+  const sortedList = sortTenants(list);
+  if (changed || JSON.stringify(list) !== JSON.stringify(sortedList)) {
+    setStoredJson(TENANTS_KEY, sortedList);
   }
-  return list;
+  return sortedList;
 }
 
 /**
@@ -337,8 +346,9 @@ export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
           }
           return t;
         });
-        setStoredJson(TENANTS_KEY, normalized);
-        return normalized;
+        const sorted = sortTenants(normalized);
+        setStoredJson(TENANTS_KEY, sorted);
+        return sorted;
       }
     }
   } catch (err) {
@@ -365,8 +375,9 @@ export function subscribeToTenantsFirestore(callback: (tenants: Tenant[]) => voi
             }
           });
           if (list.length > 0) {
-            setStoredJson(TENANTS_KEY, list);
-            callback(list);
+            const sorted = sortTenants(list);
+            setStoredJson(TENANTS_KEY, sorted);
+            callback(sorted);
           }
         }
       },
@@ -768,6 +779,7 @@ export function getTenantStockMap(tenantId: string): Record<string, StockItem> {
       name: item.name,
       unit: item.unit || "יח'",
       packageSize: item.packageSize,
+      packagingMode: item.packagingMode,
       currentStock: item.currentStock || 0,
       minThreshold: item.minThreshold || 10,
       colIndex: item.colIndex || idx + 1,

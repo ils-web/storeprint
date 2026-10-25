@@ -27,7 +27,7 @@
     "colIndex": 6,
     "currentStock": 1,
     "minThreshold": 1,
-    "unit": "מטר",
+    "unit": "גליל",
     "isActive": true,
     "limitByPatients": false,
     "lastUpdated": "2026-09-06T08:43:28.693Z"
@@ -1710,7 +1710,8 @@
     "colIndex": 159,
     "currentStock": 8,
     "minThreshold": 10,
-    "unit": "מטר",
+    "unit": "מארז",
+    "packageSize": 12,
     "isActive": true,
     "limitByPatients": false,
     "lastUpdated": "2026-09-06T08:43:28.694Z"
