@@ -29,6 +29,7 @@ import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../servi
 import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
 import { isFirebaseReady, db } from '../../services/firebase';
 import { StockItem } from '../../types';
+import { detectPackageSize } from '../../utils/stockManager';
 import { InstallAppModal } from './InstallAppModal';
 import {
   ShoppingBag,
@@ -325,6 +326,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
   // Cart State: Map of productId -> MultiTenantOrderItem
   const [cart, setCart] = useState<Record<string, MultiTenantOrderItem>>({});
+  const [selectedUnits, setSelectedUnits] = useState<Record<string, PackagingUnit>>({});
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [orderSuccessNumber, setOrderSuccessNumber] = useState<string | null>(null);
   const [lastSubmittedOrder, setLastSubmittedOrder] = useState<any | null>(null);
@@ -484,6 +486,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
           id: item.id,
           name: item.name,
           unit: item.unit,
+          packageSize: item.packageSize || detectPackageSize(item.name),
           currentStock: item.currentStock || 0,
           minThreshold: item.minThreshold || 10,
           colIndex: item.colIndex || idx + 1,
@@ -510,6 +513,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
           warehouseId: activeWarehouse?.id || 'wh-default',
           name: item.name,
           unit: (!item.unit || item.unit === 'ליטר' ? "יח'" : (item.unit as PackagingUnit)),
+          packageSize: item.packageSize || detectPackageSize(item.name),
           currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
           minThreshold: item.minThreshold || 10,
           colIndex: item.colIndex || idx + 1,
@@ -522,7 +526,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     if (!activeTenant || !activeWarehouse) return [];
     return getInventory(activeTenant.id, activeWarehouse.id)
       .filter((p) => p.isActive !== false)
-      .map((p) => ({ ...p, category: detectItemCategory(p.name) }));
+      .map((p) => ({
+        ...p,
+        packageSize: p.packageSize || detectPackageSize(p.name),
+        category: detectItemCategory(p.name),
+      }));
   }, [liveStock, selectedTenantId, activeTenant, activeWarehouse]);
 
   // Filtered Products by Category & Search Query
@@ -623,6 +631,23 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
         },
       };
     });
+  };
+
+  const getProductActiveUnit = (product: any): PackagingUnit => {
+    if (cart[product.id]?.orderedUnit) {
+      return cart[product.id].orderedUnit as PackagingUnit;
+    }
+    if (selectedUnits[product.id]) {
+      return selectedUnits[product.id];
+    }
+    return (product.unit || "יח'") as PackagingUnit;
+  };
+
+  const handleToggleProductUnit = (product: any, newUnit: PackagingUnit) => {
+    setSelectedUnits((prev) => ({ ...prev, [product.id]: newUnit }));
+    if (cart[product.id]) {
+      handleUnitChange(product, newUnit);
+    }
   };
 
   const handleClearCart = () => {
@@ -1176,105 +1201,193 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                           </span>
                         )}
 
-                        <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
-                            isLight
-                              ? 'bg-slate-50 text-slate-700 border-slate-200'
-                              : 'bg-slate-800/80 text-slate-300 border-slate-700'
-                          }`}
-                        >
-                          <span>אריזה:</span>
-                          <strong className={isLight ? 'text-slate-900' : 'text-white'}>
-                            {product.unit}
-                          </strong>
-                        </span>
+                        {/* Packaging Unit & Package Size Badge */}
+                        {product.packageSize && product.packageSize > 1 ? (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                              isLight
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                : 'bg-indigo-950/60 text-indigo-300 border-indigo-800'
+                            }`}
+                            title="כמות יחידות במארז"
+                          >
+                            <span>📦</span>
+                            <span>מארז של {product.packageSize} יח'</span>
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
+                              isLight
+                                ? 'bg-slate-50 text-slate-700 border-slate-200'
+                                : 'bg-slate-800/80 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            <span>אריזה:</span>
+                            <strong className={isLight ? 'text-slate-900' : 'text-white'}>
+                              {product.unit}
+                            </strong>
+                          </span>
+                        )}
                       </div>
+
+                      {/* Unit Choice Toggle: Package vs Pieces */}
+                      {(() => {
+                        const itemPkgSize = product.packageSize || detectPackageSize(product.name);
+                        const primaryPackUnit = (product.unit && product.unit !== "יח'" ? product.unit : 'חבילה') as PackagingUnit;
+                        const hasPackagingChoice = Boolean(itemPkgSize && itemPkgSize > 1) || (Boolean(product.unit) && product.unit !== "יח'");
+                        const activeUnit = getProductActiveUnit(product);
+
+                        if (!hasPackagingChoice) return null;
+
+                        return (
+                          <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                            <span className={`text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                              הזמן לפי:
+                            </span>
+                            <div
+                              className={`inline-flex p-0.5 rounded-xl border ${
+                                isLight ? 'bg-slate-100 border-slate-300' : 'bg-slate-950 border-slate-700'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleProductUnit(product, primaryPackUnit)}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                                  activeUnit === primaryPackUnit
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : isLight
+                                      ? 'text-slate-600 hover:text-slate-900'
+                                      : 'text-slate-400 hover:text-white'
+                                }`}
+                                title={`הזמן לפי ${primaryPackUnit} (אריזה)`}
+                              >
+                                📦 {primaryPackUnit}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleProductUnit(product, "יח'")}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                                  activeUnit === "יח'"
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : isLight
+                                      ? 'text-slate-600 hover:text-slate-900'
+                                      : 'text-slate-400 hover:text-white'
+                                }`}
+                                title="הזמן לפי יחידות בודדות (יח')"
+                              >
+                                יח' (בודדים)
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Quantity Selector - Large Touch Targets */}
                     <div className="shrink-0 flex flex-col items-end gap-1.5">
-                      {!isSelected ? (
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateQty(product, product.unit, 1)}
-                          className="h-11 sm:h-12 px-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-95 text-white rounded-xl text-sm font-black shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4 stroke-[3]" />
-                          <span>הוסף</span>
-                        </button>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {/* Stepper Pill */}
-                          <div
-                            className={`flex items-center rounded-2xl p-1 shadow-sm border ${
-                              isLight
-                                ? 'bg-white border-indigo-300 shadow-sm'
-                                : 'bg-slate-950 border-indigo-500/60 shadow-inner'
-                            }`}
-                          >
+                      {(() => {
+                        const itemPkgSize = product.packageSize || detectPackageSize(product.name);
+                        const activeUnit = getProductActiveUnit(product);
+
+                        if (!isSelected) {
+                          return (
                             <button
                               type="button"
-                              onClick={() => handleUpdateQty(product, product.unit, -1)}
-                              className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                                inCartQty === 1
-                                  ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600'
-                                  : isLight
-                                    ? 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
-                                    : 'text-slate-300 hover:bg-slate-800 active:bg-slate-700'
-                              }`}
-                              title={inCartQty === 1 ? 'הסר מהסל' : 'הפחת 1'}
+                              onClick={() => handleUpdateQty(product, activeUnit, 1)}
+                              className="h-11 sm:h-12 px-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-95 text-white rounded-xl text-sm font-black shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
                             >
-                              {inCartQty === 1 ? (
-                                <Trash2 className="w-5 h-5 text-rose-500" />
-                              ) : (
-                                <Minus className="w-5 h-5 stroke-[2.5]" />
-                              )}
+                              <Plus className="w-4 h-4 stroke-[3]" />
+                              <span>הוסף {activeUnit}</span>
                             </button>
+                          );
+                        }
 
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              min="0"
-                              value={inCartQty}
-                              onChange={(e) =>
-                                handleSetQty(product, product.unit, parseInt(e.target.value, 10) || 0)
-                              }
-                              className={`w-14 sm:w-16 h-11 text-center bg-transparent text-lg sm:text-xl font-black focus:outline-none ${
-                                isLight ? 'text-slate-900' : 'text-white'
+                        return (
+                          <div className="space-y-1.5">
+                            {/* Stepper Pill */}
+                            <div
+                              className={`flex items-center rounded-2xl p-1 shadow-sm border ${
+                                isLight
+                                  ? 'bg-white border-indigo-300 shadow-sm'
+                                  : 'bg-slate-950 border-indigo-500/60 shadow-inner'
                               }`}
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQty(product, product.unit, 1)}
-                              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all cursor-pointer active:scale-95"
-                              title="הוסף 1"
                             >
-                              <Plus className="w-5 h-5 stroke-[3]" />
-                            </button>
-                          </div>
-
-                          {/* Quick Increment Chips */}
-                          <div className="flex items-center justify-end gap-1.5 pt-0.5">
-                            {[1, 5, 10].map((inc) => (
                               <button
-                                key={inc}
                                 type="button"
-                                onClick={() => handleUpdateQty(product, product.unit, inc)}
-                                className={`h-7 px-2.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer active:scale-95 ${
-                                  isLight
-                                    ? 'bg-slate-50 hover:bg-indigo-50 text-indigo-700 border-slate-200 hover:border-indigo-300'
-                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                onClick={() => handleUpdateQty(product, activeUnit, -1)}
+                                className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                                  inCartQty === 1
+                                    ? 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600'
+                                    : isLight
+                                      ? 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                                      : 'text-slate-300 hover:bg-slate-800 active:bg-slate-700'
                                 }`}
-                                title={`הוסף עוד ${inc} ${product.unit}`}
+                                title={inCartQty === 1 ? 'הסר מהסל' : 'הפחת 1'}
                               >
-                                +{inc}
+                                {inCartQty === 1 ? (
+                                  <Trash2 className="w-5 h-5 text-rose-500" />
+                                ) : (
+                                  <Minus className="w-5 h-5 stroke-[2.5]" />
+                                )}
                               </button>
-                            ))}
+
+                              <div className="flex flex-col items-center justify-center">
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  min="0"
+                                  value={inCartQty}
+                                  onChange={(e) =>
+                                    handleSetQty(product, activeUnit, parseInt(e.target.value, 10) || 0)
+                                  }
+                                  className={`w-14 sm:w-16 h-8 text-center bg-transparent text-lg sm:text-xl font-black focus:outline-none ${
+                                    isLight ? 'text-slate-900' : 'text-white'
+                                  }`}
+                                />
+                                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 -mt-1">
+                                  {activeUnit}
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQty(product, activeUnit, 1)}
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-all cursor-pointer active:scale-95"
+                                title="הוסף 1"
+                              >
+                                <Plus className="w-5 h-5 stroke-[3]" />
+                              </button>
+                            </div>
+
+                            {/* Total pieces note if package is selected */}
+                            {activeUnit !== "יח'" && itemPkgSize && itemPkgSize > 1 && (
+                              <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 text-left pr-1">
+                                (= {inCartQty * itemPkgSize} יחידות)
+                              </div>
+                            )}
+
+                            {/* Quick Increment Chips */}
+                            <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                              {[1, 5, 10].map((inc) => (
+                                <button
+                                  key={inc}
+                                  type="button"
+                                  onClick={() => handleUpdateQty(product, activeUnit, inc)}
+                                  className={`h-7 px-2.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer active:scale-95 ${
+                                    isLight
+                                      ? 'bg-slate-50 hover:bg-indigo-50 text-indigo-700 border-slate-200 hover:border-indigo-300'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  }`}
+                                  title={`הוסף עוד ${inc} ${activeUnit}`}
+                                >
+                                  +{inc}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -1426,8 +1539,19 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                             >
                               {item.name}
                             </div>
-                            <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                              אריזה: {item.orderedUnit || "יח'"}
+                            <div className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'} flex items-center gap-1.5 flex-wrap`}>
+                              <span>יחידה: <strong className="font-bold text-indigo-600 dark:text-indigo-400">{item.orderedUnit || "יח'"}</strong></span>
+                              {(() => {
+                                const pkgSize = product.packageSize || detectPackageSize(product.name);
+                                if (pkgSize && pkgSize > 1 && item.orderedUnit !== "יח'") {
+                                  return (
+                                    <span className="text-[10px] text-slate-400 font-normal">
+                                      ({item.orderedQty * pkgSize} יח' בסה"כ)
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           </div>
 

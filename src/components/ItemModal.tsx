@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StockItem } from '../types';
 import { PACKAGING_UNITS } from './WarehouseView';
+import { detectPackageSize } from '../utils/stockManager';
 import {
   Package,
   X,
@@ -40,6 +41,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [currentStock, setCurrentStock] = useState<number>(0);
   const [minThreshold, setMinThreshold] = useState<number>(10);
   const [unit, setUnit] = useState<string>("יח'");
+  const [packageSize, setPackageSize] = useState<number | undefined>(undefined);
   const [limitByPatients, setLimitByPatients] = useState<boolean>(false);
   const [isActive, setIsActive] = useState<boolean>(true);
   const [targetPosition, setTargetPosition] = useState<number>(1);
@@ -52,6 +54,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setCurrentStock(typeof itemToEdit.currentStock === 'number' ? itemToEdit.currentStock : 0);
       setMinThreshold(typeof itemToEdit.minThreshold === 'number' ? itemToEdit.minThreshold : 10);
       setUnit(itemToEdit.unit || "יח'");
+      setPackageSize(itemToEdit.packageSize || detectPackageSize(itemToEdit.name));
       setLimitByPatients(Boolean(itemToEdit.limitByPatients));
       setIsActive(itemToEdit.isActive !== false);
       setTargetPosition(itemIndex || (itemToEdit.colIndex ? Math.max(1, itemToEdit.colIndex - 3) : 1));
@@ -60,6 +63,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       setCurrentStock(0);
       setMinThreshold(10);
       setUnit("יח'");
+      setPackageSize(undefined);
       setLimitByPatients(false);
       setIsActive(true);
       setTargetPosition(totalItemsCount ? totalItemsCount + 1 : 1);
@@ -84,6 +88,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
       currentStock: Math.max(0, currentStock),
       minThreshold: Math.max(1, minThreshold),
       unit: unit || "יח'",
+      packageSize: packageSize && packageSize > 0 ? packageSize : undefined,
       limitByPatients,
       isActive,
       lastUpdated: new Date().toISOString(),
@@ -175,23 +180,46 @@ export const ItemModal: React.FC<ItemModalProps> = ({
             </div>
           </div>
 
-          {/* Packaging Unit */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 block">
-              יחידת מידה / אריזה
-            </label>
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-            >
-              {PACKAGING_UNITS.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
+          {/* Packaging Unit & Units Per Package */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 block">
+                יחידת מידה / אריזה
+              </label>
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+              >
+                {PACKAGING_UNITS.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>כמות במארז (יח')</span>
+                <span className="text-[10px] text-slate-400 font-normal">אופציונלי</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="למשל: 100, 50, 12..."
+                value={packageSize !== undefined ? packageSize : ''}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setPackageSize(isNaN(v) || v <= 0 ? undefined : v);
+                }}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
+              />
+            </div>
           </div>
+          <p className="text-[11px] text-slate-500 -mt-1">
+            * מציין כמה יחידות יש בתוך מארז/קופסה. באפליקציית ההזמנות המחלקות יוכלו לראות זאת ולבחור בין אריזה ליחידות בודדות.
+          </p>
 
           {/* Position in Stock List */}
           <div className="space-y-1">

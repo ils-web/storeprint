@@ -3,6 +3,7 @@ import initialMasterStock from '../utils/initialMasterStock.json';
 import {
   normalizeProductName,
   detectPackagingUnitFromProductName,
+  detectPackageSize,
   findMatchingStockKey,
   extractOrderItemQuantity,
   stripPackagingInfo,
@@ -101,6 +102,9 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
     const safeStock = typeof rawItem.currentStock === 'number' && !isNaN(rawItem.currentStock) ? Math.max(0, rawItem.currentStock) : 0;
     const safeMin = typeof rawItem.minThreshold === 'number' && !isNaN(rawItem.minThreshold) ? Math.max(1, rawItem.minThreshold) : 10;
     const safeUnit = rawItem.unit || detectPackagingUnitFromProductName(name);
+    const safePackageSize = typeof rawItem.packageSize === 'number' && rawItem.packageSize > 0
+      ? rawItem.packageSize
+      : detectPackageSize(name);
     const safeIsActive = rawItem.isActive !== false;
     const safeLimit = Boolean(rawItem.limitByPatients);
     const safeCol = typeof rawItem.colIndex === 'number' && rawItem.colIndex > 0 ? rawItem.colIndex : undefined;
@@ -111,6 +115,7 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
       existing.currentStock = Math.max(existing.currentStock, safeStock);
       if (rawItem.minThreshold !== undefined) existing.minThreshold = safeMin;
       if (rawItem.unit) existing.unit = safeUnit;
+      if (safePackageSize !== undefined) existing.packageSize = safePackageSize;
       if (rawItem.isActive !== undefined) existing.isActive = safeIsActive;
       if (rawItem.limitByPatients !== undefined) existing.limitByPatients = safeLimit;
       if (safeCol && (!existing.colIndex || existing.colIndex > safeCol)) existing.colIndex = safeCol;
@@ -123,6 +128,7 @@ export function sanitizeAndDeduplicateStock(rawStock: Record<string, any>): Reco
         currentStock: safeStock,
         minThreshold: safeMin,
         unit: safeUnit,
+        packageSize: safePackageSize,
         isActive: safeIsActive,
         limitByPatients: safeLimit,
         lastUpdated: rawItem.lastUpdated || new Date().toISOString(),
@@ -171,6 +177,7 @@ export function resetDbStockToMasterCatalog(preserveQuantities: boolean = true):
       currentStock,
       minThreshold,
       unit: existing?.unit || seedItem.unit || detectPackagingUnitFromProductName(name),
+      packageSize: existing?.packageSize || seedItem.packageSize || detectPackageSize(name),
       isActive: existing?.isActive !== undefined ? existing.isActive : (seedItem.isActive !== false),
       limitByPatients: existing?.limitByPatients !== undefined ? Boolean(existing.limitByPatients) : Boolean(seedItem.limitByPatients),
       lastUpdated: new Date().toISOString(),
@@ -266,6 +273,9 @@ export function saveOrUpdateDbStockItem(
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
   const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
   const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(targetKey);
+  const cleanPackageSize = typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
+    ? savedItem.packageSize
+    : detectPackageSize(targetKey);
   const cleanIsActive = savedItem.isActive !== false;
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -277,6 +287,7 @@ export function saveOrUpdateDbStockItem(
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,
+    packageSize: cleanPackageSize,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
@@ -391,6 +402,9 @@ export function insertDbStockItemAtPosition(
   const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
   const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
   const cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
+  const cleanPackageSize = typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
+    ? savedItem.packageSize
+    : detectPackageSize(savedItem.name);
   const cleanIsActive = savedItem.isActive !== false;
   const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -402,6 +416,7 @@ export function insertDbStockItemAtPosition(
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,
+    packageSize: cleanPackageSize,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,
@@ -429,7 +444,8 @@ export function updateDbStockItem(
   unit?: string,
   isActive?: boolean,
   limitByPatients?: boolean,
-  baseStock?: Record<string, StockItem>
+  baseStock?: Record<string, StockItem>,
+  packageSize?: number
 ): Record<string, StockItem> {
   const current = baseStock && Object.keys(baseStock).length > 0 ? { ...baseStock } : getDbStock();
   const normSearch = normalizeProductName(nameOrId);
@@ -443,6 +459,9 @@ export function updateDbStockItem(
   const cleanStock = typeof newQty === 'number' && !isNaN(newQty) ? Math.max(0, newQty) : 0;
   const cleanMin = typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing?.minThreshold || 10);
   const cleanUnit = unit || existing?.unit || detectPackagingUnitFromProductName(nameOrId);
+  const cleanPackageSize = typeof packageSize === 'number' && packageSize > 0
+    ? packageSize
+    : (existing?.packageSize || detectPackageSize(nameOrId));
   const cleanIsActive = isActive !== undefined ? isActive : (existing?.isActive !== undefined ? existing.isActive : true);
   const cleanLimitByPatients = limitByPatients !== undefined ? limitByPatients : Boolean(existing?.limitByPatients);
   const nowIso = new Date().toISOString();
@@ -458,6 +477,7 @@ export function updateDbStockItem(
     currentStock: cleanStock,
     minThreshold: cleanMin,
     unit: cleanUnit,
+    packageSize: cleanPackageSize,
     isActive: cleanIsActive,
     limitByPatients: cleanLimitByPatients,
     lastUpdated: nowIso,

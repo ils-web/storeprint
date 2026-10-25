@@ -498,7 +498,7 @@ export default function App() {
         id: item.id || `item-${itemIdx}-${item.productId || itemIdx}`,
         productId: item.productId,
         name: item.name,
-        qty: item.orderedUnit && item.orderedUnit !== "יח'"
+        qty: item.orderedUnit
           ? `${item.orderedQty} ${item.orderedUnit}`
           : String(item.orderedQty),
         numericQty: item.orderedQty,

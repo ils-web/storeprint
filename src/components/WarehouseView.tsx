@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { StockItem } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
-import { normalizeProductName } from '../utils/stockManager';
+import { normalizeProductName, detectPackageSize } from '../utils/stockManager';
 import { getCategorizedSortedStockItems, categorizeItem } from '../utils/stockGrouper';
 import { ItemModal } from './ItemModal';
 
@@ -772,6 +772,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           {item.name}
                         </h4>
                       </div>
+                      {(item.packageSize || detectPackageSize(item.name)) && (
+                        <div className="text-[10px] text-indigo-700 font-bold inline-flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 w-fit">
+                          <span>📦</span>
+                          <span>{item.packageSize || detectPackageSize(item.name)} יח' במארז</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Status Badge */}
@@ -903,6 +909,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
                             <span>{item.name}</span>
+                            {(item.packageSize || detectPackageSize(item.name)) && (
+                              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold flex items-center gap-1" title="כמות יחידות במארז">
+                                📦 {item.packageSize || detectPackageSize(item.name)} יח' במארז
+                              </span>
+                            )}
                             {isInactive && (
                               <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">
                                 בהשהייה

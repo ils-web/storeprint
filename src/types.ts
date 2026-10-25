@@ -32,6 +32,7 @@ export interface StockItem {
   currentStock: number;
   minThreshold: number;   // default 10
   unit?: string;
+  packageSize?: number;   // units/pieces per package or box (e.g. 100 in box)
   isActive?: boolean;     // true = in active use (default), false = paused / not in use
   limitByPatients?: boolean; // true = order quantity is restricted to current department patient count
   lastDeducted?: string;

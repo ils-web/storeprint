@@ -16,7 +16,7 @@ export const STANDARD_PACKAGING_UNITS: PackagingUnitOption[] = [
   { value: 'בקבוק', labelHe: 'בקבוק / בקבוקון', labelRu: 'Флакон / Бутылка', defaultRatio: 1 },
   { value: 'מטר', labelHe: 'מטר (מ\')', labelRu: 'Метр', defaultRatio: 1 },
   { value: 'ק״ג', labelHe: 'קילוגרם (ק״ג)', labelRu: 'Килограмм (кг)', defaultRatio: 1 },
-  { value: 'ליטר', labelHe: 'ליטר (ל\')', labelRu: 'Литр (л)', defaultRatio: 1 },
+  { value: 'ליטר', labelHe: 'ליטר (ל\')', labelRu: 'Лיתר (ל\')', defaultRatio: 1 },
 ];
 
 export type TenantStatus = 'active' | 'trial' | 'suspended';
@@ -80,6 +80,7 @@ export interface InventoryProduct {
   currentStock: number;
   minThreshold: number;
   unit: string;             // "יח'", "חבילה", "קופסה", "קרטון", etc.
+  packageSize?: number;     // units/pieces per package or box (e.g. 100 in box)
   unitRatio?: number;
   category?: string;
   barcode?: string;

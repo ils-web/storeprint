@@ -370,3 +370,20 @@ export function importStockFromJson(jsonStr: string): Record<string, StockItem> 
     return null;
   }
 }
+
+/**
+ * Detects number of pieces/units per package from explicit package size or from product name patterns
+ * (e.g. "100 יחידות", "10 יח'", "בחבילה יש 10 יחידות", "12 יחידות")
+ */
+export function detectPackageSize(name: string, explicitSize?: number): number | undefined {
+  if (typeof explicitSize === 'number' && !isNaN(explicitSize) && explicitSize > 0) {
+    return explicitSize;
+  }
+  if (!name || typeof name !== 'string') return undefined;
+  const match = name.match(/(\d+)\s*(?:יחידות|יח'|יח\b)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num) && num > 1) return num;
+  }
+  return undefined;
+}

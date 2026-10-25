@@ -32,6 +32,7 @@ import { InstallStockModal } from './InstallStockModal';
 import { categorizeItem, groupAndSortStockItems } from '../../utils/stockGrouper';
 import { printReorderListHtml } from '../../utils/pdfGenerator';
 import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator';
+import { detectPackageSize } from '../../utils/stockManager';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
@@ -203,6 +204,11 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
             <h4 className="font-bold text-sm text-white leading-snug">
               {item.name}
             </h4>
+            {(item.packageSize || detectPackageSize(item.name)) && (
+              <span className="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-700/60 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                📦 {item.packageSize || detectPackageSize(item.name)} יח' במארז
+              </span>
+            )}
           </div>
         </div>
 
