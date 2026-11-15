@@ -1,18 +1,6 @@
 import { StockItem } from '../types';
 import { groupAndSortStockItems } from './stockGrouper';
-
-/**
- * Escapes HTML characters
- */
-function escapeHtml(str: string | null | undefined): string {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+import { escapeHtml } from './htmlUtils';
 
 /**
  * Generates an HTML document for Hospital Emergency Reorder / Procurement Sheet (X3 stock buffer)
@@ -298,7 +286,7 @@ export function printEmergencyReorderListHtml(
                 .map((item: any) => {
                   globalEmergencyIndex++;
                   const unit = escapeHtml(item.unit || "יח'");
-                  const posText = item.colIndex ? `#${item.colIndex - 3}` : '';
+                  const posText = Number.isFinite(Number(item.colIndex)) ? `#${Number(item.colIndex) - 3}` : '';
                   return `
                 <tr>
                   <td class="num-col">${globalEmergencyIndex}</td>

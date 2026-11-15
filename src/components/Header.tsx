@@ -6,27 +6,27 @@ import {
   Package,
   AlertTriangle,
   Layers,
-  Building2,
-  Smartphone,
   LogOut,
-  Sparkles,
   Siren,
   BarChart3,
-  QrCode,
+  UserX,
 } from 'lucide-react';
 import { AuthSession } from '../types/multiTenant';
 
+export type HeaderTab = 'orders' | 'warehouse' | 'order_portal' | 'analytics' | 'staff';
+
 interface HeaderProps {
-  activeTab: 'orders' | 'warehouse' | 'order_portal' | 'analytics';
-  setActiveTab: (tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => void;
+  activeTab: HeaderTab;
+  setActiveTab: (tab: HeaderTab) => void;
   isEmergencyMode?: boolean;
   onOpenEmergencyConfirm?: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
   ordersCount: number;
-  departmentsCount: number;
+  departmentsCount?: number;
   lowStockCount: number;
-  lastUpdated: Date | null;
+  blockedStaffCount?: number;
+  lastUpdated?: Date | null;
   authSession?: AuthSession | null;
   onOpenSuperadmin?: () => void;
   onOpenLanding?: () => void;
@@ -44,14 +44,10 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   isRefreshing,
   ordersCount,
-  departmentsCount,
   lowStockCount,
-  lastUpdated,
+  blockedStaffCount = 0,
   authSession,
   onOpenSuperadmin,
-  onOpenLanding,
-  onOpenDepartmentQR,
-  onOpenShortageDrawer,
   onLogout,
   tenantName,
 }) => {
@@ -145,6 +141,24 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 <span>דוחות וסטטיסטיקה 📊</span>
+              </button>
+
+              {/* Tab 5: Staff Access & Blocking */}
+              <button
+                onClick={() => setActiveTab('staff')}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'staff'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                    : 'text-rose-300 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>צוות והרשאות</span>
+                {blockedStaffCount > 0 && (
+                  <span className="bg-rose-950/70 text-rose-200 border border-rose-400/40 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                    {blockedStaffCount}
+                  </span>
+                )}
               </button>
 
             </div>

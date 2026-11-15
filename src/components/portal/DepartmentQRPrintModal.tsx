@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { QrCode, Printer, Building2, X, Download, Smartphone, CheckCircle2, Copy, Sparkles, Layers, Package } from 'lucide-react';
 import { getWarehouses } from '../../services/multiTenantDb';
+import { buildPortalUrl, buildQrImageUrl } from '../../utils/urlUtils';
+import { escapeHtml, sanitizeHttpUrl } from '../../utils/htmlUtils';
 
 interface DepartmentQRPrintModalProps {
   isOpen: boolean;
@@ -27,32 +29,14 @@ export function DepartmentQRPrintModal({
   const activeWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) || warehouses[0];
   const whName = activeWarehouse ? activeWarehouse.name : '';
 
-  // Base URL for mobile staff order portal
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-  const cleanPath = typeof window !== 'undefined'
-    ? window.location.pathname
-        .replace(/\/index\.html$/i, '')
-        .replace(/\/landing(\.html)?$/i, '')
-        .replace(/\/order(\.html)?$/i, '')
-        .replace(/\/stock(\.html)?$/i, '')
-        .replace(/\/$/, '')
-    : '';
+  const getPortalUrlForDept = (dept: string) =>
+    buildPortalUrl(
+      tenantId,
+      dept && dept !== 'universal' ? dept : undefined,
+      selectedWarehouseId && warehouses.length > 1 ? selectedWarehouseId : undefined
+    );
 
-  const getPortalUrlForDept = (dept: string) => {
-    const params = new URLSearchParams();
-    if (tenantId) params.set('tenant', tenantId);
-    if (selectedWarehouseId && warehouses.length > 1) {
-      params.set('wh', selectedWarehouseId);
-    }
-    if (dept && dept !== 'universal') params.set('dept', dept);
-    const queryString = params.toString() ? `?${params.toString()}` : '';
-    return `${origin}${cleanPath}/order.html${queryString}`;
-  };
-
-  const getQrImageUrl = (dept: string) => {
-    const targetUrl = getPortalUrlForDept(dept);
-    return `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=15&data=${encodeURIComponent(targetUrl)}`;
-  };
+  const getQrImageUrl = (dept: string) => buildQrImageUrl(getPortalUrlForDept(dept), 400);
 
   const getDeptDisplayName = (dept: string) => {
     if (dept === 'universal') return '🏥 שלט כללי — כל המחלקות (בחירת מחלקה בנייד)';
@@ -75,7 +59,7 @@ export function DepartmentQRPrintModal({
     const targetWhLabel = warehouses.length > 1 && whName ? ` [${whName}]` : '';
     const cardsHtml = printDepts
       .map((dept) => {
-        const qrUrl = getQrImageUrl(dept);
+        const qrUrl = sanitizeHttpUrl(getQrImageUrl(dept));
         const directUrl = getPortalUrlForDept(dept);
         const isUniversal = dept === 'universal';
         const displayTitle = isUniversal ? `טופס הזמנת אספקה${targetWhLabel}` : `טופס הזמנת אספקה${targetWhLabel} — ${dept}`;
@@ -85,17 +69,17 @@ export function DepartmentQRPrintModal({
         <div class="qr-card">
           <div class="header">
             <div class="logo">StorePrint 📦</div>
-            <div class="title">${displayTitle}</div>
-            <div class="sub-tenant">${tenantName}</div>
+            <div class="title">${escapeHtml(displayTitle)}</div>
+            <div class="sub-tenant">${escapeHtml(tenantName)}</div>
           </div>
 
           <div class="dept-badge">
             <div class="dept-label">${isUniversal ? 'יעד הזמנה:' : 'מחלקה / אגף:'}</div>
-            <div class="dept-name">${badgeTitle}</div>
+            <div class="dept-name">${escapeHtml(badgeTitle)}</div>
           </div>
 
           <div class="qr-frame">
-            <img src="${qrUrl}" alt="QR Code for ${dept}" class="qr-img" />
+            <img src="${escapeHtml(qrUrl)}" alt="QR Code for ${escapeHtml(dept)}" class="qr-img" />
             <div class="qr-subtext">📱 סרקו במצלמת הטלפון לפתיחת האפליקציה</div>
           </div>
 
@@ -114,13 +98,14 @@ export function DepartmentQRPrintModal({
 
           <div class="footer">
             <div>🚀 ללא ניירת • מעקב סטטוס בזמן אמת • קיזוז מלאי אוטומטי</div>
-            <div class="url-hint">${directUrl}</div>
+            <div class="url-hint">${escapeHtml(directUrl)}</div>
           </div>
         </div>
       `;
       })
       .join('<div class="page-break"></div>');
 
+    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html dir="rtl" lang="he">

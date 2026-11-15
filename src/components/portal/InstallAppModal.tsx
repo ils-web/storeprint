@@ -11,6 +11,8 @@ import {
   QrCode,
   Copy,
 } from 'lucide-react';
+import { buildPortalUrl, buildQrImageUrl } from '../../utils/urlUtils';
+import { escapeHtml, sanitizeHttpUrl } from '../../utils/htmlUtils';
 
 interface InstallAppModalProps {
   isOpen: boolean;
@@ -30,18 +32,8 @@ export function InstallAppModal({
   const [activeTab, setActiveTab] = useState<'qr' | 'android' | 'ios' | 'desktop'>('qr');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-  const cleanPath = typeof window !== 'undefined'
-    ? window.location.pathname
-        .replace(/\/index\.html$/i, '')
-        .replace(/\/landing(\.html)?$/i, '')
-        .replace(/\/order(\.html)?$/i, '')
-        .replace(/\/stock(\.html)?$/i, '')
-        .replace(/\/$/, '')
-    : '';
-  const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-  const portalUrl = `${origin}${cleanPath}/order.html${tenantQuery}`;
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(portalUrl)}`;
+  const portalUrl = buildPortalUrl(tenantId);
+  const qrImageUrl = buildQrImageUrl(portalUrl, 300);
 
   useEffect(() => {
     // Detect standalone mode
@@ -93,6 +85,9 @@ export function InstallAppModal({
       return;
     }
 
+    const safeQrUrl = sanitizeHttpUrl(qrImageUrl);
+
+    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html dir="rtl" lang="he">
@@ -180,11 +175,11 @@ export function InstallAppModal({
             <div class="logo">StorePrint 📦</div>
             <div class="title">התקנת אפליקציית הזמנות למחלקה</div>
             <div class="subtitle">עבור צוות רפואי, אחיות ומזכירות מחלקה</div>
-            <div class="tenant">${tenantName}</div>
+            <div class="tenant">${escapeHtml(tenantName)}</div>
           </div>
 
           <div class="qr-frame">
-            <img src="${qrImageUrl}" alt="QR Installation Code" class="qr-img" />
+            <img src="${escapeHtml(safeQrUrl)}" alt="QR Installation Code" class="qr-img" />
             <div class="qr-caption">📲 סרקו במצלמת הטלפון להתקנה מיידית</div>
           </div>
 
@@ -207,7 +202,7 @@ export function InstallAppModal({
 
           <div class="footer">
             <div>💡 שלט זה מיועד להדבקה בעמדת האחיות, בחדר הרופאים ובמזכירות המחלקה</div>
-            <div class="url-hint">${portalUrl}</div>
+            <div class="url-hint">${escapeHtml(portalUrl)}</div>
           </div>
         </div>
 

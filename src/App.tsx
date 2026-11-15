@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Header } from './components/Header';
+import { Header, HeaderTab } from './components/Header';
 import { OrderTable } from './components/OrderTable';
 import { WarehouseView } from './components/WarehouseView';
 import { DepartmentOrderView } from './components/DepartmentOrderView';
@@ -10,6 +10,7 @@ import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { SuperAdminDashboard } from './components/superadmin/SuperAdminDashboard';
 import { LandingPage } from './components/landing/LandingPage';
 import { StaffOrderPortal } from './components/portal/StaffOrderPortal';
+import { StaffAccessManager } from './components/staff/StaffAccessManager';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { InstallAppModal } from './components/portal/InstallAppModal';
 import { DepartmentQRPrintModal } from './components/portal/DepartmentQRPrintModal';
@@ -20,7 +21,7 @@ import { EmergencyBanner } from './components/emergency/EmergencyBanner';
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard';
 import { printEmergencyReorderListHtml } from './utils/emergencyPdfGenerator';
 import { Order, PrintSettings, StockItem, CloudSyncConfig } from './types';
-import { AuthSession, Tenant, InventoryProduct, TenantDepartment, MultiTenantOrder } from './types/multiTenant';
+import { AuthSession, InventoryProduct, Tenant, TenantDepartment, MultiTenantOrder, StaffDirectory } from './types/multiTenant';
 import {
   getDbStock,
   saveDbStock,
@@ -34,7 +35,6 @@ import {
   sanitizeAndDeduplicateStock,
   getDbDepartments,
   saveDbDepartments,
-  CANONICAL_DEPARTMENTS,
   getDbPrintedOrderIds,
   saveDbPrintedOrderIds,
   getDbDeletedOrderIds,
@@ -62,7 +62,6 @@ import {
   loadStoredStock,
   saveStoredStock,
   syncStockWithProductHeaders,
-  deductOrdersFromStock,
   getLowStockItems,
   detectPackagingUnitFromProductName,
   normalizeProductName,
@@ -79,7 +78,6 @@ import {
 } from './utils/cloudSync';
 import {
   getActiveAuthSession,
-  saveAuthSession,
   logout as logoutDb,
   getTenants,
   getWarehouses,
@@ -96,11 +94,17 @@ import {
   fetchWarehousesFromFirestore,
   fetchTenantDepartmentsFromFirestore,
   subscribeToTenantDepartments,
+  inventoryProductsToStockMap,
+  stockMapToInventoryProducts,
 } from './services/multiTenantDb';
+import {
+  getLocalStaffDirectory,
+  subscribeToStaffDirectory,
+} from './services/staffAccessService';
 import { printOrdersHtml } from './utils/pdfGenerator';
 import { organizeStockLogically } from './utils/stockGrouper';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { AlertCircle, CheckCircle, RefreshCw, AlertTriangle, Package, Cloud, ShieldCheck, Smartphone, Building2, Download, ArrowRight } from 'lucide-react';
+import { AlertCircle, CheckCircle, AlertTriangle, ShieldCheck, Smartphone, Building2, Download, ArrowRight, Lock } from 'lucide-react';
 
 const DEPARTMENTS_CACHE_KEY = 'storeprint_departments_cache_v1';
 const PRODUCTS_CACHE_KEY = 'storeprint_products_cache_v1';
@@ -144,6 +148,33 @@ export default function App() {
   });
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
 
+  const [staffDirectory, setStaffDirectory] = useState<StaffDirectory>(() =>
+    getLocalStaffDirectory(activeTenantId)
+  );
+
+  useEffect(() => {
+    const unsubStaff = subscribeToStaffDirectory(activeTenantId, setStaffDirectory);
+    return () => {
+      if (unsubStaff) unsubStaff();
+    };
+  }, [activeTenantId]);
+
+  const blockedStaffCount = useMemo(
+    () => staffDirectory.members.filter((m) => m.status === 'blocked').length,
+    [staffDirectory]
+  );
+
+  const isAuthorizedAdmin = useMemo(() => {
+    if (!authSession) return false;
+    if (authSession.userRole === 'superadmin') return true;
+    return authSession.userRole === 'tenant_admin' && authSession.tenantId === activeTenantId;
+  }, [authSession, activeTenantId]);
+
+  const [weakPasswordBannerDismissed, setWeakPasswordBannerDismissed] = useState(false);
+
+  const isWorkspaceLocked =
+    Boolean(staffDirectory?.policy?.requireAdminLoginForWorkspace) && !isAuthorizedAdmin;
+
   // Keep tenants list synchronized with Firestore in real time
   useEffect(() => {
     fetchTenantsFromFirestore()
@@ -180,7 +211,7 @@ export default function App() {
       const tenantParam = params.get('tenant') || params.get('tenantId');
       const cloudUrlParam = params.get('cloudUrl');
 
-      if (tenantParam) {
+      if (tenantParam && (!authSession || authSession.userRole === 'superadmin')) {
         const match = tenants.find((t) => t.id === tenantParam || t.slug === tenantParam);
         const resolvedId = match ? match.id : tenantParam;
         if (resolvedId && resolvedId !== activeTenantId) {
@@ -211,6 +242,9 @@ export default function App() {
         setCurrentView('mobile_stock');
       } else if (viewParam === 'superadmin') {
         setCurrentView('superadmin');
+        if (authSession?.userRole !== 'superadmin') {
+          setIsLoginModalOpen(true);
+        }
       } else if (viewParam === 'landing' || viewParam === 'about' || params.get('landing') === 'true') {
         setCurrentView('landing');
       }
@@ -218,24 +252,24 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics')
+  // Navigation Tab inside app ('orders' | 'warehouse' | 'order_portal' | 'analytics' | 'staff')
   const ACTIVE_TAB_KEY = 'storeprint_active_tab_v1';
-  const [activeTab, setActiveTabState] = useState<'orders' | 'warehouse' | 'order_portal' | 'analytics'>(() => {
+  const [activeTab, setActiveTabState] = useState<HeaderTab>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab');
-      if (tabParam === 'warehouse' || tabParam === 'orders' || tabParam === 'analytics' || tabParam === 'order_portal') {
+      if (tabParam === 'warehouse' || tabParam === 'orders' || tabParam === 'analytics' || tabParam === 'order_portal' || tabParam === 'staff') {
         return tabParam;
       }
       const saved = localStorage.getItem(ACTIVE_TAB_KEY);
-      if (saved === 'warehouse' || saved === 'orders' || saved === 'analytics' || saved === 'order_portal') {
+      if (saved === 'warehouse' || saved === 'orders' || saved === 'analytics' || saved === 'order_portal' || saved === 'staff') {
         return saved;
       }
     } catch {}
     return 'orders';
   });
 
-  const setActiveTab = useCallback((tab: 'orders' | 'warehouse' | 'order_portal' | 'analytics') => {
+  const setActiveTab = useCallback((tab: HeaderTab) => {
     setActiveTabState(tab);
     try {
       localStorage.setItem(ACTIVE_TAB_KEY, tab);
@@ -246,26 +280,13 @@ export default function App() {
   const getTenantOrdersCacheKey = (tId: string) =>
     tId === 'tenant-main-01' ? 'storeprint_orders_cache_v3' : `storeprint_orders_cache_${tId}`;
 
-  // Helper to load base stock for active tenant
+  // Helper to load base stock for active tenant (preserving packageSize & packagingMode)
   const getInitialStockForTenant = (tId: string): Record<string, StockItem> => {
     if (tId === 'tenant-main-01') {
       return getDbStock();
     }
     const inv = getInventory(tId);
-    const stockMap: Record<string, StockItem> = {};
-    inv.forEach((item, idx) => {
-      stockMap[item.name] = {
-        id: item.id,
-        name: item.name,
-        unit: item.unit,
-        currentStock: item.currentStock || 0,
-        minThreshold: item.minThreshold || 10,
-        colIndex: item.colIndex || idx + 1,
-        isActive: item.isActive !== false,
-        limitByPatients: Boolean(item.limitByPatients),
-      };
-    });
-    return stockMap;
+    return inventoryProductsToStockMap(inv);
   };
 
   const getEmergencyStorageKey = (tId: string) =>
@@ -332,6 +353,8 @@ export default function App() {
 
   // Warehouse Stock State (Initialized from Tenant DB)
   const [stock, setStock] = useState<Record<string, StockItem>>(() => getInitialStockForTenant(activeTenantId));
+  const stockRef = useRef<Record<string, StockItem>>(stock);
+  stockRef.current = stock;
 
   // Cloud Sync State
   const [cloudConfig, setCloudConfig] = useState<CloudSyncConfig>(() => loadCloudConfig());
@@ -684,13 +707,13 @@ export default function App() {
           return finalOrders;
         });
 
-        // 3. Extract unique departments and merge with configured departments
+        // 3. Extract unique departments and merge with configured departments (respecting deletions)
         if (isMain) {
           const tenantDepts = getTenantDepartments(targetTenantId);
           const dbDepts = getDbDepartments();
           const distinctDepts = Array.from(new Set(filteredOrders.map((o) => o.department).filter(Boolean)));
           const baseDepts = tenantDepts.length > 0 ? tenantDepts.map((d) => d.name) : dbDepts;
-          const merged = Array.from(new Set([...baseDepts, ...distinctDepts, ...CANONICAL_DEPARTMENTS])).filter(Boolean);
+          const merged = Array.from(new Set([...baseDepts, ...distinctDepts])).filter(Boolean);
 
           setDepartments(merged);
           saveDbDepartments(merged);
@@ -775,22 +798,7 @@ export default function App() {
           saveStoredStock(liveStock);
         } else {
           const primaryWhId = getWarehouses(activeTenantId)[0]?.id || 'wh-01';
-          const items: InventoryProduct[] = Object.values(liveStock).map((item, idx) => ({
-            id: item.id || `prod-${activeTenantId}-${idx}`,
-            tenantId: activeTenantId,
-            warehouseId: primaryWhId,
-            name: item.name,
-            colIndex: item.colIndex || idx + 1,
-            currentStock: item.currentStock || 0,
-            minThreshold: item.minThreshold || 10,
-            unit: item.unit || "יח'",
-            packageSize: item.packageSize,
-            packagingMode: item.packagingMode,
-            isActive: item.isActive !== false,
-            limitByPatients: Boolean(item.limitByPatients),
-            updatedAt: item.lastUpdated || new Date().toISOString(),
-          }));
-          saveInventory(activeTenantId, items);
+          saveInventory(activeTenantId, stockMapToInventoryProducts(liveStock, activeTenantId, primaryWhId));
         }
         setProductHeaders(Object.keys(liveStock));
       }
@@ -821,29 +829,16 @@ export default function App() {
           deletedOrderIds.forEach((id) => deletedSet.add(id));
 
           const convertedLive = filteredLiveOrders.map((to, i) => convertTenantOrderToAppOrder(to, i));
-          const allMap = new Map<string, Order>();
-
-          // CRITICAL: Only retain prev orders that belong strictly to THIS active tenant!
-          (prev || []).forEach((o) => {
-            if (o && o.id && (isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === activeTenantId)) {
-              allMap.set(o.id, o);
-            }
-          });
-
-          // Overlay with fresh live orders from Firestore
-          convertedLive.forEach((o) => {
-            if (o && o.id) {
-              const isPrinted = Boolean(o.printed) || isOrderPrintedInSet(o, currentPrinted) || currentPrinted.has(o.id) || currentPrinted.has(getOrderPrintKey(o));
-              allMap.set(o.id, {
-                ...o,
-                printed: isPrinted,
-              });
-            }
-          });
-
-          const merged = Array.from(allMap.values()).filter(
-            (o) => !isOrderInSet(o, deletedSet)
-          );
+          const merged = convertedLive
+            .map((o) => {
+              const isPrinted =
+                Boolean(o.printed) ||
+                isOrderPrintedInSet(o, currentPrinted) ||
+                currentPrinted.has(o.id) ||
+                currentPrinted.has(getOrderPrintKey(o));
+              return { ...o, printed: isPrinted };
+            })
+            .filter((o) => !isOrderInSet(o, deletedSet));
 
           merged.sort((a, b) => {
             const dateA = coerceDate(a.parsedDate);
@@ -1085,29 +1080,10 @@ export default function App() {
   useEffect(() => {
     if (activeTenantId && activeTenantId !== 'tenant-main-01') {
       fetchInventoryFromFirestore(activeTenantId).then((items) => {
-        if (items && items.length > 0) {
-          setStock((prev) => {
-            if (prev && Object.keys(prev).length > 0) return prev;
-            const updated: Record<string, StockItem> = {};
-            items.forEach((item) => {
-              if (item.name && item.currentStock !== undefined) {
-                const cleanStock = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-                const cleanMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-                updated[item.name] = {
-                  id: item.id || `stock-${item.colIndex}`,
-                  name: item.name,
-                  colIndex: typeof item.colIndex === 'number' && item.colIndex > 0 ? item.colIndex : 0,
-                  currentStock: cleanStock,
-                  minThreshold: cleanMin,
-                  unit: item.unit || "יח'",
-                  isActive: item.isActive !== false,
-                  limitByPatients: Boolean(item.limitByPatients),
-                  lastUpdated: item.updatedAt || new Date().toISOString(),
-                };
-              }
-            });
-            return updated;
-          });
+        if (items && items.length > 0 && Object.keys(stockRef.current).length === 0) {
+          const updated = inventoryProductsToStockMap(items);
+          stockRef.current = updated;
+          setStock(updated);
         }
       });
     }
@@ -1124,6 +1100,7 @@ export default function App() {
 
       if (remoteStock && Object.keys(remoteStock).length > 0) {
         targetStock = { ...remoteStock };
+        stockRef.current = targetStock;
         setStock(targetStock);
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(targetStock, false);
@@ -1131,26 +1108,12 @@ export default function App() {
         } else {
           const whs = getWarehouses(activeTenantId);
           const whId = whs[0]?.id || 'wh-01';
-          const items: InventoryProduct[] = Object.values(targetStock).map((item, idx) => ({
-            id: item.id || `prod-${activeTenantId}-${idx}`,
-            tenantId: activeTenantId,
-            warehouseId: whId,
-            name: item.name,
-            colIndex: item.colIndex || idx + 1,
-            currentStock: item.currentStock || 0,
-            minThreshold: item.minThreshold || 10,
-            unit: item.unit || "יח'",
-            packageSize: item.packageSize,
-            packagingMode: item.packagingMode,
-            isActive: item.isActive !== false,
-            limitByPatients: Boolean(item.limitByPatients),
-            updatedAt: item.lastUpdated || new Date().toISOString(),
-          }));
+          const items = stockMapToInventoryProducts(targetStock, activeTenantId, whId);
           saveInventory(activeTenantId, items);
         }
         setProductHeaders(Object.keys(targetStock));
       } else {
-        targetStock = stock;
+        targetStock = stockRef.current;
       }
 
       // 2. Re-push to guarantee Firestore collections are completely up-to-date
@@ -1178,9 +1141,9 @@ export default function App() {
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [activeTenantId, stock, departments, cloudConfig, syncToMultiTenantDb]);
+  }, [activeTenantId, departments, cloudConfig, syncToMultiTenantDb]);
 
-  // Robust, Immediate Stock Updates with Debounced Cloud Sync to prevent UI flicker
+  // Robust, Immediate Stock Updates computed cleanly outside React state updaters (StrictMode safe)
   const handleUpdateStockItem = useCallback((
     itemIdOrName: string,
     newStock: number,
@@ -1189,32 +1152,34 @@ export default function App() {
     isActive?: boolean,
     limitByPatients?: boolean
   ) => {
+    const prev = stockRef.current;
+    let updated: Record<string, StockItem>;
+
     if (activeTenantId === 'tenant-main-01') {
-      setStock((prev) => {
-        const updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients, prev);
-        saveStoredStock(updated);
-        syncToMultiTenantDb(productHeaders, departments, updated);
-        return updated;
-      });
+      updated = updateDbStockItem(itemIdOrName, newStock, minThreshold, unit, isActive, limitByPatients, prev);
+      stockRef.current = updated;
+      setStock(updated);
+      saveStoredStock(updated);
+      syncToMultiTenantDb(productHeaders, departments, updated);
     } else {
-      setStock((prev) => {
-        const next = { ...prev };
-        const target = next[itemIdOrName] || (Object.values(next) as StockItem[]).find((it) => it.id === itemIdOrName || it.name === itemIdOrName);
-        if (target) {
-          next[target.name] = {
-            ...target,
-            currentStock: Math.max(0, newStock),
-            ...(minThreshold !== undefined ? { minThreshold } : {}),
-            ...(unit ? { unit } : {}),
-            ...(isActive !== undefined ? { isActive } : {}),
-            ...(limitByPatients !== undefined ? { limitByPatients } : {}),
-            lastUpdated: new Date().toISOString(),
-          };
-        }
-        syncToMultiTenantDb(productHeaders, departments, next);
-        pushStockToFirestore(next, activeTenantId).catch(console.warn);
-        return next;
-      });
+      const next = { ...prev };
+      const target = next[itemIdOrName] || (Object.values(next) as StockItem[]).find((it) => it.id === itemIdOrName || it.name === itemIdOrName);
+      if (target) {
+        next[target.name] = {
+          ...target,
+          currentStock: Math.max(0, newStock),
+          ...(minThreshold !== undefined ? { minThreshold } : {}),
+          ...(unit ? { unit } : {}),
+          ...(isActive !== undefined ? { isActive } : {}),
+          ...(limitByPatients !== undefined ? { limitByPatients } : {}),
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+      updated = next;
+      stockRef.current = updated;
+      setStock(updated);
+      syncToMultiTenantDb(productHeaders, departments, updated);
+      pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     }
   }, [activeTenantId, productHeaders, departments, syncToMultiTenantDb]);
 
@@ -1228,7 +1193,7 @@ export default function App() {
       }
       saveStoredStock(updated);
     } else {
-      const current = { ...stock };
+      const current = { ...stockRef.current };
       if (oldNameOrId && current[oldNameOrId] && oldNameOrId !== savedItem.name) {
         delete current[oldNameOrId];
       }
@@ -1238,6 +1203,7 @@ export default function App() {
       };
       updated = current;
     }
+    stockRef.current = updated;
     setStock(updated);
     const newHeaders = Object.keys(updated);
     setProductHeaders(newHeaders);
@@ -1250,7 +1216,7 @@ export default function App() {
     pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     setSuccessMessage(`הפריט "${savedItem.name}" נשמר בהצלחה במחסן ובקטלוג! 📦✅`);
     setTimeout(() => setSuccessMessage(null), 3500);
-  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleDeleteStockItem = useCallback((idOrName: string) => {
     let updated: Record<string, StockItem>;
@@ -1258,7 +1224,7 @@ export default function App() {
       updated = deleteDbStockItem(idOrName);
       saveStoredStock(updated);
     } else {
-      const current = { ...stock };
+      const current = { ...stockRef.current };
       const norm = normalizeProductName(idOrName);
       Object.keys(current).forEach((k) => {
         if (k === idOrName || current[k]?.id === idOrName || normalizeProductName(k) === norm) {
@@ -1267,6 +1233,7 @@ export default function App() {
       });
       updated = current;
     }
+    stockRef.current = updated;
     setStock(updated);
     const newHeaders = Object.keys(updated);
     setProductHeaders(newHeaders);
@@ -1279,7 +1246,7 @@ export default function App() {
     pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     setSuccessMessage(`הפריט נמחק לצמיתות מהמחסן ומהקטלוג 🗑️`);
     setTimeout(() => setSuccessMessage(null), 3500);
-  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleMoveStockItem = useCallback((idOrName: string, direction: 'up' | 'down') => {
     let updated: Record<string, StockItem>;
@@ -1337,22 +1304,21 @@ export default function App() {
   }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleOrganizeLogically = useCallback(() => {
-    setStock((prev) => {
-      const organized = organizeStockLogically(prev);
+    const organized = organizeStockLogically(stockRef.current);
+    stockRef.current = organized;
+    setStock(organized);
+    if (activeTenantId === 'tenant-main-01') {
+      saveDbStock(organized, true);
+      saveStoredStock(organized);
+    }
+    const newHeaders = Object.keys(organized);
+    setProductHeaders(newHeaders);
+    try {
       if (activeTenantId === 'tenant-main-01') {
-        saveDbStock(organized, true);
-        saveStoredStock(organized);
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
       }
-      const newHeaders = Object.keys(organized);
-      setProductHeaders(newHeaders);
-      try {
-        if (activeTenantId === 'tenant-main-01') {
-          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(newHeaders));
-        }
-      } catch {}
-      syncToMultiTenantDb(newHeaders, departments, organized);
-      return organized;
-    });
+    } catch {}
+    syncToMultiTenantDb(newHeaders, departments, organized);
     setSuccessMessage('המחסן אורגן וסודר בהצלחה לפי קטגוריות רפואיות! 🩺📦✨');
     setTimeout(() => setSuccessMessage(null), 4000);
   }, [activeTenantId, departments, syncToMultiTenantDb]);
@@ -1360,7 +1326,7 @@ export default function App() {
   const handleSaveCloudBackup = useCallback(async () => {
     try {
       setIsLoading(true);
-      await saveCloudStockBackup(activeTenantId, stock);
+      await saveCloudStockBackup(activeTenantId, stockRef.current);
       setSuccessMessage('הסדר והמלאי הנוכחי נשמרו בהצלחה כגיבוי ענן קבוע ב-Firestore! 🛡️💾');
       setTimeout(() => setSuccessMessage(null), 4500);
     } catch (e: any) {
@@ -1404,82 +1370,84 @@ export default function App() {
   }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleBatchUpdateStock = useCallback((updates: Record<string, StockItem | number>) => {
-    setStock((prev) => {
-      const next = { ...prev };
-      Object.entries(updates).forEach(([key, val]) => {
-        if (val && typeof val === 'object') {
-          const item = val as StockItem;
-          const targetKey = next[item.name] ? item.name : key;
-          const currentQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
-          const currentMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (next[targetKey]?.minThreshold || 10);
-          const currentUnit = item.unit || next[targetKey]?.unit || "יח'";
+    const prev = stockRef.current;
+    const next = { ...prev };
+    Object.entries(updates).forEach(([key, val]) => {
+      if (val && typeof val === 'object') {
+        const item = val as StockItem;
+        const targetKey = next[item.name] ? item.name : key;
+        const currentQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+        const currentMin = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : (next[targetKey]?.minThreshold || 10);
+        const currentUnit = item.unit || next[targetKey]?.unit || "יח'";
 
-          if (next[targetKey]) {
-            next[targetKey] = {
-              ...next[targetKey],
-              currentStock: Math.max(0, currentQty),
-              minThreshold: currentMin,
-              unit: currentUnit,
-              lastDeducted: new Date().toISOString(),
-            };
-          } else if (item.name) {
-            next[item.name] = {
-              id: item.id || `stock-${Date.now()}`,
-              name: item.name,
-              colIndex: item.colIndex || 0,
-              currentStock: Math.max(0, currentQty),
-              minThreshold: currentMin,
-              unit: currentUnit,
-              lastDeducted: new Date().toISOString(),
-            };
-          }
-        } else if (typeof val === 'number') {
-          const qty = !isNaN(val) ? val : 0;
-          if (next[key]) {
-            next[key] = {
-              ...next[key],
-              currentStock: Math.max(0, qty),
-              lastDeducted: new Date().toISOString(),
-            };
-          }
+        if (next[targetKey]) {
+          next[targetKey] = {
+            ...next[targetKey],
+            currentStock: Math.max(0, currentQty),
+            minThreshold: currentMin,
+            unit: currentUnit,
+            lastDeducted: new Date().toISOString(),
+          };
+        } else if (item.name) {
+          next[item.name] = {
+            id: item.id || `stock-${Date.now()}`,
+            name: item.name,
+            colIndex: item.colIndex || 0,
+            currentStock: Math.max(0, currentQty),
+            minThreshold: currentMin,
+            unit: currentUnit,
+            lastDeducted: new Date().toISOString(),
+          };
         }
-      });
-      if (activeTenantId === 'tenant-main-01') {
-        saveDbStock(next);
-        saveStoredStock(next);
+      } else if (typeof val === 'number') {
+        const qty = !isNaN(val) ? val : 0;
+        if (next[key]) {
+          next[key] = {
+            ...next[key],
+            currentStock: Math.max(0, qty),
+            lastDeducted: new Date().toISOString(),
+          };
+        }
       }
-      syncToMultiTenantDb(productHeaders, departments, next);
-      pushStockToFirestore(next, activeTenantId).catch(console.warn);
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
-      }
-      return next;
     });
+
+    stockRef.current = next;
+    setStock(next);
+    if (activeTenantId === 'tenant-main-01') {
+      saveDbStock(next);
+      saveStoredStock(next);
+    }
+    syncToMultiTenantDb(productHeaders, departments, next);
+    pushStockToFirestore(next, activeTenantId).catch(console.warn);
+    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+      debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
+    }
   }, [activeTenantId, productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   const handleSetAllStock = useCallback((defaultVal: number) => {
-    setStock((prev) => {
-      const next: Record<string, StockItem> = {};
-      Object.keys(prev).forEach((id) => {
-        const item = prev[id];
-        if (item) {
-          next[id] = {
-            ...item,
-            currentStock: defaultVal,
-          };
-        }
-      });
-      if (activeTenantId === 'tenant-main-01') {
-        saveDbStock(next);
-        saveStoredStock(next);
+    const prev = stockRef.current;
+    const next: Record<string, StockItem> = {};
+    Object.keys(prev).forEach((id) => {
+      const item = prev[id];
+      if (item) {
+        next[id] = {
+          ...item,
+          currentStock: defaultVal,
+        };
       }
-      syncToMultiTenantDb(productHeaders, departments, next);
-      pushStockToFirestore(next, activeTenantId).catch(console.warn);
-      if (cloudConfig.enabled && cloudConfig.endpointUrl) {
-        debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
-      }
-      return next;
     });
+
+    stockRef.current = next;
+    setStock(next);
+    if (activeTenantId === 'tenant-main-01') {
+      saveDbStock(next);
+      saveStoredStock(next);
+    }
+    syncToMultiTenantDb(productHeaders, departments, next);
+    pushStockToFirestore(next, activeTenantId).catch(console.warn);
+    if (cloudConfig.enabled && cloudConfig.endpointUrl) {
+      debouncedPushStockToCloud(next, cloudConfig, 1500).catch(console.warn);
+    }
   }, [activeTenantId, productHeaders, departments, cloudConfig, syncToMultiTenantDb]);
 
   // Print Handlers
@@ -2000,6 +1968,49 @@ export default function App() {
 
   // 4. Dedicated Mobile Stock Adjuster View
   if (currentView === 'mobile_stock') {
+    if (isWorkspaceLocked) {
+      return (
+        <div
+          className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans"
+          dir="rtl"
+        >
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h1 className="text-xl font-black text-white">גישה לספירת מלאי נעולה</h1>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              מנהל הסניף הפעיל נעילת כניסה לסביבת העבודה של <strong>{activeTenant?.name || 'המחסן'}</strong>. יש להתחבר כדי לצפות או לעדכן מלאי.
+            </p>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={() => setIsLoginModalOpen(true)}
+                className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm transition-colors cursor-pointer"
+              >
+                התחברות מנהל / מורשה
+              </button>
+              <button
+                onClick={() => setCurrentView('portal_pwa')}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+              >
+                מעבר לפורטל הזמנות מחלקתי
+              </button>
+            </div>
+          </div>
+          <LoginModal
+            isOpen={isLoginModalOpen}
+            onClose={() => setIsLoginModalOpen(false)}
+            onSuccess={handleLoginSuccess}
+            subtitle="נדרש זיהוי מנהל לגישה למערכת ספירת המלאי"
+            onOpenOrderPortal={() => {
+              setIsLoginModalOpen(false);
+              setCurrentView('portal_pwa');
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
       <>
         <MobileStockManager
@@ -2022,6 +2033,55 @@ export default function App() {
   }
 
   // 5. Main Tenant Warehouse & Orders Workspace View
+  if (isWorkspaceLocked) {
+    return (
+      <div
+        className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans"
+        dir="rtl"
+      >
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400">
+            <Lock className="w-7 h-7" />
+          </div>
+          <h1 className="text-xl font-black text-white">מערכת המחסן מוגנת בהתחברות</h1>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            סניף <strong>{activeTenant?.name || activeTenantId}</strong> מוגדר במצב אבטחה הדורש התחברות מנהל לפני פתיחת לוח ההזמנות והמלאי.
+          </p>
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              onClick={() => setIsLoginModalOpen(true)}
+              className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm transition-colors cursor-pointer"
+            >
+              התחברות למערכת המחסן
+            </button>
+            <button
+              onClick={() => setCurrentView('portal_pwa')}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+            >
+              פורטל הזמנות למחלקות (ללא מנהל)
+            </button>
+            <button
+              onClick={() => setCurrentView('landing')}
+              className="w-full py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-400 font-medium text-xs transition-colors cursor-pointer"
+            >
+              חזרה לדף הבית
+            </button>
+          </div>
+        </div>
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          onSuccess={handleLoginSuccess}
+          subtitle="סביבת המחסן נעולה לגישה ללא זיהוי מנהל"
+          onOpenOrderPortal={() => {
+            setIsLoginModalOpen(false);
+            setCurrentView('portal_pwa');
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white" dir="rtl">
       {/* Header */}
@@ -2035,6 +2095,7 @@ export default function App() {
         ordersCount={orders.length}
         departmentsCount={departments.length}
         lowStockCount={lowStockCount}
+        blockedStaffCount={blockedStaffCount}
         lastUpdated={lastUpdated}
         authSession={authSession}
         onOpenSuperadmin={() => {
@@ -2141,6 +2202,23 @@ export default function App() {
 
       {/* Notification Toast Messages */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 w-full space-y-2">
+        {isAuthorizedAdmin && authSession?.isWeakPassword && !weakPasswordBannerDismissed && (
+          <div className="bg-amber-500/15 border border-amber-500/40 text-amber-200 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>התראת אבטחה:</strong> הסניף משתמש בסיסמת ברירת מחדל / חלשה. מומלץ להחליפה לסיסמה חזקה (8+ תווים) דרך פאנל הסופר-אדמין.
+              </span>
+            </div>
+            <button
+              onClick={() => setWeakPasswordBannerDismissed(true)}
+              className="text-amber-300 hover:text-white font-bold px-2 cursor-pointer shrink-0"
+              title="סגור התראה"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {errorMessage && (
           <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-2.5 rounded-2xl text-xs flex items-center justify-between shadow-xs">
             <div className="flex items-center gap-2">
@@ -2244,6 +2322,59 @@ export default function App() {
               tenantName={activeTenant?.name}
             />
           )}
+
+          {activeTab === 'staff' && (
+            isAuthorizedAdmin ? (
+              <StaffAccessManager
+                tenantId={activeTenantId}
+                tenantName={activeTenant?.name || activeTenantId}
+                departments={departments}
+                recentOrders={(() => {
+                  const localOrders = getTenantOrders(activeTenantId);
+                  const seenIds = new Set(localOrders.map((o) => o.id));
+                  const syncedOrders = orders
+                    .filter((o) => !seenIds.has(o.id))
+                    .map((o) => ({
+                      id: o.id,
+                      tenantId: activeTenantId,
+                      warehouseId: `wh-${activeTenantId}-main`,
+                      departmentId: o.department,
+                      departmentName: o.department,
+                      orderNumber: o.id.slice(-6),
+                      items: [],
+                      totalItemsCount: Object.keys(o.items || {}).length,
+                      notes: o.notes,
+                      requesterName: o.requesterName,
+                      requesterStaffId: o.requesterStaffId,
+                      status: o.printed ? ('PRINTED' as const) : ('NEW' as const),
+                      source: 'WEB_PORTAL' as const,
+                      createdAt:
+                        o.parsedDate && !isNaN(new Date(o.parsedDate).getTime())
+                          ? new Date(o.parsedDate).toISOString()
+                          : o.timestamp || '',
+                    }));
+                  return [...localOrders, ...syncedOrders];
+                })()}
+                actorName={authSession?.username || 'מנהל סניף'}
+              />
+            ) : (
+              <div className="max-w-lg mx-auto my-8 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-xl">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h2 className="text-lg font-black text-white">נדרשת התחברות מנהל לניהול הרשאות צוות</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  חסימת עובדים לשעבר, הגדרת קודי PIN אישיים ומדיניות אבטחה של הסניף זמינות למנהל סניף מחובר או סופר-אדמין בלבד.
+                </p>
+                <button
+                  onClick={() => setIsLoginModalOpen(true)}
+                  className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm transition-colors cursor-pointer"
+                >
+                  התחברות מנהל
+                </button>
+              </div>
+            )
+          )}
         </ErrorBoundary>
       </main>
 
@@ -2296,6 +2427,14 @@ export default function App() {
         isOpen={isDepartmentQROpen}
         onClose={() => setIsDepartmentQROpen(false)}
         departments={departments}
+        tenantId={activeTenantId}
+        tenantName={activeTenant?.name}
+      />
+
+      {/* PWA Install & Sharing Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
         tenantId={activeTenantId}
         tenantName={activeTenant?.name}
       />

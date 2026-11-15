@@ -6,7 +6,7 @@ import './index.css';
 // Register Service Worker for PWA support
 if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    const swPath = window.location.pathname.includes('/order') ? '../sw.js' : './sw.js';
+    const swPath = /\/(order|stock)\//i.test(window.location.pathname) ? '../sw.js' : './sw.js';
     navigator.serviceWorker.register(swPath).then((reg) => {
       reg.update().catch(() => {});
     }).catch((err) => {

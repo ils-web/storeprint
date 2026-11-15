@@ -126,12 +126,48 @@ export interface MultiTenantOrder {
   items: MultiTenantOrderItem[];
   totalItemsCount: number;
   notes?: string;
+  requesterName?: string;
+  requesterStaffId?: string;
   status: OrderStatus;
   source: OrderSource;
   printed: boolean;
   printedAt?: string;
   createdAt: string;
   rawGoogleSheetRow?: number;
+}
+
+export type StaffStatus = 'active' | 'blocked';
+
+export interface StaffMember {
+  id: string;
+  tenantId: string;
+  fullName: string;
+  normalizedName?: string;
+  aliases?: string[];
+  departmentName?: string;
+  roleTitle?: string;
+  employeeCode?: string;
+  pinHash?: string;
+  status: StaffStatus;
+  blockedReason?: string;
+  blockedAt?: string;
+  blockedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffSecurityPolicy {
+  requireRegisteredStaff: boolean;
+  requirePersonalPin: boolean;
+  requireAdminLoginForWorkspace: boolean;
+  allowPortalOrderDelete: boolean;
+}
+
+export interface StaffDirectory {
+  tenantId: string;
+  members: StaffMember[];
+  policy: StaffSecurityPolicy;
+  updatedAt: string;
 }
 
 export type UserRole = 'superadmin' | 'tenant_admin' | 'department_staff' | 'guest';
@@ -144,4 +180,6 @@ export interface AuthSession {
   departmentName?: string;
   username: string;
   token?: string;
+  expiresAt?: string;
+  isWeakPassword?: boolean;
 }

@@ -18,13 +18,21 @@ import {
   ArrowRight,
   RefreshCw,
   Share2,
+  ShieldAlert,
+  KeyRound,
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { PACKAGING_UNITS } from './WarehouseView';
 import { submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../utils/cloudSync';
 import { pushOrderToFirestore } from '../services/firestoreSync';
 import { createTenantOrder, getWarehouses } from '../services/multiTenantDb';
-import { MultiTenantOrderItem } from '../types/multiTenant';
+import {
+  checkRequesterOrderAccess,
+  getLocalStaffDirectory,
+  matchStaffMember,
+  subscribeToStaffDirectory,
+} from '../services/staffAccessService';
+import { MultiTenantOrderItem, StaffDirectory } from '../types/multiTenant';
 
 interface DepartmentOrderViewProps {
   productHeaders: string[];
@@ -55,6 +63,10 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
   const [requesterName, setRequesterName] = useState<string>(() => {
     return localStorage.getItem(SAVED_REQUESTER_STORAGE_KEY) || '';
   });
+  const [staffPin, setStaffPin] = useState<string>('');
+  const [staffDirectory, setStaffDirectory] = useState<StaffDirectory>(() =>
+    getLocalStaffDirectory(tenantId)
+  );
   const [patientsCount, setPatientsCount] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
@@ -77,11 +89,31 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     notes?: string;
   } | null>(null);
 
+  useEffect(() => {
+    const unsub = subscribeToStaffDirectory(tenantId, setStaffDirectory);
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [tenantId]);
+
+  const activeStaffMembers = useMemo(
+    () => staffDirectory.members.filter((m) => m.status === 'active'),
+    [staffDirectory]
+  );
+
+  const matchedRequester = useMemo(
+    () => (requesterName.trim() ? matchStaffMember(staffDirectory, requesterName.trim()) : undefined),
+    [staffDirectory, requesterName]
+  );
+
+  const isRequesterBlocked = matchedRequester?.status === 'blocked';
+  const requiresPinInput = Boolean(matchedRequester?.pinHash || staffDirectory.policy.requirePersonalPin);
+
   // Save selected department to local storage
   useEffect(() => {
     const dept = isCustomDept ? customDept : selectedDept;
     if (dept) localStorage.setItem(`${SAVED_DEPT_STORAGE_KEY}_${tenantId}`, dept);
-  }, [selectedDept, customDept, isCustomDept]);
+  }, [selectedDept, customDept, isCustomDept, tenantId]);
 
   useEffect(() => {
     if (requesterName) localStorage.setItem(SAVED_REQUESTER_STORAGE_KEY, requesterName);
@@ -193,6 +225,17 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
       return;
     }
 
+    const accessCheck = await checkRequesterOrderAccess({
+      directory: staffDirectory,
+      requesterName,
+      departmentName: activeDept,
+      pin: staffPin,
+    });
+    if (!accessCheck.allowed) {
+      setSubmitError(accessCheck.message || 'אין הרשאה לבצע הזמנה עם שם זה.');
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -224,6 +267,8 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
         items: orderItems,
         totalItemsCount: orderItems.length,
         notes: formattedNotes,
+        requesterName: requesterName.trim(),
+        requesterStaffId: accessCheck.matchedMember?.id,
         patientsCount: patientsCount.trim() || '',
         status: 'NEW',
         source: 'WEB_PORTAL',
@@ -414,21 +459,58 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
                 )}
               </div>
 
-              {/* Requester Name */}
+              {/* Requester Name + PIN */}
               <div className="space-y-1 sm:col-span-1">
                 <label className="font-black text-slate-700 block">
-                  שם המזמין / איש קשר:
+                  שם המזמין / איש קשר: <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="w-3.5 h-3.5 absolute right-3 top-2.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="לדוגמה: אחות אחראית..."
+                    list={`dept-active-staff-${tenantId}`}
+                    placeholder="שם מלא של המזמין..."
                     value={requesterName}
                     onChange={(e) => setRequesterName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pr-8 pl-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    className={`w-full bg-slate-50 border rounded-xl pr-8 pl-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 ${
+                      isRequesterBlocked
+                        ? 'border-rose-500 bg-rose-50 text-rose-900 focus:ring-rose-500'
+                        : 'border-slate-300 focus:ring-sky-500'
+                    }`}
                   />
+                  {activeStaffMembers.length > 0 && (
+                    <datalist id={`dept-active-staff-${tenantId}`}>
+                      {activeStaffMembers.map((m) => (
+                        <option key={m.id} value={m.fullName} />
+                      ))}
+                    </datalist>
+                  )}
                 </div>
+
+                {requiresPinInput && (
+                  <div className="relative pt-1">
+                    <KeyRound className="w-3.5 h-3.5 absolute right-3 top-3.5 text-indigo-500" />
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      placeholder="קוד PIN אישי לשליחה"
+                      value={staffPin}
+                      onChange={(e) => setStaffPin(e.target.value)}
+                      className="w-full bg-indigo-50/70 border border-indigo-300 rounded-xl pr-8 pl-3 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
+
+                {isRequesterBlocked && (
+                  <div className="p-2 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-[11px] font-bold flex items-start gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>
+                      {matchedRequester?.blockedReason
+                        ? `העובד חסום מהזמנות: ${matchedRequester.blockedReason}`
+                        : 'הרשאת ההזמנות לעובד זה בוטלה על ידי הנהלת המחסן.'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Notes / Urgency */}

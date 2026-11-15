@@ -7,13 +7,14 @@ import {
   getDocs,
   onSnapshot,
   query,
+  orderBy,
   limit,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db, isFirebaseReady } from './firebase';
+import { db, ensureFirebaseAuth, isFirebaseReady } from './firebase';
 import { StockItem } from '../types';
 import { MultiTenantOrder } from '../types/multiTenant';
-import { getDbStock, saveDbStock } from './unifiedDb';
+import { saveDbStock } from './unifiedDb';
 import { saveTenantOrders, getTenantStockMap } from './multiTenantDb';
 
 /**
@@ -43,6 +44,7 @@ export async function pushStockToFirestore(
   lastLocalStockWriteAt[tenantId] = Date.now();
   activeStockWritesCount[tenantId] = (activeStockWritesCount[tenantId] || 0) + 1;
   try {
+    await ensureFirebaseAuth();
     const payload = sanitizeForFirestore({
       stock,
       totalItems: Object.keys(stock).length,
@@ -74,6 +76,7 @@ export async function fetchStockFromFirestore(
 ): Promise<Record<string, StockItem> | null> {
   if (!isFirebaseReady || !db) return null;
   try {
+    await ensureFirebaseAuth();
     const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
     const snap = await getDoc(tenantRef);
     if (snap.exists()) {
@@ -108,49 +111,57 @@ export function subscribeToFirestoreStock(
 ): Unsubscribe | null {
   if (!isFirebaseReady || !db) return null;
 
-  try {
-    const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
-    const unsub1 = onSnapshot(
-      docRef,
-      (snapshot) => {
-        // Ignore local pending writes and immediate server echoes while user is actively editing stock
-        if (snapshot.metadata?.hasPendingWrites) return;
-        if ((activeStockWritesCount[tenantId] || 0) > 0) return;
-        if (Date.now() - (lastLocalStockWriteAt[tenantId] || 0) < 3000) return;
+  let cancelled = false;
+  let unsub1: Unsubscribe | null = null;
 
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          if (data && data.stock && typeof data.stock === 'object') {
-            const firestoreStock = data.stock as Record<string, StockItem>;
-            if (Object.keys(firestoreStock).length > 0) {
-              if (tenantId === 'tenant-main-01') {
-                saveDbStock(firestoreStock, false);
+  ensureFirebaseAuth().finally(() => {
+    if (cancelled || !db) return;
+    try {
+      const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'master_stock');
+      unsub1 = onSnapshot(
+        docRef,
+        (snapshot) => {
+          // Ignore local pending writes and immediate server echoes while user is actively editing stock
+          if (snapshot.metadata?.hasPendingWrites) return;
+          if ((activeStockWritesCount[tenantId] || 0) > 0) return;
+          if (Date.now() - (lastLocalStockWriteAt[tenantId] || 0) < 3000) return;
+
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data && data.stock && typeof data.stock === 'object') {
+              const firestoreStock = data.stock as Record<string, StockItem>;
+              if (Object.keys(firestoreStock).length > 0) {
+                if (tenantId === 'tenant-main-01') {
+                  saveDbStock(firestoreStock, false);
+                }
+                onStockUpdated(firestoreStock);
               }
-              onStockUpdated(firestoreStock);
+            }
+          } else {
+            // If Firestore document is empty, seed it with tenant-specific inventory
+            const localStock = getTenantStockMap(tenantId);
+            if (Object.keys(localStock).length > 0) {
+              pushStockToFirestore(localStock, tenantId).catch(console.warn);
             }
           }
-        } else {
-          // If Firestore document is empty, seed it with tenant-specific inventory
-          const localStock = getTenantStockMap(tenantId);
-          if (Object.keys(localStock).length > 0) {
-            pushStockToFirestore(localStock, tenantId).catch(console.warn);
-          }
+        },
+        (err) => {
+          console.warn('Firestore stock subscription error:', err);
         }
-      },
-      (err) => {
-        console.warn('Firestore stock subscription error:', err);
-      }
-    );
+      );
+    } catch (err) {
+      console.warn('Failed to start Firestore stock subscription:', err);
+    }
+  });
 
-    return () => {
+  return () => {
+    cancelled = true;
+    if (unsub1) {
       try {
         unsub1();
       } catch {}
-    };
-  } catch (err) {
-    console.warn('Failed to start Firestore stock subscription:', err);
-    return null;
-  }
+    }
+  };
 }
 
 /**
@@ -167,12 +178,13 @@ export async function pushOrderToFirestore(
   }
 
   const writeOperation = async (): Promise<boolean> => {
+    await ensureFirebaseAuth();
     const cleanPayload = sanitizeForFirestore({
       ...order,
       syncedAt: new Date().toISOString(),
     });
 
-    const writes: Promise<any>[] = [];
+    const writes: Promise<void>[] = [];
     const orderDocRef = doc(db!, 'tenants', tenantId, 'orders', order.id);
     writes.push(setDoc(orderDocRef, cleanPayload));
 
@@ -182,7 +194,6 @@ export async function pushOrderToFirestore(
     }
 
     await Promise.all(writes);
-    console.log('✅ Order pushed to Firestore successfully:', order.id, order.departmentName);
     return true;
   };
 
@@ -194,7 +205,6 @@ export async function pushOrderToFirestore(
     return await Promise.race([writeOperation(), timeoutPromise]);
   } catch (err) {
     console.warn('Firestore pushOrder timeout/warning (saved locally, will retry in background):', err);
-    // Background retry without blocking the user
     writeOperation().catch((bgErr) => console.warn('Background Firestore push error:', bgErr));
     return false;
   }
@@ -211,6 +221,7 @@ export async function updateOrderPrintedInFirestore(
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
   try {
+    await ensureFirebaseAuth();
     const patch = sanitizeForFirestore({
       printed,
       status: printed ? 'PRINTED' : 'NEW',
@@ -234,7 +245,8 @@ export async function updateOrderPrintedInFirestore(
 }
 
 /**
- * Subscribes to real-time orders from Firestore strictly for the specified tenant
+ * Subscribes to real-time orders from Firestore strictly for the specified tenant.
+ * Rebuilds each source map on snapshot so remote deletions propagate accurately.
  */
 export function subscribeToFirestoreOrders(
   onOrdersUpdated: (orders: MultiTenantOrder[]) => void,
@@ -242,69 +254,101 @@ export function subscribeToFirestoreOrders(
 ): Unsubscribe | null {
   if (!isFirebaseReady || !db) return null;
 
-  try {
-    const ordersMap = new Map<string, MultiTenantOrder>();
+  let cancelled = false;
+  let unsub1: Unsubscribe | null = null;
+  let unsub2: Unsubscribe | null = null;
 
-    const isMain = tenantId === 'tenant-main-01';
-    const handleSnapshot = (snapshot: any) => {
-      snapshot.forEach((docSnap: any) => {
-        const data = docSnap.data() as MultiTenantOrder;
-        if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-          if (isMain) {
-            if (!data.tenantId || data.tenantId === 'tenant-main-01') {
-              ordersMap.set(docSnap.id, data);
-            }
-          } else {
-            if (data.tenantId === tenantId) {
-              ordersMap.set(docSnap.id, data);
-            }
+  const isMain = tenantId === 'tenant-main-01';
+  const tenantOrdersMap = new Map<string, MultiTenantOrder>();
+  const globalOrdersMap = new Map<string, MultiTenantOrder>();
+
+  const emitCombinedOrders = () => {
+    const merged = new Map<string, MultiTenantOrder>();
+    // Put global legacy first, then overlay tenant collection so tenant-scoped docs take precedence
+    globalOrdersMap.forEach((order, id) => merged.set(id, order));
+    tenantOrdersMap.forEach((order, id) => merged.set(id, order));
+
+    const liveOrders = Array.from(merged.values()).filter((o) =>
+      isMain ? !o.tenantId || o.tenantId === 'tenant-main-01' : o.tenantId === tenantId
+    );
+    liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    saveTenantOrders(tenantId, liveOrders);
+    onOrdersUpdated(liveOrders);
+  };
+
+  const applySnapshotToMap = (snapshot: any, targetMap: Map<string, MultiTenantOrder>) => {
+    targetMap.clear();
+    snapshot.forEach((docSnap: any) => {
+      const data = docSnap.data() as MultiTenantOrder;
+      if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
+        if (isMain) {
+          if (!data.tenantId || data.tenantId === 'tenant-main-01') {
+            targetMap.set(docSnap.id, data);
+          }
+        } else if (data.tenantId === tenantId) {
+          targetMap.set(docSnap.id, data);
+        }
+      }
+    });
+    emitCombinedOrders();
+  };
+
+  ensureFirebaseAuth().finally(() => {
+    if (cancelled || !db) return;
+    try {
+      const tenantCol = collection(db, 'tenants', tenantId, 'orders');
+      const q1 = query(tenantCol, orderBy('createdAt', 'desc'), limit(1000));
+      unsub1 = onSnapshot(
+        q1,
+        (snap) => applySnapshotToMap(snap, tenantOrdersMap),
+        (err) => {
+          console.warn('Firestore ordered tenant orders subscription fallback:', err);
+          if (!cancelled && db) {
+            unsub1 = onSnapshot(
+              query(tenantCol, limit(1000)),
+              (snap) => applySnapshotToMap(snap, tenantOrdersMap),
+              (err2) => console.warn('Firestore tenant orders subscription error:', err2)
+            );
           }
         }
-      });
-
-      const liveOrders = Array.from(ordersMap.values()).filter(
-        (o) => isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === tenantId
       );
-      liveOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      saveTenantOrders(tenantId, liveOrders);
-      onOrdersUpdated(liveOrders);
-    };
 
-    // 1. Subscribe to tenant collection
-    const tenantCol = collection(db, 'tenants', tenantId, 'orders');
-    const q1 = query(tenantCol, limit(1000));
-    const unsub1 = onSnapshot(
-      q1,
-      handleSnapshot,
-      (err) => console.warn('Firestore tenant orders subscription error:', err)
-    );
-
-    // 2. Subscribe to global collection ONLY for main hospital tenant
-    let unsub2: (() => void) | null = null;
-    if (tenantId === 'tenant-main-01') {
-      const globalCol = collection(db, 'orders');
-      const q2 = query(globalCol, limit(1000));
-      unsub2 = onSnapshot(
-        q2,
-        handleSnapshot,
-        (err) => console.warn('Firestore global orders subscription error:', err)
-      );
+      if (isMain) {
+        const globalCol = collection(db, 'orders');
+        const q2 = query(globalCol, orderBy('createdAt', 'desc'), limit(1000));
+        unsub2 = onSnapshot(
+          q2,
+          (snap) => applySnapshotToMap(snap, globalOrdersMap),
+          (err) => {
+            console.warn('Firestore ordered global orders subscription fallback:', err);
+            if (!cancelled && db) {
+              unsub2 = onSnapshot(
+                query(globalCol, limit(1000)),
+                (snap) => applySnapshotToMap(snap, globalOrdersMap),
+                (err2) => console.warn('Firestore global orders subscription error:', err2)
+              );
+            }
+          }
+        );
+      }
+    } catch (err) {
+      console.warn('Failed to start Firestore orders subscription:', err);
     }
+  });
 
-    return () => {
+  return () => {
+    cancelled = true;
+    if (unsub1) {
       try {
         unsub1();
       } catch {}
-      if (unsub2) {
-        try {
-          unsub2();
-        } catch {}
-      }
-    };
-  } catch (err) {
-    console.warn('Failed to start Firestore orders subscription:', err);
-    return null;
-  }
+    }
+    if (unsub2) {
+      try {
+        unsub2();
+      } catch {}
+    }
+  };
 }
 
 /**
@@ -315,53 +359,51 @@ export async function fetchOrdersFromFirestore(
 ): Promise<MultiTenantOrder[]> {
   if (!isFirebaseReady || !db) return [];
   try {
+    await ensureFirebaseAuth();
     const isMain = tenantId === 'tenant-main-01';
     const ordersMap = new Map<string, MultiTenantOrder>();
 
-    // 1. Fetch tenant collection
-    try {
-      const ordersCol = collection(db, 'tenants', tenantId, 'orders');
-      const q = query(ordersCol, limit(1000));
-      const snapshot = await getDocs(q);
-      snapshot.forEach((docSnap) => {
+    const collectIntoMap = (snap: any) => {
+      snap.forEach((docSnap: any) => {
         const data = docSnap.data();
         if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
           if (isMain) {
             if (!data.tenantId || data.tenantId === 'tenant-main-01') {
               ordersMap.set(docSnap.id, data as MultiTenantOrder);
             }
-          } else {
-            if (data.tenantId === tenantId) {
-              ordersMap.set(docSnap.id, data as MultiTenantOrder);
-            }
+          } else if (data.tenantId === tenantId) {
+            ordersMap.set(docSnap.id, data as MultiTenantOrder);
           }
         }
       });
-    } catch (e) {
-      console.warn('Error fetching tenant orders:', e);
-    }
+    };
 
-    // 2. Fetch global collection ONLY for main hospital tenant
-    if (tenantId === 'tenant-main-01') {
+    // 1. Fetch global legacy collection FIRST (for main hospital tenant) so tenant collection wins on merge
+    if (isMain) {
       try {
         const globalCol = collection(db, 'orders');
-        const qG = query(globalCol, limit(1000));
-        const snapG = await getDocs(qG);
-        snapG.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data && data.items && Array.isArray(data.items) && data.items.length > 0) {
-            if (!data.tenantId || data.tenantId === 'tenant-main-01') {
-              ordersMap.set(docSnap.id, data as MultiTenantOrder);
-            }
-          }
-        });
+        const snapG = await getDocs(query(globalCol, orderBy('createdAt', 'desc'), limit(1000))).catch(() =>
+          getDocs(query(globalCol, limit(1000)))
+        );
+        collectIntoMap(snapG);
       } catch (e) {
         console.warn('Error fetching global orders:', e);
       }
     }
 
-    const orders = Array.from(ordersMap.values()).filter(
-      (o) => isMain ? (!o.tenantId || o.tenantId === 'tenant-main-01') : o.tenantId === tenantId
+    // 2. Fetch tenant collection
+    try {
+      const ordersCol = collection(db, 'tenants', tenantId, 'orders');
+      const snapshot = await getDocs(query(ordersCol, orderBy('createdAt', 'desc'), limit(1000))).catch(() =>
+        getDocs(query(ordersCol, limit(1000)))
+      );
+      collectIntoMap(snapshot);
+    } catch (e) {
+      console.warn('Error fetching tenant orders:', e);
+    }
+
+    const orders = Array.from(ordersMap.values()).filter((o) =>
+      isMain ? !o.tenantId || o.tenantId === 'tenant-main-01' : o.tenantId === tenantId
     );
     orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     saveTenantOrders(tenantId, orders);
@@ -381,20 +423,18 @@ export async function deleteOrderFromFirestore(
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
   try {
+    await ensureFirebaseAuth();
     const cleanId = orderId.trim();
     if (!cleanId) return false;
 
-    // 1. Delete from tenant collection
     const docRef = doc(db, 'tenants', tenantId, 'orders', cleanId);
     await deleteDoc(docRef);
 
-    // 2. Delete from global collection ONLY for main hospital tenant
     if (tenantId === 'tenant-main-01') {
       const globalRef = doc(db, 'orders', cleanId);
       await deleteDoc(globalRef);
     }
 
-    console.log('✅ Order deleted from Firestore permanently:', cleanId);
     return true;
   } catch (err) {
     console.warn('Firestore deleteOrderFromFirestore error:', err);
@@ -412,6 +452,7 @@ export async function pushPrintedOrderKeysToFirestore(
 ): Promise<boolean> {
   if (!isFirebaseReady || !db) return false;
   try {
+    await ensureFirebaseAuth();
     const payload = sanitizeForFirestore({
       keys: Array.from(new Set(keys.filter((k) => k && typeof k === 'string' && !k.startsWith('unprinted_')))),
       totalPrinted: keys.length,
@@ -440,6 +481,7 @@ export async function fetchPrintedOrderKeysFromFirestore(
 ): Promise<string[]> {
   if (!isFirebaseReady || !db) return [];
   try {
+    await ensureFirebaseAuth();
     const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
     const snap = await getDoc(tenantRef);
     if (snap.exists() && Array.isArray(snap.data()?.keys)) {
@@ -467,24 +509,39 @@ export function subscribeToFirestorePrintedOrderKeys(
   tenantId: string = 'tenant-main-01'
 ): Unsubscribe | null {
   if (!isFirebaseReady || !db) return null;
-  try {
-    const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
-    return onSnapshot(
-      tenantRef,
-      (snap) => {
-        if (snap.exists()) {
-          const keys = snap.data()?.keys;
-          if (Array.isArray(keys)) {
-            onKeysUpdated(keys);
+
+  let cancelled = false;
+  let unsub: Unsubscribe | null = null;
+
+  ensureFirebaseAuth().finally(() => {
+    if (cancelled || !db) return;
+    try {
+      const tenantRef = doc(db, 'tenants', tenantId, 'warehouse', 'printed_orders');
+      unsub = onSnapshot(
+        tenantRef,
+        (snap) => {
+          if (snap.exists()) {
+            const keys = snap.data()?.keys;
+            if (Array.isArray(keys)) {
+              onKeysUpdated(keys);
+            }
           }
-        }
-      },
-      (err) => console.warn('Firestore printed order keys subscription error:', err)
-    );
-  } catch (err) {
-    console.warn('Failed to start printed order keys subscription:', err);
-    return null;
-  }
+        },
+        (err) => console.warn('Firestore printed order keys subscription error:', err)
+      );
+    } catch (err) {
+      console.warn('Failed to start printed order keys subscription:', err);
+    }
+  });
+
+  return () => {
+    cancelled = true;
+    if (unsub) {
+      try {
+        unsub();
+      } catch {}
+    }
+  };
 }
 
 /**
@@ -495,6 +552,7 @@ export async function saveCloudStockBackup(
   stock: Record<string, StockItem>
 ): Promise<void> {
   if (!isFirebaseReady || !db) throw new Error('Firebase לא מחובר');
+  await ensureFirebaseAuth();
   const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'stock_backup');
   await setDoc(docRef, sanitizeForFirestore({
     stock,
@@ -510,6 +568,7 @@ export async function restoreCloudStockBackup(
   tenantId: string
 ): Promise<Record<string, StockItem> | null> {
   if (!isFirebaseReady || !db) throw new Error('Firebase לא מחובר');
+  await ensureFirebaseAuth();
   const docRef = doc(db, 'tenants', tenantId, 'warehouse', 'stock_backup');
   const snap = await getDoc(docRef);
   if (snap.exists() && snap.data()?.stock) {

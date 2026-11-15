@@ -1,18 +1,6 @@
 import { Order, PrintSettings, StockItem } from '../types';
 import { groupAndSortStockItems } from './stockGrouper';
-
-/**
- * Escapes HTML characters
- */
-function escapeHtml(str: string | null | undefined): string {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+import { escapeHtml } from './htmlUtils';
 
 /**
  * Generates an HTML document for department orders and opens the print dialog.
@@ -23,21 +11,23 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings, isCopy
 
   const printWindow = window.open('', '_blank', 'width=950,height=850');
   if (!printWindow) {
-    alert('Пожалуйста, разрешите всплывающие окна в браузере для отправки на печать.');
+    alert('נא לאפשר חלונות קופצים (Pop-ups) בדפדפן להדפסה.');
     return;
   }
 
   const { paperSize, orientation, showCheckbox, fontSizePt } = settings;
+  const safeFontSizePt = Number.isFinite(Number(fontSizePt)) ? Number(fontSizePt) : 13;
+  const safeOrientation = orientation === 'landscape' ? 'landscape' : 'portrait';
 
   let pageCss = '';
   if (paperSize === 'A5') {
-    pageCss = `@page { size: A5 ${orientation}; margin: 8mm; }`;
+    pageCss = `@page { size: A5 ${safeOrientation}; margin: 8mm; }`;
   } else if (paperSize === 'LABEL_100x150') {
-    pageCss = `@page { size: 100mm 150mm ${orientation}; margin: 4mm; }`;
+    pageCss = `@page { size: 100mm 150mm ${safeOrientation}; margin: 4mm; }`;
   } else if (paperSize === 'ROLL_80MM') {
     pageCss = `@page { size: 80mm auto; margin: 3mm; }`;
   } else {
-    pageCss = `@page { size: A4 ${orientation}; margin: 10mm; }`;
+    pageCss = `@page { size: A4 ${safeOrientation}; margin: 10mm; }`;
   }
 
   const htmlContent = `
@@ -45,7 +35,7 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings, isCopy
     <html lang="he" dir="rtl">
     <head>
       <meta charset="UTF-8">
-      <title>הדפסת הזמנות - ${orders[0]?.department || 'הזמנה'}${isCopy ? ' (העתק)' : ''}</title>
+      <title>הדפסת הזמנות - ${escapeHtml(orders[0]?.department || 'הזמנה')}${isCopy ? ' (העתק)' : ''}</title>
       <style>
         ${pageCss}
         * { box-sizing: border-box; }
@@ -55,7 +45,7 @@ export function printOrdersHtml(orders: Order[], settings: PrintSettings, isCopy
           margin: 0;
           padding: 0;
           background: #ffffff;
-          font-size: ${fontSizePt || 13}pt;
+          font-size: ${safeFontSizePt}pt;
           line-height: 1.35;
           direction: rtl;
         }
@@ -304,7 +294,7 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
     <html lang="he" dir="rtl">
     <head>
       <meta charset="UTF-8">
-      <title>דוח חוסרים והזמנת רכש - ${dateStr}</title>
+      <title>דוח חוסרים והזמנת רכש - ${escapeHtml(dateStr)}</title>
       <style>
         @page { size: A4 portrait; margin: 8mm; }
         * { box-sizing: border-box; }
@@ -547,7 +537,7 @@ export function printReorderListHtml(lowStockItems: StockItem[], minThreshold: n
                   const neededQty = Math.max(1, th - safeQty);
                   const unit = escapeHtml(item.unit || "יח'");
                   const isZero = safeQty === 0;
-                  const posText = item.colIndex ? `#${item.colIndex - 3}` : '';
+                  const posText = Number.isFinite(Number(item.colIndex)) ? `#${Number(item.colIndex) - 3}` : '';
 
                   return `
                 <tr class="${isZero ? 'zero-stock-row' : ''}">

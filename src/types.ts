@@ -22,6 +22,8 @@ export interface Order {
   totalItemsCount: number; // Count of items ordered
   printed: boolean;
   printedAt?: string;
+  requesterName?: string;
+  requesterStaffId?: string;
   rawRow: Record<string, string>;
 }
 

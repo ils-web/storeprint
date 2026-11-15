@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Tenant,
-  Warehouse,
   PlanType,
   TenantStatus,
   AuthSession,
@@ -14,23 +13,27 @@ import {
   deleteTenant,
   getWarehouses,
   createWarehouse,
-  updateWarehouse,
   BILLING_PLANS,
   saveAuthSession,
   getTenantDepartments,
   saveTenantDepartments,
+  getTenantOrders,
   fetchTenantsFromFirestore,
   subscribeToTenantsFirestore,
   fetchWarehousesFromFirestore,
+  isTenantSecretWeak,
+  updateSuperAdminPassword,
 } from '../../services/multiTenantDb';
 import { saveDbDepartments } from '../../services/unifiedDb';
+import { buildLandingUrl } from '../../utils/urlUtils';
+import { generateSessionToken } from '../../utils/crypto';
+import { StaffAccessManager } from '../staff/StaffAccessManager';
 import {
   Building2,
   Plus,
   Search,
   ShieldCheck,
   CreditCard,
-  Layers,
   CheckCircle2,
   AlertTriangle,
   Lock,
@@ -41,8 +44,8 @@ import {
   Zap,
   Package,
   LogOut,
-  ArrowRight,
   Share2,
+  Users,
 } from 'lucide-react';
 
 interface SuperAdminDashboardProps {
@@ -56,10 +59,11 @@ export function SuperAdminDashboard({
   onLogout,
   onSelectTenantApp,
 }: SuperAdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'tenants' | 'billing' | 'warehouses'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'billing'>('tenants');
   const [tenantsList, setTenantsList] = useState<Tenant[]>(() => getTenants());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | TenantStatus>('all');
+  const [weakBannerDismissed, setWeakBannerDismissed] = useState(false);
 
   useEffect(() => {
     fetchTenantsFromFirestore().then((fresh) => {
@@ -83,20 +87,16 @@ export function SuperAdminDashboard({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
+  const [staffModalTenant, setStaffModalTenant] = useState<Tenant | null>(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentSuperPass, setCurrentSuperPass] = useState('');
+  const [newSuperPass, setNewSuperPass] = useState('');
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [copiedLandingUrl, setCopiedLandingUrl] = useState(false);
 
   const handleCopyLandingLink = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-    const cleanPath = typeof window !== 'undefined'
-      ? window.location.pathname
-          .replace(/\/index\.html$/i, '')
-          .replace(/\/landing(\.html)?$/i, '')
-          .replace(/\/order(\.html)?$/i, '')
-          .replace(/\/stock(\.html)?$/i, '')
-          .replace(/\/$/, '')
-      : '/storeprint';
-    const landingUrl = `${origin}${cleanPath}/landing.html`;
+    const landingUrl = buildLandingUrl();
     navigator.clipboard.writeText(landingUrl);
     setCopiedLandingUrl(true);
     setTimeout(() => setCopiedLandingUrl(false), 2500);
@@ -158,7 +158,7 @@ export function SuperAdminDashboard({
     return acc + (BILLING_PLANS[t.plan]?.priceMonthlyNis || 0);
   }, 0);
 
-  const handleCreateTenant = (e: React.FormEvent) => {
+  const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.login.trim() || !formData.password.trim()) {
       alert('נא למלא שם סניף, שם משתמש וסיסמה.');
@@ -173,7 +173,7 @@ export function SuperAdminDashboard({
             .filter((d) => d.length > 0)
         : [];
 
-      createTenant({
+      await createTenant({
         ...formData,
         initialDepartments: parsedDepts.length > 0 ? parsedDepts : undefined,
       });
@@ -205,7 +205,7 @@ export function SuperAdminDashboard({
     setEditFormData({
       name: tenant.name,
       login: tenant.login,
-      password: tenant.passwordHash,
+      password: '',
       plan: tenant.plan,
       status: tenant.status,
       contactPerson: tenant.contactPerson || '',
@@ -217,14 +217,14 @@ export function SuperAdminDashboard({
     setIsEditModalOpen(true);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTenant) return;
 
-    updateTenant(selectedTenant.id, {
+    await updateTenant(selectedTenant.id, {
       name: editFormData.name,
       login: editFormData.login,
-      passwordHash: editFormData.password,
+      ...(editFormData.password.trim() ? { passwordHash: editFormData.password.trim() } : {}),
       plan: editFormData.plan,
       status: editFormData.status,
       contactPerson: editFormData.contactPerson,
@@ -236,18 +236,23 @@ export function SuperAdminDashboard({
       },
     });
 
-    // Save customized departments for this tenant
+    // Save customized departments while preserving existing IDs and PIN codes
+    const existingDepts = getTenantDepartments(selectedTenant.id);
+    const existingByName = new Map(existingDepts.map((d) => [d.name.trim(), d]));
     const parsedDepts = editFormData.departmentsText
       .split('\n')
       .map((d) => d.trim())
       .filter((d) => d.length > 0);
 
-    const newDeptItems: TenantDepartment[] = parsedDepts.map((name, idx) => ({
-      id: `dept-${selectedTenant.id}-${idx}`,
-      tenantId: selectedTenant.id,
-      name,
-      pinCode: '1234',
-    }));
+    const newDeptItems: TenantDepartment[] = parsedDepts.map((name, idx) => {
+      const prev = existingByName.get(name);
+      return {
+        id: prev?.id || `dept-${selectedTenant.id}-${Date.now()}-${idx}`,
+        tenantId: selectedTenant.id,
+        name,
+        pinCode: prev?.pinCode || '1234',
+      };
+    });
     saveTenantDepartments(selectedTenant.id, newDeptItems);
 
     if (selectedTenant.id === 'tenant-main-01') {
@@ -305,15 +310,34 @@ export function SuperAdminDashboard({
       tenantId: tenant.id,
       tenantName: tenant.name,
       username: `${tenant.name} (SuperAdmin)`,
+      token: `sa_imp_${generateSessionToken()}`,
+      expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
     });
     onSelectTenantApp(tenant.id);
+  };
+
+  const handleChangeSuperPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeMsg(null);
+    try {
+      await updateSuperAdminPassword(currentSuperPass, newSuperPass);
+      setCurrentSuperPass('');
+      setNewSuperPass('');
+      setPasswordChangeMsg({ type: 'ok', text: 'סיסמת הניהול הראשי עודכנה והוצפנה בהצלחה!' });
+      setTimeout(() => setIsPasswordModalOpen(false), 1200);
+    } catch (err: unknown) {
+      setPasswordChangeMsg({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'שגיאה בעדכון הסיסמה',
+      });
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans" dir="rtl">
       {/* Top Navbar */}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-30 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <ShieldCheck className="w-6 h-6 text-white" />
@@ -329,7 +353,7 @@ export function SuperAdminDashboard({
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700">
               <button
                 onClick={() => setActiveTab('tenants')}
@@ -361,6 +385,18 @@ export function SuperAdminDashboard({
             </div>
 
             <button
+              onClick={() => {
+                setPasswordChangeMsg(null);
+                setIsPasswordModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              title="עדכון סיסמת סופר-אדמין"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>החלף סיסמה</span>
+            </button>
+
+            <button
               onClick={handleCopyLandingLink}
               className="flex items-center gap-1.5 px-3 py-2 bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-700/60 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
               title="העתק קישור ישיר לעמוד הנחיתה להעברה לבתי חולים חדשים"
@@ -383,6 +419,40 @@ export function SuperAdminDashboard({
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto p-6 space-y-6">
+        {currentSession.isWeakPassword && !weakBannerDismissed && (
+          <div className="bg-amber-500/15 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-amber-200 text-sm">
+                  אזהרת אבטחה: אתה מחובר עם סיסמת ברירת מחדל או סיסמה חלשה
+                </div>
+                <div className="text-xs text-amber-300/80 mt-0.5">
+                  מומלץ להחליף מיד את סיסמת הסופר-אדמין ואת סיסמאות הסניפים שמסומנים בצהוב לסיסמאות חזקות (8+ תווים).
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setPasswordChangeMsg(null);
+                  setIsPasswordModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl cursor-pointer"
+              >
+                החלף סיסמה עכשיו
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeakBannerDismissed(true)}
+                className="text-xs text-amber-300 hover:text-white px-2 py-1"
+              >
+                הסתר
+              </button>
+            </div>
+          </div>
+        )}
         {/* Metric Cards Banner */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-slate-800/60 border border-slate-700/70 rounded-2xl p-5 shadow-lg">
@@ -524,11 +594,17 @@ export function SuperAdminDashboard({
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-slate-400 flex items-center gap-1.5">
                             <Lock className="w-3.5 h-3.5 text-slate-500" />
-                            סיסמה:
+                            אבטחת סיסמה:
                           </span>
-                          <span className="font-mono text-slate-300">
-                            {tenant.passwordHash}
-                          </span>
+                          {isTenantSecretWeak(tenant) ? (
+                            <span className="text-[11px] font-bold text-amber-300 bg-amber-950/60 border border-amber-700/50 px-2 py-0.5 rounded">
+                              ⚠️ ברירת מחדל / חלשה
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-700/50 px-2 py-0.5 rounded">
+                              🔒 מוצפנת (PBKDF2)
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800">
@@ -578,6 +654,14 @@ export function SuperAdminDashboard({
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         <span>כניסה לסניף</span>
+                      </button>
+
+                      <button
+                        onClick={() => setStaffModalTenant(tenant)}
+                        className="p-2 bg-rose-950/80 hover:bg-rose-700 text-rose-200 border border-rose-700/50 rounded-xl transition-colors cursor-pointer"
+                        title="בקרת צוות וחסימת עובדים"
+                      >
+                        <Users className="w-4 h-4" />
                       </button>
 
                       <button
@@ -905,14 +989,14 @@ export function SuperAdminDashboard({
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase mb-1.5">
-                    סיסמה
+                    סיסמה חדשה (השאר ריק לשמירת הקיימת)
                   </label>
                   <input
-                    type="text"
-                    required
+                    type="password"
                     value={editFormData.password}
                     onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-mono"
+                    placeholder="הזן סיסמה חדשה לשינוי..."
+                    className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-mono placeholder-slate-500"
                   />
                 </div>
               </div>
@@ -1074,6 +1158,96 @@ export function SuperAdminDashboard({
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: STAFF ACCESS & FIRE/BLOCK PER TENANT */}
+      {staffModalTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm" dir="rtl">
+          <div className="bg-slate-100 text-slate-900 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl p-4 sm:p-6">
+            <StaffAccessManager
+              tenantId={staffModalTenant.id}
+              tenantName={staffModalTenant.name}
+              departments={getTenantDepartments(staffModalTenant.id).map((d) => d.name)}
+              recentOrders={getTenantOrders(staffModalTenant.id)}
+              actorName="סופר-אדמין ראשי"
+              onClose={() => setStaffModalTenant(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CHANGE SUPERADMIN PASSWORD */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-lg text-white">שינוי סיסמת ניהול ראשי</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPasswordModalOpen(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleChangeSuperPassword} className="p-6 space-y-4">
+              {passwordChangeMsg && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-bold border ${
+                    passwordChangeMsg.type === 'ok'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                  }`}
+                >
+                  {passwordChangeMsg.text}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">סיסמה נוכחית</label>
+                <input
+                  type="password"
+                  required
+                  value={currentSuperPass}
+                  onChange={(e) => setCurrentSuperPass(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">סיסמה חדשה (לפחות 8 תווים)</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={newSuperPass}
+                  onChange={(e) => setNewSuperPass(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black cursor-pointer"
+                >
+                  עדכן והצפן סיסמה
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

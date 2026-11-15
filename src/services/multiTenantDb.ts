@@ -6,12 +6,12 @@ import {
   MultiTenantOrder,
   AuthSession,
   PlanType,
-  STANDARD_PACKAGING_UNITS,
 } from '../types/multiTenant';
 import { StockItem } from '../types';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_GID } from '../utils/googleSheets';
 import { CANONICAL_DEPARTMENTS, getDbStock, saveDbDepartments } from './unifiedDb';
-import { db } from './firebase';
+import { db, ensureFirebaseAuth } from './firebase';
+import { hashSecret, verifySecret, isHashedSecret, generateSessionToken } from '../utils/crypto';
 import {
   doc,
   setDoc,
@@ -29,12 +29,24 @@ const INVENTORY_KEY = `${STORAGE_KEY_PREFIX}inventory_`;
 const DEPARTMENTS_KEY = `${STORAGE_KEY_PREFIX}departments_`;
 const ORDERS_KEY = `${STORAGE_KEY_PREFIX}orders_`;
 const AUTH_SESSION_KEY = `${STORAGE_KEY_PREFIX}auth_session`;
+const SUPERADMIN_AUTH_KEY = `${STORAGE_KEY_PREFIX}superadmin_auth_v1`;
+const AUTH_THROTTLE_KEY = `${STORAGE_KEY_PREFIX}auth_throttle_v1`;
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
-export const SUPERADMIN_CREDENTIALS = {
-  login: 'admin',
-  password: 'admin123',
-  name: 'מנהל מערכת ראשי (SuperAdmin)',
-};
+const SUPERADMIN_DISPLAY_NAME = 'מנהל מערכת ראשי (SuperAdmin)';
+const DEFAULT_SUPERADMIN_LOGIN = 'admin';
+const DEFAULT_SUPERADMIN_BOOTSTRAP_HASH =
+  'sha256$sp_sa_2026_k9$b3663e725c8de8934f1a4613610d1c78ead4df923d2cd12a6bd81cc407240ca5';
+const DEFAULT_TENANT1_BOOTSTRAP_HASH =
+  'sha256$sp_t1_2026_m4$e1c6d88afa85dcd293967ade996661ffc02c3b0fe8354b781d908264d9ecf15b';
+const DEFAULT_TENANT2_BOOTSTRAP_HASH =
+  'sha256$sp_t2_2026_v7$6efb1a71fcd6b54760b9bbfd3bc16f133e4b2549ad883856b07be3e63b99bc0a';
+
+const BOOTSTRAP_HASHES = new Set([
+  DEFAULT_SUPERADMIN_BOOTSTRAP_HASH,
+  DEFAULT_TENANT1_BOOTSTRAP_HASH,
+  DEFAULT_TENANT2_BOOTSTRAP_HASH,
+]);
 
 export const BILLING_PLANS: Record<PlanType, {
   id: PlanType;
@@ -94,7 +106,7 @@ export const DEFAULT_INITIAL_TENANT: Tenant = {
   name: 'Naot Hatichon',
   slug: 'main-center',
   login: 'andrey_p',
-  passwordHash: '123456',
+  passwordHash: DEFAULT_TENANT1_BOOTSTRAP_HASH,
   contactPerson: 'מחלקת אספקה ולוגיסטיקה',
   phone: '050-000-0000',
   address: 'בניין מרכזי',
@@ -124,7 +136,7 @@ export const DEFAULT_TENANT_MOSHAVA: Tenant = {
   name: 'Naot Moshava',
   slug: 'naot-moshava',
   login: 'aviad',
-  passwordHash: '123456',
+  passwordHash: DEFAULT_TENANT2_BOOTSTRAP_HASH,
   contactPerson: 'Aviad',
   phone: '',
   address: 'NesZiona HaPatish',
@@ -227,26 +239,36 @@ export function initMultiTenantDb(): void {
 async function syncTenantToFirestore(tenant: Tenant): Promise<void> {
   try {
     if (!db) return;
+    await ensureFirebaseAuth();
+    const cleanPayload = JSON.parse(JSON.stringify(tenant));
     const docRef = doc(db, 'tenants', tenant.id);
-    await setDoc(docRef, tenant, { merge: true });
-  } catch (e) {}
+    await setDoc(docRef, cleanPayload, { merge: true });
+  } catch (e) {
+    console.warn('syncTenantToFirestore warning:', e);
+  }
 }
 
 async function syncWarehouseToFirestore(warehouse: Warehouse): Promise<void> {
   try {
     if (!db) return;
+    await ensureFirebaseAuth();
+    const cleanWarehouse = JSON.parse(JSON.stringify(warehouse));
     const docRef = doc(db, 'tenants', warehouse.tenantId, 'warehouses', warehouse.id);
-    await setDoc(docRef, warehouse, { merge: true });
+    await setDoc(docRef, cleanWarehouse, { merge: true });
 
     const allWarehouses = getStoredJson<Warehouse[]>(WAREHOUSES_KEY, DEFAULT_INITIAL_WAREHOUSES);
+    const cleanList = JSON.parse(JSON.stringify(allWarehouses));
     const globalRef = doc(db, 'system', 'warehouses');
-    await setDoc(globalRef, { list: allWarehouses, updatedAt: new Date().toISOString() }, { merge: true });
-  } catch (e) {}
+    await setDoc(globalRef, { list: cleanList, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (e) {
+    console.warn('syncWarehouseToFirestore warning:', e);
+  }
 }
 
 async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
   try {
     if (!db) return;
+    await ensureFirebaseAuth();
     const cleanPayload = JSON.parse(JSON.stringify(order));
     const docRef = doc(db, 'tenants', order.tenantId, 'orders', order.id);
     await setDoc(docRef, cleanPayload, { merge: true });
@@ -263,6 +285,13 @@ async function syncOrderToFirestore(order: MultiTenantOrder): Promise<void> {
 // ----------------------------------------------------------------------------
 // TENANT OPERATIONS
 // ----------------------------------------------------------------------------
+
+export function isTenantSecretWeak(tenant: Pick<Tenant, 'passwordHash'>): boolean {
+  const hash = tenant?.passwordHash;
+  if (!hash) return true;
+  if (!isHashedSecret(hash)) return true;
+  return BOOTSTRAP_HASHES.has(hash);
+}
 
 export function sortTenants(list: Tenant[]): Tenant[] {
   return [...list].sort((a, b) => {
@@ -284,11 +313,11 @@ export function getTenants(): Tenant[] {
       let login = t.login;
       let passwordHash = t.passwordHash;
 
-      // Migrate from old placeholder template to user's real Naot Hatichon
+      // Migrate from old placeholder display name/login without ever resetting a changed password
       if (t.name === 'מרכז רפואי (סניף ראשי מרכזי)' || t.login === 'center1') {
         name = 'Naot Hatichon';
         login = 'andrey_p';
-        passwordHash = '123456';
+        if (!passwordHash) passwordHash = DEFAULT_TENANT1_BOOTSTRAP_HASH;
         updated = true;
       }
 
@@ -324,11 +353,19 @@ export function getTenants(): Tenant[] {
 }
 
 /**
+ * Returns branch metadata safe for public portals (strips passwordHash).
+ */
+export function getPublicTenants(): Tenant[] {
+  return getTenants().map((t) => ({ ...t, passwordHash: '' }));
+}
+
+/**
  * Loads all tenants directly from Firestore into local cache
  */
 export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
   try {
     if (!db) return getTenants();
+    await ensureFirebaseAuth();
     const snap = await getDocs(collection(db, 'tenants'));
     if (!snap.empty) {
       const remoteList: Tenant[] = [];
@@ -339,10 +376,14 @@ export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
         }
       });
       if (remoteList.length > 0) {
-        // Ensure canonical main tenant defaults if remote lacks some fields
         const normalized = remoteList.map((t) => {
           if (t.id === 'tenant-main-01' && (t.name === 'מרכז רפואי (סניף ראשי מרכזי)' || t.login === 'center1')) {
-            return { ...t, name: 'Naot Hatichon', login: 'andrey_p', passwordHash: '123456' };
+            return {
+              ...t,
+              name: 'Naot Hatichon',
+              login: 'andrey_p',
+              passwordHash: t.passwordHash || DEFAULT_TENANT1_BOOTSTRAP_HASH,
+            };
           }
           return t;
         });
@@ -361,34 +402,47 @@ export async function fetchTenantsFromFirestore(): Promise<Tenant[]> {
  * Subscribes to real-time changes in Firestore collection 'tenants'
  */
 export function subscribeToTenantsFirestore(callback: (tenants: Tenant[]) => void): () => void {
-  try {
-    if (!db) return () => {};
-    const unsub = onSnapshot(
-      collection(db, 'tenants'),
-      (snap) => {
-        if (!snap.empty) {
-          const list: Tenant[] = [];
-          snap.forEach((d) => {
-            const item = d.data() as Tenant;
-            if (item && item.id && item.name) {
-              list.push(item);
+  let cancelled = false;
+  let unsub: (() => void) | null = null;
+
+  ensureFirebaseAuth().finally(() => {
+    if (cancelled || !db) return;
+    try {
+      unsub = onSnapshot(
+        collection(db, 'tenants'),
+        (snap) => {
+          if (!snap.empty) {
+            const list: Tenant[] = [];
+            snap.forEach((d) => {
+              const item = d.data() as Tenant;
+              if (item && item.id && item.name) {
+                list.push(item);
+              }
+            });
+            if (list.length > 0) {
+              const sorted = sortTenants(list);
+              setStoredJson(TENANTS_KEY, sorted);
+              callback(sorted);
             }
-          });
-          if (list.length > 0) {
-            const sorted = sortTenants(list);
-            setStoredJson(TENANTS_KEY, sorted);
-            callback(sorted);
           }
+        },
+        (err) => {
+          console.warn('Realtime tenants listener warning:', err);
         }
-      },
-      (err) => {
-        console.warn('Realtime tenants listener warning:', err);
-      }
-    );
-    return () => unsub();
-  } catch {
-    return () => {};
-  }
+      );
+    } catch {
+      // Offline / permission fallback handled locally
+    }
+  });
+
+  return () => {
+    cancelled = true;
+    if (unsub) {
+      try {
+        unsub();
+      } catch {}
+    }
+  };
 }
 
 export function getTenantById(tenantId: string): Tenant | null {
@@ -396,7 +450,7 @@ export function getTenantById(tenantId: string): Tenant | null {
   return tenants.find((t) => t.id === tenantId) || null;
 }
 
-export function createTenant(data: {
+export async function createTenant(data: {
   name: string;
   login: string;
   password: string;
@@ -409,7 +463,7 @@ export function createTenant(data: {
   allowSelfWarehouseCreation?: boolean;
   cloneBaseCatalog?: boolean;
   initialDepartments?: string[];
-}): Tenant {
+}): Promise<Tenant> {
   const tenants = getTenants();
   const plan = data.plan || 'starter';
   const planConfig = BILLING_PLANS[plan];
@@ -421,12 +475,20 @@ export function createTenant(data: {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '') || `tenant-${Date.now()}`;
 
+  const rawPassword = (data.password || '').trim();
+  if (!rawPassword) {
+    throw new Error('נדרשת סיסמה ליצירת סניף חדש.');
+  }
+  const passwordHash = isHashedSecret(rawPassword)
+    ? rawPassword
+    : await hashSecret(rawPassword);
+
   const newTenant: Tenant = {
     id: newTenantId,
     name: data.name.trim(),
     slug,
     login: data.login.trim(),
-    passwordHash: data.password.trim(),
+    passwordHash,
     contactPerson: data.contactPerson?.trim(),
     phone: data.phone?.trim(),
     address: data.address?.trim(),
@@ -453,7 +515,7 @@ export function createTenant(data: {
 
   tenants.push(newTenant);
   setStoredJson(TENANTS_KEY, tenants);
-  syncTenantToFirestore(newTenant).catch(console.warn);
+  await syncTenantToFirestore(newTenant);
 
   const primaryWh = createWarehouse({
     tenantId: newTenantId,
@@ -487,6 +549,50 @@ export function createTenant(data: {
   return newTenant;
 }
 
+export function stockMapToInventoryProducts(
+  stockMap: Record<string, StockItem>,
+  tenantId: string,
+  warehouseId: string = 'wh-main-01'
+): InventoryProduct[] {
+  return Object.values(stockMap).map((s, idx) => ({
+    id: s.id || `prod-${tenantId}-${idx}`,
+    tenantId,
+    warehouseId,
+    name: s.name,
+    colIndex: s.colIndex ?? idx + 1,
+    currentStock: Number(s.currentStock) || 0,
+    minThreshold: Number(s.minThreshold) || 10,
+    unit: s.unit || "יח'",
+    ...(s.packageSize !== undefined ? { packageSize: s.packageSize } : {}),
+    ...(s.packagingMode !== undefined ? { packagingMode: s.packagingMode } : {}),
+    isActive: s.isActive !== false,
+    limitByPatients: Boolean(s.limitByPatients),
+    updatedAt: s.lastUpdated || new Date().toISOString(),
+  }));
+}
+
+export function inventoryProductsToStockMap(
+  items: InventoryProduct[]
+): Record<string, StockItem> {
+  const stockMap: Record<string, StockItem> = {};
+  items.forEach((item, idx) => {
+    stockMap[item.name] = {
+      id: item.id,
+      name: item.name,
+      unit: item.unit || "יח'",
+      ...(item.packageSize !== undefined ? { packageSize: item.packageSize } : {}),
+      ...(item.packagingMode !== undefined ? { packagingMode: item.packagingMode } : {}),
+      currentStock: Number(item.currentStock) || 0,
+      minThreshold: Number(item.minThreshold) || 10,
+      colIndex: item.colIndex || idx + 1,
+      isActive: item.isActive !== false,
+      limitByPatients: Boolean(item.limitByPatients),
+      lastUpdated: item.updatedAt,
+    };
+  });
+  return stockMap;
+}
+
 /**
  * Clones the Base Master Catalog (all 186 items, order, packaging, and thresholds)
  * and optionally departments into a newly created branch/tenant.
@@ -501,23 +607,13 @@ export function cloneBaseCatalogToNewTenant(
   let baseItems = getInventory(sourceTenantId);
   if (!baseItems || baseItems.length === 0) {
     const localStock = getDbStock();
-    baseItems = Object.values(localStock).map((it, idx) => ({
-      id: it.id || `prod-${idx}-${Date.now()}`,
-      tenantId: sourceTenantId,
-      warehouseId: 'wh-main-01',
-      name: it.name,
-      colIndex: it.colIndex || idx + 4,
+    baseItems = stockMapToInventoryProducts(localStock, sourceTenantId, 'wh-main-01').map((item) => ({
+      ...item,
       currentStock: 0,
-      minThreshold: it.minThreshold ?? 10,
-      unit: it.unit || "יח'",
-      packageSize: it.packageSize,
-      isActive: it.isActive !== false,
-      limitByPatients: Boolean(it.limitByPatients),
-      updatedAt: new Date().toISOString(),
     }));
   }
 
-  // 2. Clone products for the new branch with currentStock starting at 0 (or clean initial)
+  // 2. Clone products for the new branch with currentStock starting at 0 (preserving packaging rules)
   const newTenantItems: InventoryProduct[] = baseItems.map((item, idx) => ({
     ...item,
     id: `prod-${targetTenantId}-${idx}-${Date.now()}`,
@@ -548,50 +644,47 @@ export function cloneBaseCatalogToNewTenant(
 
   // 4. Also seed master_stock directly in Firestore for real-time syncing
   if (db) {
-    try {
-      const stockMap: Record<string, StockItem> = {};
-      newTenantItems.forEach((p) => {
-        stockMap[p.name] = {
-          id: p.id,
-          name: p.name,
-          colIndex: p.colIndex,
-          currentStock: 0,
-          minThreshold: p.minThreshold,
-          unit: p.unit,
-          packageSize: p.packageSize,
-          isActive: p.isActive,
-          limitByPatients: p.limitByPatients,
-          lastUpdated: p.updatedAt,
-        };
-      });
-      const docRef = doc(db, 'tenants', targetTenantId, 'warehouse', 'master_stock');
-      setDoc(docRef, {
-        stock: stockMap,
-        totalItems: Object.keys(stockMap).length,
-        updatedAt: new Date().toISOString(),
-      }).catch(console.warn);
-    } catch (e) {
-      console.warn('Failed to seed master_stock in Firestore for new tenant:', e);
-    }
+    const firestoreRef = db;
+    ensureFirebaseAuth()
+      .then(() => {
+        const stockMap = inventoryProductsToStockMap(newTenantItems);
+        const cleanStockMap = JSON.parse(JSON.stringify(stockMap));
+        const docRef = doc(firestoreRef, 'tenants', targetTenantId, 'warehouse', 'master_stock');
+        return setDoc(docRef, {
+          stock: cleanStockMap,
+          totalItems: Object.keys(cleanStockMap).length,
+          updatedAt: new Date().toISOString(),
+        });
+      })
+      .catch((e) => console.warn('Failed to seed master_stock in Firestore for new tenant:', e));
   }
 
   return newTenantItems;
 }
 
-export function updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant | null {
+export async function updateTenant(tenantId: string, updates: Partial<Tenant>): Promise<Tenant | null> {
   const tenants = getTenants();
   const index = tenants.findIndex((t) => t.id === tenantId);
   if (index === -1) return null;
 
+  let resolvedPasswordHash = tenants[index].passwordHash;
+  if (updates.passwordHash !== undefined) {
+    const trimmed = updates.passwordHash.trim();
+    if (trimmed) {
+      resolvedPasswordHash = isHashedSecret(trimmed) ? trimmed : await hashSecret(trimmed);
+    }
+  }
+
   const updated: Tenant = {
     ...tenants[index],
     ...updates,
+    passwordHash: resolvedPasswordHash,
     updatedAt: new Date().toISOString(),
   };
 
   tenants[index] = updated;
   setStoredJson(TENANTS_KEY, tenants);
-  syncTenantToFirestore(updated).catch(console.warn);
+  await syncTenantToFirestore(updated);
   return updated;
 }
 
@@ -603,7 +696,10 @@ export function deleteTenant(tenantId: string): boolean {
 
   setStoredJson(TENANTS_KEY, tenants);
   if (db) {
-    deleteDoc(doc(db, 'tenants', tenantId)).catch(console.warn);
+    const firestoreRef = db;
+    ensureFirebaseAuth()
+      .then(() => deleteDoc(doc(firestoreRef, 'tenants', tenantId)))
+      .catch(console.warn);
   }
   return true;
 }
@@ -638,6 +734,7 @@ export function getWarehouses(tenantId?: string): Warehouse[] {
 export async function fetchWarehousesFromFirestore(): Promise<Warehouse[]> {
   try {
     if (!db) return getWarehouses();
+    await ensureFirebaseAuth();
     const globalRef = doc(db, 'system', 'warehouses');
     const snap = await getDoc(globalRef);
     if (snap.exists()) {
@@ -715,9 +812,11 @@ export function saveInventory(tenantId: string, items: InventoryProduct[]): void
 async function syncInventoryToFirestore(tenantId: string, items: InventoryProduct[]): Promise<void> {
   try {
     if (!db) return;
+    await ensureFirebaseAuth();
+    const cleanItems = JSON.parse(JSON.stringify(items));
     const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
-    await setDoc(docRef, { items, updatedAt: new Date().toISOString() });
-  } catch (e) {
+    await setDoc(docRef, { items: cleanItems, updatedAt: new Date().toISOString() });
+  } catch {
     // Offline resilience
   }
 }
@@ -725,12 +824,14 @@ async function syncInventoryToFirestore(tenantId: string, items: InventoryProduc
 export async function fetchInventoryFromFirestore(tenantId: string): Promise<InventoryProduct[] | null> {
   try {
     if (!db) return null;
+    await ensureFirebaseAuth();
     const docRef = doc(db, 'tenants', tenantId, 'inventory_data', 'all_items');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
       if (data?.items && Array.isArray(data.items)) {
-        saveInventory(tenantId, data.items);
+        // Cache locally ONLY — never echo remote reads back to Firestore
+        setStoredJson(`${INVENTORY_KEY}${tenantId}`, data.items);
         return data.items;
       }
     }
@@ -772,23 +873,7 @@ export function getTenantStockMap(tenantId: string): Record<string, StockItem> {
     return getDbStock();
   }
   const inv = getInventory(tenantId);
-  const stockMap: Record<string, StockItem> = {};
-  inv.forEach((item, idx) => {
-    stockMap[item.name] = {
-      id: item.id,
-      name: item.name,
-      unit: item.unit || "יח'",
-      packageSize: item.packageSize,
-      packagingMode: item.packagingMode,
-      currentStock: item.currentStock || 0,
-      minThreshold: item.minThreshold || 10,
-      colIndex: item.colIndex || idx + 1,
-      isActive: item.isActive !== false,
-      limitByPatients: Boolean(item.limitByPatients),
-      lastUpdated: item.updatedAt,
-    };
-  });
-  return stockMap;
+  return inventoryProductsToStockMap(inv);
 }
 
 // ----------------------------------------------------------------------------
@@ -799,27 +884,9 @@ export function getTenantDepartments(tenantId: string): TenantDepartment[] {
   const key = `${DEPARTMENTS_KEY}${tenantId}`;
   const stored = getStoredJson<TenantDepartment[]>(key, []);
 
-  // For main hospital tenant, preserve canonical departments and all custom additions
+  // For main hospital tenant, seed canonical departments ONLY when empty so admin edits/deletions persist
   if (tenantId === 'tenant-main-01') {
     if (stored.length > 0) {
-      const storedNames = new Set(stored.map((d) => d.name));
-      let missingAdded = false;
-      const updatedList = [...stored];
-      CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
-        if (!storedNames.has(cDept)) {
-          updatedList.push({
-            id: `dept-canonical-${idx}`,
-            tenantId,
-            name: cDept,
-            pinCode: '1234',
-          });
-          missingAdded = true;
-        }
-      });
-      if (missingAdded) {
-        saveTenantDepartments(tenantId, updatedList);
-        return updatedList;
-      }
       return stored;
     }
     const defaultList: TenantDepartment[] = CANONICAL_DEPARTMENTS.map((dName, idx) => ({
@@ -857,14 +924,20 @@ export function saveTenantDepartments(tenantId: string, departments: TenantDepar
     saveDbDepartments(cleaned.map((d) => d.name));
   }
   if (db) {
-    const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
-    setDoc(docRef, { list: cleaned, updatedAt: new Date().toISOString() }, { merge: true }).catch(console.warn);
+    const firestoreRef = db;
+    ensureFirebaseAuth()
+      .then(() => {
+        const docRef = doc(firestoreRef, 'tenants', tenantId, 'departments_data', 'all');
+        return setDoc(docRef, { list: cleaned, updatedAt: new Date().toISOString() }, { merge: true });
+      })
+      .catch(console.warn);
   }
 }
 
 export async function fetchTenantDepartmentsFromFirestore(tenantId: string): Promise<TenantDepartment[]> {
   try {
     if (!db) return getTenantDepartments(tenantId);
+    await ensureFirebaseAuth();
     const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
@@ -907,53 +980,59 @@ export function subscribeToTenantDepartments(
   tenantId: string,
   onDepartmentsUpdated: (departments: TenantDepartment[]) => void
 ): () => void {
+  let cancelled = false;
   let unsub: (() => void) | null = null;
 
   if (db) {
-    try {
-      const docRef = doc(db, 'tenants', tenantId, 'departments_data', 'all');
-      unsub = onSnapshot(
-        docRef,
-        (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (Array.isArray(data?.list) && data.list.length > 0) {
-              let list = data.list as TenantDepartment[];
-              if (tenantId === 'tenant-main-01') {
-                const listNames = new Set(list.map((d) => d.name));
-                let changed = false;
-                CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
-                  if (!listNames.has(cDept)) {
-                    list.push({
-                      id: `dept-canonical-${idx}`,
-                      tenantId,
-                      name: cDept,
-                      pinCode: '1234',
-                    });
-                    changed = true;
+    const firestoreRef = db;
+    ensureFirebaseAuth().finally(() => {
+      if (cancelled) return;
+      try {
+        const docRef = doc(firestoreRef, 'tenants', tenantId, 'departments_data', 'all');
+        unsub = onSnapshot(
+          docRef,
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (Array.isArray(data?.list) && data.list.length > 0) {
+                let list = data.list as TenantDepartment[];
+                if (tenantId === 'tenant-main-01') {
+                  const listNames = new Set(list.map((d) => d.name));
+                  let changed = false;
+                  CANONICAL_DEPARTMENTS.forEach((cDept, idx) => {
+                    if (!listNames.has(cDept)) {
+                      list.push({
+                        id: `dept-canonical-${idx}`,
+                        tenantId,
+                        name: cDept,
+                        pinCode: '1234',
+                      });
+                      changed = true;
+                    }
+                  });
+                  if (changed) {
+                    saveTenantDepartments(tenantId, list);
+                  } else {
+                    setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+                    saveDbDepartments(list.map((d) => d.name));
                   }
-                });
-                if (changed) {
-                  saveTenantDepartments(tenantId, list);
                 } else {
                   setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
-                  saveDbDepartments(list.map((d) => d.name));
                 }
-              } else {
-                setStoredJson(`${DEPARTMENTS_KEY}${tenantId}`, list);
+                onDepartmentsUpdated(list);
               }
-              onDepartmentsUpdated(list);
             }
-          }
-        },
-        (err) => console.warn('subscribeToTenantDepartments error:', err)
-      );
-    } catch (e) {
-      console.warn('subscribeToTenantDepartments init error:', e);
-    }
+          },
+          (err) => console.warn('subscribeToTenantDepartments error:', err)
+        );
+      } catch (e) {
+        console.warn('subscribeToTenantDepartments init error:', e);
+      }
+    });
   }
 
   return () => {
+    cancelled = true;
     if (unsub) {
       try {
         unsub();
@@ -1091,59 +1170,210 @@ export function clearAllTenantOrders(tenantId: string, departmentName?: string):
 // AUTHENTICATION & SESSION
 // ----------------------------------------------------------------------------
 
-export function authenticate(login: string, password: string): AuthSession | null {
+interface AuthThrottleState {
+  failures: number;
+  lockedUntil?: number;
+}
+
+function getAuthThrottle(): AuthThrottleState {
+  return getStoredJson<AuthThrottleState>(AUTH_THROTTLE_KEY, { failures: 0 });
+}
+
+function recordAuthFailure(): AuthThrottleState {
+  const current = getAuthThrottle();
+  const failures = (current.failures || 0) + 1;
+  const next: AuthThrottleState =
+    failures >= 5
+      ? { failures, lockedUntil: Date.now() + 60 * 1000 }
+      : { failures };
+  setStoredJson(AUTH_THROTTLE_KEY, next);
+  return next;
+}
+
+function resetAuthThrottle(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(AUTH_THROTTLE_KEY);
+    } catch {}
+  }
+}
+
+async function fetchSuperAdminPasswordHash(): Promise<string> {
+  const localConfig = getStoredJson<{ passwordHash?: string } | null>(SUPERADMIN_AUTH_KEY, null);
+  let resolvedHash = localConfig?.passwordHash || DEFAULT_SUPERADMIN_BOOTSTRAP_HASH;
+
+  if (db) {
+    try {
+      await ensureFirebaseAuth();
+      const snap = await getDoc(doc(db, 'system', 'auth_config'));
+      if (snap.exists()) {
+        const remoteHash = (snap.data() as { passwordHash?: string })?.passwordHash;
+        if (remoteHash && typeof remoteHash === 'string') {
+          resolvedHash = remoteHash;
+          setStoredJson(SUPERADMIN_AUTH_KEY, { passwordHash: remoteHash });
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch system auth config from Firestore:', e);
+    }
+  }
+  return resolvedHash;
+}
+
+export async function updateSuperAdminPassword(currentPassword: string, newPassword: string): Promise<void> {
+  const nextPlain = newPassword.trim();
+  if (nextPlain.length < 8) {
+    throw new Error('סיסמה חדשה חייבת להכיל לפחות 8 תווים.');
+  }
+  const currentHash = await fetchSuperAdminPasswordHash();
+  const verification = await verifySecret(currentPassword, currentHash);
+  if (!verification.matches) {
+    throw new Error('הסיסמה הנוכחית שגויה.');
+  }
+
+  const nextHash = await hashSecret(nextPlain);
+  const payload = { passwordHash: nextHash, updatedAt: new Date().toISOString() };
+  setStoredJson(SUPERADMIN_AUTH_KEY, payload);
+
+  if (db) {
+    await ensureFirebaseAuth();
+    await setDoc(doc(db, 'system', 'auth_config'), payload, { merge: true });
+  }
+
+  const currentSession = getActiveAuthSession();
+  if (currentSession && currentSession.userRole === 'superadmin') {
+    saveAuthSession({ ...currentSession, isWeakPassword: false });
+  }
+}
+
+export async function authenticateUser(
+  login: string,
+  password: string,
+  options?: { expectedRole?: 'superadmin' | 'tenant_admin' }
+): Promise<AuthSession | null> {
+  const throttle = getAuthThrottle();
+  if (throttle.lockedUntil && throttle.lockedUntil > Date.now()) {
+    const secs = Math.max(1, Math.ceil((throttle.lockedUntil - Date.now()) / 1000));
+    throw new Error(`בוצעו יותר מדי ניסיונות כניסה כושלים. נא להמתין ${secs} שניות ולנסות שוב.`);
+  }
+
   const trimmedLogin = login.trim().toLowerCase();
   const trimmedPass = password.trim();
-
-  // 1. Check Superadmin
-  if (trimmedLogin === SUPERADMIN_CREDENTIALS.login && trimmedPass === SUPERADMIN_CREDENTIALS.password) {
-    const session: AuthSession = {
-      userRole: 'superadmin',
-      username: SUPERADMIN_CREDENTIALS.name,
-      token: `token-super-${Date.now()}`,
-    };
-    saveAuthSession(session);
-    return session;
+  if (!trimmedLogin || !trimmedPass) {
+    return null;
   }
 
-  // 2. Check Tenant Admins
-  const tenants = getTenants();
-  const foundTenant = tenants.find((t) => {
-    const tLogin = t.login.trim().toLowerCase();
-    const tSlug = (t.slug || '').trim().toLowerCase();
-    const matchLogin =
-      tLogin === trimmedLogin ||
-      tSlug === trimmedLogin ||
-      (t.id === 'tenant-main-01' && (trimmedLogin === 'andrey_p' || trimmedLogin === 'center1'));
+  // 1. Check SuperAdmin (when allowed by active login tab)
+  if (options?.expectedRole !== 'tenant_admin' && trimmedLogin === DEFAULT_SUPERADMIN_LOGIN) {
+    const superHash = await fetchSuperAdminPasswordHash();
+    const superVerify = await verifySecret(trimmedPass, superHash);
+    if (superVerify.matches) {
+      const wasBootstrap = BOOTSTRAP_HASHES.has(superHash) || !isHashedSecret(superHash) || trimmedPass.length < 8;
+      if (superVerify.needsUpgrade) {
+        try {
+          const upgradedHash = await hashSecret(trimmedPass);
+          const cfg = { passwordHash: upgradedHash, updatedAt: new Date().toISOString() };
+          setStoredJson(SUPERADMIN_AUTH_KEY, cfg);
+          if (db) {
+            ensureFirebaseAuth()
+              .then(() => setDoc(doc(db!, 'system', 'auth_config'), cfg, { merge: true }))
+              .catch(console.warn);
+          }
+        } catch {}
+      }
 
-    const matchPass =
-      t.passwordHash === trimmedPass ||
-      (t.id === 'tenant-main-01' && (trimmedPass === '123456' || trimmedPass === 'pass123'));
-
-    return matchLogin && matchPass;
-  });
-
-  if (foundTenant) {
-    if (foundTenant.status === 'suspended') {
-      throw new Error('סניף זה מושעה זמנית. אנא פנה למנהל המערכת.');
+      resetAuthThrottle();
+      const session: AuthSession = {
+        userRole: 'superadmin',
+        username: SUPERADMIN_DISPLAY_NAME,
+        token: `sa_${generateSessionToken()}`,
+        expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+        isWeakPassword: wasBootstrap,
+      };
+      saveAuthSession(session);
+      return session;
     }
-
-    const session: AuthSession = {
-      userRole: 'tenant_admin',
-      tenantId: foundTenant.id,
-      tenantName: foundTenant.name,
-      username: foundTenant.name,
-      token: `token-tenant-${foundTenant.id}-${Date.now()}`,
-    };
-    saveAuthSession(session);
-    return session;
   }
 
+  // 2. Check Tenant Admins (fetch latest from Firestore when online so remote password updates work)
+  if (options?.expectedRole !== 'superadmin') {
+    const tenants = await fetchTenantsFromFirestore().catch(() => getTenants());
+    const matchingTenants = tenants.filter((t) => {
+      const tLogin = (t.login || '').trim().toLowerCase();
+      const tSlug = (t.slug || '').trim().toLowerCase();
+      return (
+        tLogin === trimmedLogin ||
+        (tSlug.length > 0 && tSlug === trimmedLogin) ||
+        (t.id === 'tenant-main-01' && trimmedLogin === 'andrey_p')
+      );
+    });
+
+    for (const foundTenant of matchingTenants) {
+      const passCheck = await verifySecret(trimmedPass, foundTenant.passwordHash);
+      if (passCheck.matches) {
+        if (foundTenant.status === 'suspended') {
+          throw new Error('סניף זה מושעה זמנית. אנא פנה למנהל המערכת.');
+        }
+
+        const wasWeak =
+          BOOTSTRAP_HASHES.has(foundTenant.passwordHash) ||
+          !isHashedSecret(foundTenant.passwordHash) ||
+          trimmedPass.length < 8;
+
+        if (passCheck.needsUpgrade) {
+          try {
+            const upgradedHash = await hashSecret(trimmedPass);
+            const updatedTenants = tenants.map((item) =>
+              item.id === foundTenant.id
+                ? { ...item, passwordHash: upgradedHash, updatedAt: new Date().toISOString() }
+                : item
+            );
+            setStoredJson(TENANTS_KEY, sortTenants(updatedTenants));
+            const upgradedTenant = updatedTenants.find((item) => item.id === foundTenant.id);
+            if (upgradedTenant) syncTenantToFirestore(upgradedTenant).catch(console.warn);
+          } catch {}
+        }
+
+        resetAuthThrottle();
+        const session: AuthSession = {
+          userRole: 'tenant_admin',
+          tenantId: foundTenant.id,
+          tenantName: foundTenant.name,
+          username: foundTenant.name,
+          token: `tn_${generateSessionToken()}`,
+          expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+          isWeakPassword: wasWeak,
+        };
+        saveAuthSession(session);
+        return session;
+      }
+    }
+  }
+
+  const nextThrottle = recordAuthFailure();
+  if (nextThrottle.lockedUntil && nextThrottle.lockedUntil > Date.now()) {
+    throw new Error('בוצעו 5 ניסיונות כניסה שגויים. הגישה נחסמה זמנית למשך 60 שניות.');
+  }
   return null;
 }
 
 export function getActiveAuthSession(): AuthSession | null {
-  return getStoredJson<AuthSession | null>(AUTH_SESSION_KEY, null);
+  const session = getStoredJson<AuthSession | null>(AUTH_SESSION_KEY, null);
+  if (!session || !session.userRole || !session.token) {
+    return null;
+  }
+  if (session.expiresAt) {
+    const expMs = new Date(session.expiresAt).getTime();
+    if (Number.isNaN(expMs) || expMs <= Date.now()) {
+      logout();
+      return null;
+    }
+  } else {
+    // Reject legacy unexpiring sessions and ask admin to log in cleanly with TTL
+    logout();
+    return null;
+  }
+  return session;
 }
 
 export function saveAuthSession(session: AuthSession | null): void {

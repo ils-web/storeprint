@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AuthSession } from '../../types/multiTenant';
-import { authenticate, getTenants, fetchTenantsFromFirestore, SUPERADMIN_CREDENTIALS } from '../../services/multiTenantDb';
+import { authenticateUser, fetchTenantsFromFirestore } from '../../services/multiTenantDb';
 import {
-  ShieldCheck,
   Building2,
   Lock,
   User,
   ArrowLeft,
   AlertCircle,
-  Key,
   X,
   Eye,
   EyeOff,
@@ -19,13 +17,14 @@ interface LoginModalProps {
   onClose: () => void;
   onSuccess: (session: AuthSession) => void;
   onOpenOrderPortal?: (tenantId?: string) => void;
+  subtitle?: string;
 }
 
 export function LoginModal({
   isOpen,
   onClose,
   onSuccess,
-  onOpenOrderPortal,
+  subtitle,
 }: LoginModalProps) {
   const [activeTab, setActiveTab] = useState<'tenant' | 'superadmin'>('tenant');
   const [login, setLogin] = useState('');
@@ -48,14 +47,11 @@ export function LoginModal({
     setIsLoading(true);
 
     try {
-      let session = authenticate(login, password);
-      if (!session) {
-        // Fallback: try refreshing tenants from Firestore in case they were added/updated on another device
-        await fetchTenantsFromFirestore();
-        session = authenticate(login, password);
-      }
+      const expectedRole = activeTab === 'superadmin' ? 'superadmin' : 'tenant_admin';
+      const session = await authenticateUser(login, password, { expectedRole });
 
       if (session) {
+        setPassword('');
         onSuccess(session);
         onClose();
       } else {
@@ -79,10 +75,13 @@ export function LoginModal({
             </div>
             <div>
               <h3 className="text-xl font-black text-white">כניסה למערכת StorePrint</h3>
-              <p className="text-sm text-slate-300 font-medium mt-0.5">פלטפורמה מרכזית לניהול מלאי והזמנות</p>
+              <p className="text-sm text-slate-300 font-medium mt-0.5">
+                {subtitle || 'פלטפורמה מרכזית לניהול מלאי והזמנות'}
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           >
@@ -144,7 +143,7 @@ export function LoginModal({
                 required
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
-                placeholder={activeTab === 'tenant' ? 'center1' : 'admin'}
+                placeholder="הכנס שם משתמש"
                 className="w-full pr-12 pl-4 py-3 bg-slate-800 border-2 border-slate-700 rounded-xl text-base text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono shadow-inner"
               />
             </div>

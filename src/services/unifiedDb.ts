@@ -6,6 +6,7 @@ import {
   detectPackageSize,
   findMatchingStockKey,
   extractOrderItemQuantity,
+  parseNumericQty,
   stripPackagingInfo,
   cleanBidiAndQuotes,
 } from '../utils/stockManager';

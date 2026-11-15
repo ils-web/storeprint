@@ -2,10 +2,467 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // StorePrint Warehouse & Department Ordering System
-    // Unrestricted read & write for active warehouse stock, orders, and multi-tenant data
+
+    // =========================================================================
+    // StorePrint Multi-Tenant Warehouse & Department Ordering System
+    // Prototype Production-Hardened Security Rules
+    // =========================================================================
+    //
+    // AUTHENTICATION ARCHITECTURE & UPGRADE PATH:
+    // - All active browser/PWA clients (ward ordering portals, mobile stock
+    //   counters, branch admins, superadmin) authenticate via Firebase Anonymous
+    //   Auth (`signInAnonymously` via `ensureFirebaseAuth()`).
+    // - These rules require `isSignedIn()` (`request.auth != null`) across every
+    //   allowed path to block unauthenticated public internet access, and
+    //   enforce strict per-path schemas, enum checks, ID/tenant scoping,
+    //   immutability, and payload/array size bounds against DoS and corruption.
+    // - LIMITATION & UPGRADE PATH: Anonymous auth alone does not isolate roles
+    //   or tenants server-side; any signed-in anonymous session can access valid
+    //   tenant paths. True per-role and per-tenant server isolation requires
+    //   migrating logins to Firebase Auth + Custom Claims (e.g., `role`,
+    //   `tenantId`) and moving credential verification off client-readable docs.
+    //
+    // =========================================================================
+    // Assumed Data Model
+    // =========================================================================
+    //
+    // Collection: tenants/{tenantId}
+    //   - id: string (required, immutable, == tenantId, <= 100 chars)
+    //   - name: string (required, 1..200 chars)
+    //   - slug: string (required, <= 120 chars)
+    //   - login: string (required, 1..120 chars)
+    //   - passwordHash: string (required, 8..256 chars)
+    //   - status: 'active' | 'trial' | 'suspended' (required)
+    //   - plan: 'free' | 'starter' | 'pro' | 'enterprise' (required)
+    //   - billing: map (required; status, planId, optional billing metadata)
+    //   - limits: map (required; maxWarehouses, maxDepartments, maxOrdersPerMonth, allowSelfWarehouseCreation)
+    //   - contactPerson, phone, address, spreadsheetId, spreadsheetGid, appsScriptUrl: string (optional, <= 500 chars)
+    //   - createdAt: string (required, immutable, 1..64 chars)
+    //   - updatedAt: string (required, 1..64 chars)
+    //   - Delete: allowed only when tenantId != 'tenant-main-01'
+    //
+    // Subcollection: tenants/{tenantId}/warehouses/{whId}
+    //   - id: string (required, immutable, == whId, <= 100 chars)
+    //   - tenantId: string (required, immutable, == tenantId, <= 100 chars)
+    //   - name: string (required, 1..200 chars)
+    //   - isPrimary: bool (required)
+    //   - createdAt: string (required, immutable, 1..64 chars)
+    //   - code, address, responsiblePerson: string (optional, <= 300 chars)
+    //
+    // Subcollection: tenants/{tenantId}/warehouse/{docId} (and legacy warehouse/{docId})
+    //   - docId == 'master_stock': stock (map <= 1500), updatedAt (string), totalItems (optional int 0..1500)
+    //   - docId == 'printed_orders': keys (list <= 5000), updatedAt (string), totalPrinted (optional int >= 0)
+    //   - docId == 'stock_backup' (tenant-only): stock (map <= 1500), savedAt (string), itemCount (int 0..1500)
+    //
+    // Subcollection: tenants/{tenantId}/orders/{orderId} (and legacy orders/{orderId})
+    //   - Full order: id (== orderId), tenantId (== tenantId or non-empty at root),
+    //     departmentName (<= 200), items (list <= 500), status enum, createdAt (string),
+    //     plus optional order metadata strings/ints/booleans.
+    //   - Printed patch (merge on sheet/unimported orders): printed (bool),
+    //     status in ['NEW', 'PRINTED'], updatedAt (string), printedAt (optional/nullable string).
+    //
+    // Subcollection: tenants/{tenantId}/departments_data/all
+    //   - list: list (required, <= 200), updatedAt: string (required)
+    //
+    // Subcollection: tenants/{tenantId}/inventory_data/all_items
+    //   - items: list (required, <= 1500), updatedAt: string (required)
+    //
+    // Subcollection: tenants/{tenantId}/staff_access/directory
+    //   - tenantId: string (required, immutable, == tenantId)
+    //   - members: list (required, <= 1000)
+    //   - policy: map (required, exact 4 boolean security flags)
+    //   - updatedAt: string (required)
+    //
+    // Collection: system/{docId}
+    //   - docId == 'warehouses': list (list <= 200), updatedAt (string)
+    //   - docId == 'auth_config': passwordHash (string 16..256), updatedAt (string)
+    //
+    // =========================================================================
+
+    // =========================================================================
+    // Helper Functions
+    // =========================================================================
+
+    // Require an active Firebase Auth session (blocks unauthenticated public access)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function isNonEmptyString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalNullableString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // =========================================================================
+    // Domain Validators
+    // =========================================================================
+
+    function isValidTenantBilling(billing) {
+      return billing is map &&
+        hasRequiredFields(billing, ['status', 'planId']) &&
+        hasOnlyAllowedFields(billing, [
+          'status', 'planId', 'trialEndsAt', 'subscriptionRenewsAt',
+          'monthlyPriceNis', 'paymentProvider', 'paymentMethodLast4'
+        ]) &&
+        billing.status in ['active', 'trialing', 'past_due', 'unpaid', 'canceled'] &&
+        billing.planId in ['free', 'starter', 'pro', 'enterprise'] &&
+        isValidOptionalString(billing, 'trialEndsAt', 64) &&
+        isValidOptionalString(billing, 'subscriptionRenewsAt', 64) &&
+        (!('monthlyPriceNis' in billing) || (billing.monthlyPriceNis is number && billing.monthlyPriceNis >= 0)) &&
+        (!('paymentProvider' in billing) || billing.paymentProvider in ['stripe', 'isracard', 'meshulam', 'manual']) &&
+        isValidOptionalString(billing, 'paymentMethodLast4', 16);
+    }
+
+    function isValidTenantLimits(limits) {
+      return limits is map &&
+        hasRequiredFields(limits, ['maxWarehouses', 'maxDepartments', 'maxOrdersPerMonth', 'allowSelfWarehouseCreation']) &&
+        hasOnlyAllowedFields(limits, ['maxWarehouses', 'maxDepartments', 'maxOrdersPerMonth', 'allowSelfWarehouseCreation']) &&
+        limits.maxWarehouses is int && limits.maxWarehouses >= 0 &&
+        limits.maxDepartments is int && limits.maxDepartments >= 0 &&
+        limits.maxOrdersPerMonth is int && limits.maxOrdersPerMonth >= 0 &&
+        limits.allowSelfWarehouseCreation is bool;
+    }
+
+    function isValidTenant(data, tenantId) {
+      return hasRequiredFields(data, [
+          'id', 'name', 'slug', 'login', 'passwordHash',
+          'status', 'plan', 'billing', 'limits', 'createdAt', 'updatedAt'
+        ]) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'name', 'slug', 'login', 'passwordHash',
+          'contactPerson', 'phone', 'address', 'status', 'plan',
+          'billing', 'limits', 'spreadsheetId', 'spreadsheetGid',
+          'appsScriptUrl', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == tenantId &&
+        isNonEmptyString(data.id, 1, 100) &&
+        isNonEmptyString(data.name, 1, 200) &&
+        data.slug is string && data.slug.size() <= 120 &&
+        isNonEmptyString(data.login, 1, 120) &&
+        isNonEmptyString(data.passwordHash, 8, 256) &&
+        data.status in ['active', 'trial', 'suspended'] &&
+        data.plan in ['free', 'starter', 'pro', 'enterprise'] &&
+        isValidTenantBilling(data.billing) &&
+        isValidTenantLimits(data.limits) &&
+        isNonEmptyString(data.createdAt, 1, 64) &&
+        isNonEmptyString(data.updatedAt, 1, 64) &&
+        isValidOptionalString(data, 'contactPerson', 500) &&
+        isValidOptionalString(data, 'phone', 500) &&
+        isValidOptionalString(data, 'address', 500) &&
+        isValidOptionalString(data, 'spreadsheetId', 500) &&
+        isValidOptionalString(data, 'spreadsheetGid', 500) &&
+        isValidOptionalString(data, 'appsScriptUrl', 500);
+    }
+
+    function isTenantImmutableUnchanged() {
+      return request.resource.data.id == resource.data.id &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isValidWarehouse(data, tenantId, whId) {
+      return hasRequiredFields(data, ['id', 'tenantId', 'name', 'isPrimary', 'createdAt']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'tenantId', 'name', 'code', 'isPrimary',
+          'address', 'responsiblePerson', 'createdAt'
+        ]) &&
+        data.id == whId &&
+        isNonEmptyString(data.id, 1, 100) &&
+        data.tenantId == tenantId &&
+        isNonEmptyString(data.tenantId, 1, 100) &&
+        isNonEmptyString(data.name, 1, 200) &&
+        data.isPrimary is bool &&
+        isNonEmptyString(data.createdAt, 1, 64) &&
+        isValidOptionalString(data, 'code', 300) &&
+        isValidOptionalString(data, 'address', 300) &&
+        isValidOptionalString(data, 'responsiblePerson', 300);
+    }
+
+    function isWarehouseImmutableUnchanged() {
+      return request.resource.data.id == resource.data.id &&
+        request.resource.data.tenantId == resource.data.tenantId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isValidMasterStock(data) {
+      return hasRequiredFields(data, ['stock', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['stock', 'totalItems', 'updatedAt']) &&
+        data.stock is map && data.stock.size() <= 1500 &&
+        isNonEmptyString(data.updatedAt, 1, 64) &&
+        (!('totalItems' in data) || (data.totalItems is int && data.totalItems >= 0 && data.totalItems <= 1500));
+    }
+
+    function isValidPrintedOrders(data) {
+      return hasRequiredFields(data, ['keys', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['keys', 'totalPrinted', 'updatedAt']) &&
+        data.keys is list && data.keys.size() <= 5000 &&
+        isNonEmptyString(data.updatedAt, 1, 64) &&
+        (!('totalPrinted' in data) || (data.totalPrinted is int && data.totalPrinted >= 0));
+    }
+
+    function isValidStockBackup(data) {
+      return hasRequiredFields(data, ['stock', 'savedAt', 'itemCount']) &&
+        hasOnlyAllowedFields(data, ['stock', 'savedAt', 'itemCount']) &&
+        data.stock is map && data.stock.size() <= 1500 &&
+        isNonEmptyString(data.savedAt, 1, 64) &&
+        data.itemCount is int && data.itemCount >= 0 && data.itemCount <= 1500;
+    }
+
+    function isValidOrderCommonFields(data, orderId, expectedTenantId) {
+      return hasOnlyAllowedFields(data, [
+          'id', 'tenantId', 'warehouseId', 'departmentId', 'departmentName',
+          'patientsCount', 'orderNumber', 'items', 'totalItemsCount', 'notes',
+          'requesterName', 'requesterStaffId', 'status', 'source',
+          'printed', 'printedAt', 'createdAt', 'updatedAt', 'syncedAt'
+        ]) &&
+        (!('id' in data) || (data.id == orderId && isNonEmptyString(data.id, 1, 150))) &&
+        (!('tenantId' in data) || (
+          expectedTenantId != null
+            ? data.tenantId == expectedTenantId
+            : isNonEmptyString(data.tenantId, 1, 100)
+        )) &&
+        isValidOptionalNullableString(data, 'warehouseId', 300) &&
+        isValidOptionalNullableString(data, 'departmentId', 300) &&
+        (!('departmentName' in data) || (data.departmentName is string && data.departmentName.size() <= 200)) &&
+        isValidOptionalNullableString(data, 'patientsCount', 300) &&
+        isValidOptionalNullableString(data, 'orderNumber', 300) &&
+        (!('items' in data) || (data.items is list && data.items.size() <= 500)) &&
+        (!('totalItemsCount' in data) || (data.totalItemsCount is int && data.totalItemsCount >= 0)) &&
+        isValidOptionalNullableString(data, 'notes', 2000) &&
+        isValidOptionalNullableString(data, 'requesterName', 300) &&
+        isValidOptionalNullableString(data, 'requesterStaffId', 300) &&
+        isValidOptionalNullableString(data, 'source', 300) &&
+        (!('printed' in data) || data.printed is bool) &&
+        isValidOptionalNullableString(data, 'printedAt', 300) &&
+        isValidOptionalNullableString(data, 'createdAt', 300) &&
+        isValidOptionalNullableString(data, 'updatedAt', 300) &&
+        isValidOptionalNullableString(data, 'syncedAt', 300);
+    }
+
+    function isFullOrder(data, orderId, expectedTenantId) {
+      return hasRequiredFields(data, ['id', 'tenantId', 'departmentName', 'items', 'status', 'createdAt']) &&
+        data.id == orderId &&
+        (expectedTenantId != null ? data.tenantId == expectedTenantId : isNonEmptyString(data.tenantId, 1, 100)) &&
+        data.departmentName is string && data.departmentName.size() <= 200 &&
+        data.items is list && data.items.size() <= 500 &&
+        data.status in ['NEW', 'IN_PROGRESS', 'PRINTED', 'ISSUED', 'CANCELLED', 'ARCHIVED'] &&
+        isNonEmptyString(data.createdAt, 1, 300);
+    }
+
+    function isPrintedPatch(data) {
+      return hasRequiredFields(data, ['printed', 'status', 'updatedAt']) &&
+        data.printed is bool &&
+        data.status in ['NEW', 'PRINTED'] &&
+        isNonEmptyString(data.updatedAt, 1, 300);
+    }
+
+    function isPurePrintedPatch(data) {
+      return hasOnlyAllowedFields(data, ['printed', 'status', 'printedAt', 'updatedAt']) &&
+        isPrintedPatch(data);
+    }
+
+    function isOrderImmutableFieldsPreserved() {
+      return (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
+        (!('tenantId' in resource.data) || request.resource.data.tenantId == resource.data.tenantId) &&
+        (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+        (!('items' in resource.data) || ('items' in request.resource.data && 'departmentName' in request.resource.data));
+    }
+
+    function isValidDepartmentsData(data) {
+      return hasRequiredFields(data, ['list', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['list', 'updatedAt']) &&
+        data.list is list && data.list.size() <= 200 &&
+        isNonEmptyString(data.updatedAt, 1, 64);
+    }
+
+    function isValidInventoryData(data) {
+      return hasRequiredFields(data, ['items', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['items', 'updatedAt']) &&
+        data.items is list && data.items.size() <= 1500 &&
+        isNonEmptyString(data.updatedAt, 1, 64);
+    }
+
+    function isValidStaffPolicy(policy) {
+      return policy is map &&
+        hasRequiredFields(policy, [
+          'requireRegisteredStaff', 'requirePersonalPin',
+          'requireAdminLoginForWorkspace', 'allowPortalOrderDelete'
+        ]) &&
+        hasOnlyAllowedFields(policy, [
+          'requireRegisteredStaff', 'requirePersonalPin',
+          'requireAdminLoginForWorkspace', 'allowPortalOrderDelete'
+        ]) &&
+        policy.requireRegisteredStaff is bool &&
+        policy.requirePersonalPin is bool &&
+        policy.requireAdminLoginForWorkspace is bool &&
+        policy.allowPortalOrderDelete is bool;
+    }
+
+    function isValidStaffDirectory(data, tenantId) {
+      return hasRequiredFields(data, ['tenantId', 'members', 'policy', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['tenantId', 'members', 'policy', 'updatedAt']) &&
+        data.tenantId == tenantId &&
+        isNonEmptyString(data.tenantId, 1, 100) &&
+        data.members is list && data.members.size() <= 1000 &&
+        isValidStaffPolicy(data.policy) &&
+        isNonEmptyString(data.updatedAt, 1, 64);
+    }
+
+    function isValidSystemWarehouses(data) {
+      return hasRequiredFields(data, ['list', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['list', 'updatedAt']) &&
+        data.list is list && data.list.size() <= 200 &&
+        isNonEmptyString(data.updatedAt, 1, 64);
+    }
+
+    function isValidAuthConfig(data) {
+      return hasRequiredFields(data, ['passwordHash', 'updatedAt']) &&
+        hasOnlyAllowedFields(data, ['passwordHash', 'updatedAt']) &&
+        isNonEmptyString(data.passwordHash, 16, 256) &&
+        isNonEmptyString(data.updatedAt, 1, 64);
+    }
+
+    // =========================================================================
+    // Explicit Collection & Document Rules
+    // =========================================================================
+
+    // 1. Multi-Tenant Branch Metadata
+    match /tenants/{tenantId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidTenant(request.resource.data, tenantId);
+      allow update: if isSignedIn() &&
+        isValidTenant(request.resource.data, tenantId) &&
+        isTenantImmutableUnchanged();
+      // Protect primary hospital branch from remote deletion
+      allow delete: if isSignedIn() && tenantId != 'tenant-main-01';
+
+      // 2. Branch Warehouses
+      match /warehouses/{whId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidWarehouse(request.resource.data, tenantId, whId);
+        allow update: if isSignedIn() &&
+          isValidWarehouse(request.resource.data, tenantId, whId) &&
+          isWarehouseImmutableUnchanged();
+        allow delete: if isSignedIn();
+      }
+
+      // 3. Warehouse Stock, Printed Order Keys & Cloud Stock Backups
+      match /warehouse/{docId} {
+        allow read: if isSignedIn() && docId in ['master_stock', 'printed_orders', 'stock_backup'];
+        allow create, update: if isSignedIn() && (
+          (docId == 'master_stock' && isValidMasterStock(request.resource.data)) ||
+          (docId == 'printed_orders' && isValidPrintedOrders(request.resource.data)) ||
+          (docId == 'stock_backup' && isValidStockBackup(request.resource.data))
+        );
+        allow delete: if false;
+      }
+
+      // 4. Tenant Orders (Full Orders & Printed-Status Merge Patches)
+      match /orders/{orderId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+          isValidOrderCommonFields(request.resource.data, orderId, tenantId) &&
+          (isFullOrder(request.resource.data, orderId, tenantId) || isPurePrintedPatch(request.resource.data));
+        allow update: if isSignedIn() &&
+          isValidOrderCommonFields(request.resource.data, orderId, tenantId) &&
+          (
+            isFullOrder(request.resource.data, orderId, tenantId) ||
+            isPurePrintedPatch(request.resource.data) ||
+            (isPrintedPatch(request.resource.data) && 'createdAt' in resource.data)
+          ) &&
+          isOrderImmutableFieldsPreserved();
+        allow delete: if isSignedIn();
+      }
+
+      // 5. Tenant Departments Directory ('all' singleton)
+      match /departments_data/{docId} {
+        allow read: if isSignedIn() && docId == 'all';
+        allow create, update: if isSignedIn() &&
+          docId == 'all' &&
+          isValidDepartmentsData(request.resource.data);
+        allow delete: if false;
+      }
+
+      // 6. Tenant Inventory Catalog ('all_items' singleton)
+      match /inventory_data/{docId} {
+        allow read: if isSignedIn() && docId == 'all_items';
+        allow create, update: if isSignedIn() &&
+          docId == 'all_items' &&
+          isValidInventoryData(request.resource.data);
+        allow delete: if false;
+      }
+
+      // 7. Tenant Staff Access Directory & Policy ('directory' singleton)
+      match /staff_access/{docId} {
+        allow read: if isSignedIn() && docId == 'directory';
+        allow create: if isSignedIn() &&
+          docId == 'directory' &&
+          isValidStaffDirectory(request.resource.data, tenantId);
+        allow update: if isSignedIn() &&
+          docId == 'directory' &&
+          isValidStaffDirectory(request.resource.data, tenantId) &&
+          request.resource.data.tenantId == resource.data.tenantId;
+        allow delete: if false;
+      }
+    }
+
+    // Legacy Root Fallback for Main Hospital Warehouse Docs
+    match /warehouse/{docId} {
+      allow read: if isSignedIn() && docId in ['master_stock', 'printed_orders'];
+      allow create, update: if isSignedIn() && (
+        (docId == 'master_stock' && isValidMasterStock(request.resource.data)) ||
+        (docId == 'printed_orders' && isValidPrintedOrders(request.resource.data))
+      );
+      allow delete: if false;
+    }
+
+    // Legacy Root Fallback for Main Hospital Orders
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+        isValidOrderCommonFields(request.resource.data, orderId, null) &&
+        (isFullOrder(request.resource.data, orderId, null) || isPurePrintedPatch(request.resource.data));
+      allow update: if isSignedIn() &&
+        isValidOrderCommonFields(request.resource.data, orderId, null) &&
+        (
+          isFullOrder(request.resource.data, orderId, null) ||
+          isPurePrintedPatch(request.resource.data) ||
+          (isPrintedPatch(request.resource.data) && 'createdAt' in resource.data)
+        ) &&
+        isOrderImmutableFieldsPreserved();
+      allow delete: if isSignedIn();
+    }
+
+    // 8. System Configuration Singletons
+    match /system/warehouses {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidSystemWarehouses(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /system/auth_config {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidAuthConfig(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Terminal Default-Deny Catch-All
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

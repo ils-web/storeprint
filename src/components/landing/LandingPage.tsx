@@ -19,6 +19,7 @@ import {
 import { LoginModal } from '../auth/LoginModal';
 import { AuthSession } from '../../types/multiTenant';
 import { BILLING_PLANS } from '../../services/multiTenantDb';
+import { getAppBaseUrl } from '../../utils/urlUtils';
 
 interface LandingPageProps {
   onLoginSuccess: (session: AuthSession) => void;
@@ -30,16 +31,7 @@ export function LandingPage({ onLoginSuccess, onOpenOrderPortal }: LandingPagePr
   const [copiedLink, setCopiedLink] = useState(false);
 
   const handleCopyLandingLink = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-    const cleanPath = typeof window !== 'undefined'
-      ? window.location.pathname
-          .replace(/\/index\.html$/i, '')
-          .replace(/\/landing(\.html)?$/i, '')
-          .replace(/\/order(\.html)?$/i, '')
-          .replace(/\/stock(\.html)?$/i, '')
-          .replace(/\/$/, '')
-      : '/storeprint';
-    const landingUrl = `${origin}${cleanPath}/landing.html`;
+    const landingUrl = `${getAppBaseUrl()}/landing.html`;
     navigator.clipboard.writeText(landingUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);

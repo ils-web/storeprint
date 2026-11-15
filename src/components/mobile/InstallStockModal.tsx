@@ -12,6 +12,8 @@ import {
   Copy,
   Package,
 } from 'lucide-react';
+import { buildStockUrl, buildQrImageUrl } from '../../utils/urlUtils';
+import { escapeHtml, sanitizeHttpUrl } from '../../utils/htmlUtils';
 
 interface InstallStockModalProps {
   isOpen: boolean;
@@ -31,18 +33,8 @@ export function InstallStockModal({
   const [activeTab, setActiveTab] = useState<'qr' | 'android' | 'ios' | 'desktop'>('qr');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-  const cleanPath = typeof window !== 'undefined'
-    ? window.location.pathname
-        .replace(/\/index\.html$/i, '')
-        .replace(/\/landing(\.html)?$/i, '')
-        .replace(/\/order(\.html)?$/i, '')
-        .replace(/\/stock(\.html)?$/i, '')
-        .replace(/\/$/, '')
-    : '';
-  const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-  const stockUrl = `${origin}${cleanPath}/stock.html${tenantQuery}`;
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(stockUrl)}`;
+  const stockUrl = buildStockUrl(tenantId);
+  const qrImageUrl = buildQrImageUrl(stockUrl, 300);
 
   useEffect(() => {
     // Detect standalone mode
@@ -93,6 +85,9 @@ export function InstallStockModal({
       return;
     }
 
+    const safeQrUrl = sanitizeHttpUrl(qrImageUrl);
+
+    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html dir="rtl" lang="he">
@@ -125,10 +120,10 @@ export function InstallStockModal({
         <div class="card">
           <div class="badge">אפליקציה עצמאית למחסן 📦</div>
           <h1 class="title">ספירת מלאי ישירות מהנייד</h1>
-          <p class="subtitle">${tenantName} — סריקה מהירה והוספה למסך הבית</p>
+          <p class="subtitle">${escapeHtml(tenantName)} — סריקה מהירה והוספה למסך הבית</p>
           
           <div class="qr-wrapper">
-            <img src="${qrImageUrl}" class="qr-img" alt="QR ספירת מלאי" />
+            <img src="${escapeHtml(safeQrUrl)}" class="qr-img" alt="QR ספירת מלאי" />
             <div class="scan-badge">סרקו במצלמת הטלפון לפתיחה והתקנה 📱</div>
           </div>
 
@@ -142,7 +137,7 @@ export function InstallStockModal({
             </ol>
           </div>
 
-          <div class="url-box">${stockUrl}</div>
+          <div class="url-box">${escapeHtml(stockUrl)}</div>
           <div class="footer">StorePrint — מערכת ניהול מלאי מתקדמת</div>
         </div>
         <script>

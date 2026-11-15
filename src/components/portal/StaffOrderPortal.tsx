@@ -2,14 +2,14 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Tenant,
   Warehouse,
-  InventoryProduct,
   TenantDepartment,
   MultiTenantOrderItem,
   PackagingUnit,
   STANDARD_PACKAGING_UNITS,
+  StaffDirectory,
 } from '../../types/multiTenant';
 import {
-  getTenants,
+  getPublicTenants,
   sortTenants,
   getWarehouses,
   getInventory,
@@ -25,7 +25,15 @@ import {
   fetchTenantsFromFirestore,
   subscribeToTenantsFirestore,
   fetchWarehousesFromFirestore,
+  inventoryProductsToStockMap,
+  stockMapToInventoryProducts,
 } from '../../services/multiTenantDb';
+import {
+  checkRequesterOrderAccess,
+  getLocalStaffDirectory,
+  matchStaffMember,
+  subscribeToStaffDirectory,
+} from '../../services/staffAccessService';
 import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
 import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
 import { isFirebaseReady, db } from '../../services/firebase';
@@ -63,6 +71,8 @@ import {
   Sun,
   Moon,
   AlertTriangle,
+  ShieldAlert,
+  KeyRound,
 } from 'lucide-react';
 
 interface StaffOrderPortalProps {
@@ -156,9 +166,9 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
   const isLight = theme === 'light';
 
-  const [tenants, setTenants] = useState<Tenant[]>(() => sortTenants(getTenants()));
+  const [tenants, setTenants] = useState<Tenant[]>(() => sortTenants(getPublicTenants()));
   const [selectedTenantId, setSelectedTenantId] = useState<string>(() => {
-    const initialTenants = sortTenants(getTenants());
+    const initialTenants = sortTenants(getPublicTenants());
     const rawTarget = initialTenantId || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tenant') : null);
     if (rawTarget) {
       const match = initialTenants.find((t) => t.id === rawTarget || t.slug === rawTarget);
@@ -174,11 +184,15 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   useEffect(() => {
     fetchTenantsFromFirestore()
       .then((list) => {
-        if (list && list.length > 0) setTenants(sortTenants(list));
+        if (list && list.length > 0) {
+          setTenants(sortTenants(list.map((t) => ({ ...t, passwordHash: '' }))));
+        }
       })
       .catch(console.warn);
     const unsub = subscribeToTenantsFirestore((list) => {
-      if (list && list.length > 0) setTenants(sortTenants(list));
+      if (list && list.length > 0) {
+        setTenants(sortTenants(list.map((t) => ({ ...t, passwordHash: '' }))));
+      }
     });
     return () => {
       if (unsub) unsub();
@@ -196,6 +210,18 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   }, [initialTenantId, selectedTenantId, tenants]);
 
   const activeTenant = tenants.find((t) => t.id === selectedTenantId) || tenants.find((t) => t.id === 'tenant-main-01') || tenants[0];
+  const [staffDirectory, setStaffDirectory] = useState<StaffDirectory>(() =>
+    getLocalStaffDirectory(selectedTenantId)
+  );
+
+  useEffect(() => {
+    setStaffDirectory(getLocalStaffDirectory(selectedTenantId));
+    const unsubStaff = subscribeToStaffDirectory(selectedTenantId, setStaffDirectory);
+    return () => {
+      if (unsubStaff) unsubStaff();
+    };
+  }, [selectedTenantId]);
+
   const [warehouses, setWarehouses] = useState<Warehouse[]>(() => getWarehouses(selectedTenantId));
 
   useEffect(() => {
@@ -324,6 +350,21 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     }
     return '';
   });
+  const [staffPin, setStaffPin] = useState('');
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  const activeStaffMembers = useMemo(
+    () => staffDirectory.members.filter((m) => m.status === 'active'),
+    [staffDirectory]
+  );
+  const matchedRequester = useMemo(
+    () => (requesterName.trim() ? matchStaffMember(staffDirectory, requesterName) : undefined),
+    [staffDirectory, requesterName]
+  );
+  const isRequesterBlocked = matchedRequester?.status === 'blocked';
+  const requiresPinInput = Boolean(
+    !isRequesterBlocked && (matchedRequester?.pinHash || staffDirectory.policy.requirePersonalPin)
+  );
 
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'gloves' | 'dressings' | 'hygiene' | 'medical' | 'in_stock' | 'in_cart'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -347,26 +388,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     }
   }, [isSubmitting]);
 
-  // Helper to load base stock for active tenant
+  // Helper to load base stock for active tenant (preserving packageSize & packagingMode)
   const getInitialStockForTenant = (tId: string): Record<string, StockItem> => {
     if (tId === 'tenant-main-01') {
       return getDbStock();
     }
-    const inv = getInventory(tId);
-    const stockMap: Record<string, StockItem> = {};
-    inv.forEach((item, idx) => {
-      stockMap[item.name] = {
-        id: item.id,
-        name: item.name,
-        unit: item.unit,
-        currentStock: item.currentStock || 0,
-        minThreshold: item.minThreshold || 10,
-        colIndex: item.colIndex || idx + 1,
-        isActive: item.isActive !== false,
-        limitByPatients: Boolean(item.limitByPatients),
-      };
-    });
-    return stockMap;
+    return inventoryProductsToStockMap(getInventory(tId));
   };
 
   const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getInitialStockForTenant(selectedTenantId));
@@ -404,20 +431,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       setLiveStock(newStock);
       if (selectedTenantId !== 'tenant-main-01' && newStock && Object.keys(newStock).length > 0) {
         const whId = warehouses[0]?.id || 'wh-01';
-        const items: InventoryProduct[] = Object.values(newStock).map((item, idx) => ({
-          id: item.id || `prod-${selectedTenantId}-${idx}`,
-          tenantId: selectedTenantId,
-          warehouseId: whId,
-          name: item.name,
-          colIndex: item.colIndex || idx + 1,
-          currentStock: item.currentStock || 0,
-          minThreshold: item.minThreshold || 10,
-          unit: (item.unit || "יח'") as PackagingUnit,
-          isActive: item.isActive !== false,
-          limitByPatients: Boolean(item.limitByPatients),
-          updatedAt: item.lastUpdated || new Date().toISOString(),
-        }));
-        saveInventory(selectedTenantId, items);
+        saveInventory(selectedTenantId, stockMapToInventoryProducts(newStock, selectedTenantId, whId));
       }
     }, selectedTenantId);
     return () => {
@@ -713,14 +727,16 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     setIsCartOpen(true);
   };
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
+  const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAccessError(null);
     if (!selectedDepartmentName.trim()) {
       alert('נא לבחור את שם המחלקה המזמינה');
       setIsDeptModalOpen(true);
       return;
     }
     if (!requesterName.trim()) {
+      setAccessError('נא להזין את שם המזמין/ה (איש קשר במחלקה)');
       alert('נא להזין את שם המזמין/ה (איש קשר במחלקה)');
       return;
     }
@@ -733,13 +749,37 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       return;
     }
 
+    const accessCheck = await checkRequesterOrderAccess({
+      directory: staffDirectory,
+      requesterName,
+      departmentName: selectedDepartmentName,
+      pin: staffPin,
+    });
+    if (!accessCheck.allowed) {
+      setAccessError(accessCheck.message || 'אינך מורשה לשלוח הזמנות בסניף זה.');
+      return;
+    }
+
     // All fields valid -> Trigger Final Pre-Submit Department Verification Modal
     setIsFinalConfirmOpen(true);
   };
 
   const handleFinalSubmitOrder = async () => {
     setIsSubmitting(true);
+    setAccessError(null);
     try {
+      const accessCheck = await checkRequesterOrderAccess({
+        directory: staffDirectory,
+        requesterName,
+        departmentName: selectedDepartmentName,
+        pin: staffPin,
+      });
+      if (!accessCheck.allowed) {
+        setAccessError(accessCheck.message || 'אינך מורשה לשלוח הזמנות בסניף זה.');
+        setIsFinalConfirmOpen(false);
+        return;
+      }
+
       const formattedNotes = [
         requesterName.trim() ? `שם מזמין/ה: ${requesterName.trim()}` : '',
         notes.trim() ? notes.trim() : '',
@@ -756,6 +796,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
         items: cartItemsList,
         totalItemsCount: cartItemsList.length,
         notes: formattedNotes,
+        requesterName: requesterName.trim(),
+        requesterStaffId: accessCheck.matchedMember?.id,
         patientsCount: patientsCount.trim() || '',
         status: 'NEW',
         source: 'WEB_PORTAL',
@@ -767,6 +809,8 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       setOrderSuccessNumber(newOrder.orderNumber);
       setCart({});
       setNotes('');
+      setStaffPin('');
+      setAccessError(null);
       setIsFinalConfirmOpen(false);
       setIsCartOpen(false);
       window.dispatchEvent(new Event('storeprint_order_created'));
@@ -807,7 +851,18 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     );
   }, [selectedTenantId, selectedDepartmentName, orderSuccessNumber, orderHistoryVersion]);
 
+  const canDeleteFromPortal = Boolean(staffDirectory.policy.allowPortalOrderDelete);
+
   const handleDeleteOrderFromPortal = (orderId: string) => {
+    if (!canDeleteFromPortal) {
+      alert('מחיקת הזמנות מפורטל המחלקות חסומה על ידי מדיניות האבטחה של המחסן.');
+      return;
+    }
+    const targetOrder = myDeptOrders.find((o) => o.id === orderId);
+    if (targetOrder?.printed) {
+      alert('לא ניתן למחוק הזמנה שכבר הודפסה וסופקה במחסן.');
+      return;
+    }
     if (!window.confirm('האם למחוק הזמנה זו מההיסטוריה?')) return;
     deleteTenantOrder(selectedTenantId, orderId);
     deleteOrderFromFirestore(orderId, selectedTenantId).catch(console.warn);
@@ -815,11 +870,20 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   };
 
   const handleClearDepartmentOrders = () => {
-    if (!window.confirm(`האם לנקות את כל היסטוריית ההזמנות של מחלקת ${selectedDepartmentName}?`)) return;
-    myDeptOrders.forEach((o) => {
+    if (!canDeleteFromPortal) {
+      alert('מחיקת היסטוריית הזמנות מפורטל המחלקות חסומה על ידי מדיניות האבטחה של המחסן.');
+      return;
+    }
+    const deletableOrders = myDeptOrders.filter((o) => !o.printed);
+    if (deletableOrders.length === 0) {
+      alert('אין הזמנות פתוחות למחיקה (הזמנות שהודפסו נשמרות בתיעוד המחסן).');
+      return;
+    }
+    if (!window.confirm(`האם לנקות ${deletableOrders.length} הזמנות ממתינות של מחלקת ${selectedDepartmentName}?`)) return;
+    deletableOrders.forEach((o) => {
+      deleteTenantOrder(selectedTenantId, o.id);
       deleteOrderFromFirestore(o.id, selectedTenantId).catch(console.warn);
     });
-    clearAllTenantOrders(selectedTenantId, selectedDepartmentName);
     setOrderHistoryVersion((v) => v + 1);
   };
 
@@ -1045,6 +1109,29 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
       {/* Main Shopping Area */}
       <main className="max-w-2xl mx-auto p-3 sm:p-4 space-y-3">
+        {(isRequesterBlocked || accessError) && (
+          <div
+            className={`rounded-2xl border-2 p-3.5 flex items-start gap-2.5 text-xs ${
+              isLight
+                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                : 'bg-rose-950/50 border-rose-500/60 text-rose-100'
+            }`}
+          >
+            <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-black text-sm">
+                {isRequesterBlocked ? 'גישה להזמנות חסומה עבור שם זה' : 'שגיאת אימות מזמין'}
+              </div>
+              <p className="leading-relaxed">
+                {accessError ||
+                  (matchedRequester?.blockedReason
+                    ? `הגישה להזמנות עבור "${matchedRequester.fullName}" נחסמה (${matchedRequester.blockedReason}).`
+                    : `הגישה להזמנות עבור "${matchedRequester?.fullName || requesterName}" נחסמה על ידי הנהלת המחסן.`)}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Success Confirmation Card */}
         {orderSuccessNumber && lastSubmittedOrder && (
           <div
@@ -1720,16 +1807,78 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                   <input
                     type="text"
                     required
+                    list="portal-active-staff-list"
                     placeholder="שם מלא / תפקיד"
                     value={requesterName}
-                    onChange={(e) => setRequesterName(e.target.value)}
+                    onChange={(e) => {
+                      setRequesterName(e.target.value);
+                      setAccessError(null);
+                    }}
                     className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
-                      isLight
-                        ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
-                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
+                      isRequesterBlocked
+                        ? isLight
+                          ? 'bg-rose-50 border-rose-400 text-rose-900 placeholder-rose-400 focus:border-rose-600'
+                          : 'bg-rose-950/40 border-rose-500 text-rose-100 placeholder-rose-400 focus:border-rose-400'
+                        : isLight
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                          : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
                     }`}
                   />
+                  {activeStaffMembers.length > 0 && (
+                    <datalist id="portal-active-staff-list">
+                      {activeStaffMembers.map((member) => (
+                        <option key={member.id} value={member.fullName} />
+                      ))}
+                    </datalist>
+                  )}
+                  {isRequesterBlocked && (
+                    <div
+                      className={`mt-2 p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+                        isLight
+                          ? 'bg-rose-50 border-rose-300 text-rose-800'
+                          : 'bg-rose-950/50 border-rose-500/50 text-rose-200'
+                      }`}
+                    >
+                      <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      <span>
+                        {matchedRequester?.blockedReason
+                          ? `משתמש זה חסום להזמנות (${matchedRequester.blockedReason}). יש לפנות למנהל המחסן.`
+                          : `הגישה להזמנות עבור "${matchedRequester?.fullName || requesterName}" חסומה על ידי הנהלת המחסן.`}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {requiresPinInput && (
+                  <div>
+                    <label
+                      className={`text-xs font-bold block mb-1.5 flex items-center gap-1.5 ${
+                        isLight ? 'text-slate-800' : 'text-slate-300'
+                      }`}
+                    >
+                      <KeyRound className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>קוד PIN אישי לאימות עובד</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      placeholder="הזן קוד אישי"
+                      value={staffPin}
+                      onChange={(e) => {
+                        setStaffPin(e.target.value);
+                        setAccessError(null);
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-mono font-bold border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
+                        isLight
+                          ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600'
+                          : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-indigo-500'
+                      }`}
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label
@@ -1804,10 +1953,23 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                 </div>
               </div>
 
+              {accessError && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                    isLight
+                      ? 'bg-rose-50 border-rose-300 text-rose-800'
+                      : 'bg-rose-950/60 border-rose-500/50 text-rose-200'
+                  }`}
+                >
+                  <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <span className="font-semibold leading-relaxed">{accessError}</span>
+                </div>
+              )}
+
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isSubmitting || cartItemsList.length === 0}
+                disabled={isSubmitting || cartItemsList.length === 0 || isRequesterBlocked}
                 className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 active:scale-[0.99]"
               >
                 {isSubmitting ? (
@@ -2060,7 +2222,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
             <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isRequesterBlocked}
                 onClick={handleFinalSubmitOrder}
                 className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 active:scale-[0.99]"
               >
@@ -2136,11 +2298,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {myDeptOrders.length > 0 && (
+                {canDeleteFromPortal && myDeptOrders.some((o) => !o.printed) && (
                   <button
                     onClick={handleClearDepartmentOrders}
                     className="px-2.5 py-1 rounded-xl text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/20 flex items-center gap-1 cursor-pointer transition-colors"
-                    title="נקה את כל היסטוריית ההזמנות של מחלקה זו"
+                    title="נקה הזמנות ממתינות של מחלקה זו"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>נקה היסטוריה</span>
@@ -2218,14 +2380,16 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                       </div>
 
                       <div className={`flex gap-2 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-slate-900'}`}>
-                        <button
-                          onClick={() => handleDeleteOrderFromPortal(order.id)}
-                          className="py-2 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
-                          title="מחק הזמנה זו מההיסטוריה"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>מחק</span>
-                        </button>
+                        {canDeleteFromPortal && !order.printed && (
+                          <button
+                            onClick={() => handleDeleteOrderFromPortal(order.id)}
+                            className="py-2 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
+                            title="מחק הזמנה זו מההיסטוריה"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>מחק</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleReorder(order)}
                           className="flex-1 py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
@@ -2247,6 +2411,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+        tenantId={selectedTenantId}
         tenantName={activeTenant?.name}
       />
     </div>

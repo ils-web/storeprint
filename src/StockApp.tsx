@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MobileStockManager } from './components/mobile/MobileStockManager';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
 import { EmergencyConfirmModal } from './components/emergency/EmergencyConfirmModal';
+import { LoginModal } from './components/auth/LoginModal';
+import { Lock, ShieldCheck } from 'lucide-react';
 import { StockItem } from './types';
 import {
   getDbStock,
@@ -17,21 +19,29 @@ import {
   pushStockToFirestore,
 } from './services/firestoreSync';
 import {
-  getTenants,
+  getPublicTenants,
   getWarehouses,
   getTenantStockMap,
   saveInventory,
   fetchTenantsFromFirestore,
   subscribeToTenantsFirestore,
+  stockMapToInventoryProducts,
+  getActiveAuthSession,
 } from './services/multiTenantDb';
-import { Tenant, InventoryProduct, PackagingUnit } from './types/multiTenant';
+import {
+  getLocalStaffDirectory,
+  subscribeToStaffDirectory,
+} from './services/staffAccessService';
+import { AuthSession, StaffDirectory, Tenant } from './types/multiTenant';
 
 export default function StockApp() {
-  const [tenants, setTenants] = useState<Tenant[]>(() => getTenants());
+  const [tenants, setTenants] = useState<Tenant[]>(() => getPublicTenants());
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => getActiveAuthSession());
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Resolve active tenant from URL (?tenant=... or ?tenantId=...)
-  const [activeTenantId, setActiveTenantId] = useState<string>(() => {
-    const initialTenants = getTenants();
+  const [activeTenantId] = useState<string>(() => {
+    const initialTenants = getPublicTenants();
     try {
       if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
@@ -46,45 +56,51 @@ export default function StockApp() {
     return initialTenants.length > 0 ? initialTenants[0].id : 'tenant-main-01';
   });
 
-  // Subscribe to tenants from Firestore so all 4+ warehouses resolve their names properly on mobile
+  const [staffDirectory, setStaffDirectory] = useState<StaffDirectory>(() =>
+    getLocalStaffDirectory(activeTenantId)
+  );
+
   useEffect(() => {
     fetchTenantsFromFirestore()
       .then((list) => {
-        if (list && list.length > 0) setTenants(list);
+        if (list && list.length > 0) setTenants(list.map((t) => ({ ...t, passwordHash: '' })));
       })
       .catch(console.warn);
     const unsub = subscribeToTenantsFirestore((list) => {
-      if (list && list.length > 0) setTenants(list);
+      if (list && list.length > 0) setTenants(list.map((t) => ({ ...t, passwordHash: '' })));
     });
     return () => {
       if (unsub) unsub();
     };
   }, []);
 
+  useEffect(() => {
+    const unsub = subscribeToStaffDirectory(activeTenantId, setStaffDirectory);
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [activeTenantId]);
+
   const activeTenant = useMemo(() => {
     return tenants.find((t) => t.id === activeTenantId) || tenants[0];
   }, [tenants, activeTenantId]);
 
+  const isAuthorizedForTenant = useMemo(() => {
+    if (!authSession) return false;
+    if (authSession.userRole === 'superadmin') return true;
+    return authSession.userRole === 'tenant_admin' && authSession.tenantId === activeTenantId;
+  }, [authSession, activeTenantId]);
+
+  const isWorkspaceLocked =
+    Boolean(staffDirectory?.policy?.requireAdminLoginForWorkspace) && !isAuthorizedForTenant;
+
   const persistTenantInventory = useCallback((tId: string, stockMap: Record<string, StockItem>) => {
     if (tId === 'tenant-main-01') return;
     const whId = getWarehouses(tId)[0]?.id || 'wh-01';
-    const items: InventoryProduct[] = Object.values(stockMap).map((item, idx) => ({
-      id: item.id || `prod-${tId}-${idx}`,
-      tenantId: tId,
-      warehouseId: whId,
-      name: item.name,
-      colIndex: item.colIndex || idx + 1,
-      currentStock: item.currentStock || 0,
-      minThreshold: item.minThreshold || 10,
-      unit: (item.unit || "יח'") as PackagingUnit,
-      isActive: item.isActive !== false,
-      limitByPatients: Boolean(item.limitByPatients),
-      updatedAt: item.lastUpdated || new Date().toISOString(),
-    }));
+    const items = stockMapToInventoryProducts(stockMap, tId, whId);
     saveInventory(tId, items);
   }, []);
 
-  // Initial stock from local DB cache strictly isolated per tenant
   const [stock, setStock] = useState<Record<string, StockItem>>(() => {
     try {
       if (activeTenantId !== 'tenant-main-01') {
@@ -97,6 +113,9 @@ export default function StockApp() {
     }
   });
 
+  const stockRef = useRef<Record<string, StockItem>>(stock);
+  stockRef.current = stock;
+
   const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(false);
   const [isEmergencyConfirmOpen, setIsEmergencyConfirmOpen] = useState<boolean>(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
@@ -104,6 +123,7 @@ export default function StockApp() {
   // Subscribe to real-time Firestore updates for active tenant
   useEffect(() => {
     const unsubscribe = subscribeToFirestoreStock((remoteStock) => {
+      stockRef.current = remoteStock;
       setStock(remoteStock);
       if (activeTenantId === 'tenant-main-01') {
         saveDbStock(remoteStock);
@@ -119,7 +139,7 @@ export default function StockApp() {
     };
   }, [activeTenantId, persistTenantInventory]);
 
-  // Handle item stock updates
+  // Handle item stock updates cleanly outside React state updaters (StrictMode safe)
   const handleUpdateStockItem = useCallback(
     (
       name: string,
@@ -129,36 +149,36 @@ export default function StockApp() {
       isActive?: boolean,
       limitByPatients?: boolean
     ) => {
-      setStock((prev) => {
-        const existing = prev[name];
-        if (!existing) return prev;
+      const current = stockRef.current;
+      const existing = current[name];
+      if (!existing) return;
 
-        const updatedItem: StockItem = {
-          ...existing,
-          currentStock: Math.max(0, newQty),
-          minThreshold: minThreshold !== undefined ? minThreshold : existing.minThreshold,
-          unit: unit !== undefined ? unit : existing.unit,
-          isActive: isActive !== undefined ? isActive : existing.isActive,
-          limitByPatients: limitByPatients !== undefined ? limitByPatients : existing.limitByPatients,
-        };
+      const updatedItem: StockItem = {
+        ...existing,
+        currentStock: Math.max(0, newQty),
+        minThreshold: minThreshold !== undefined ? minThreshold : existing.minThreshold,
+        unit: unit !== undefined ? unit : existing.unit,
+        isActive: isActive !== undefined ? isActive : existing.isActive,
+        limitByPatients: limitByPatients !== undefined ? limitByPatients : existing.limitByPatients,
+        lastUpdated: new Date().toISOString(),
+      };
 
-        const nextStock = {
-          ...prev,
-          [name]: updatedItem,
-        };
+      const nextStock: Record<string, StockItem> = {
+        ...current,
+        [name]: updatedItem,
+      };
 
-        if (activeTenantId === 'tenant-main-01') {
-          saveOrUpdateDbStockItem(updatedItem);
-        } else {
-          persistTenantInventory(activeTenantId, nextStock);
-        }
+      stockRef.current = nextStock;
+      setStock(nextStock);
 
-        // Push immediately to Firestore
-        pushStockToFirestore(nextStock, activeTenantId).catch((err) => {
-          console.error('[StockApp] Error syncing stock update to Firestore:', err);
-        });
+      if (activeTenantId === 'tenant-main-01') {
+        saveOrUpdateDbStockItem(updatedItem);
+      } else {
+        persistTenantInventory(activeTenantId, nextStock);
+      }
 
-        return nextStock;
+      pushStockToFirestore(nextStock, activeTenantId).catch((err) => {
+        console.error('[StockApp] Error syncing stock update to Firestore:', err);
       });
     },
     [activeTenantId, persistTenantInventory]
@@ -170,6 +190,7 @@ export default function StockApp() {
     try {
       const freshStock = await fetchStockFromFirestore(activeTenantId);
       if (freshStock && Object.keys(freshStock).length > 0) {
+        stockRef.current = freshStock;
         setStock(freshStock);
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(freshStock);
@@ -178,16 +199,16 @@ export default function StockApp() {
         }
         return { count: Object.keys(freshStock).length };
       }
-      return { count: Object.keys(stock).length };
+      return { count: Object.keys(stockRef.current).length };
     } finally {
       setIsSyncingCloud(false);
     }
-  }, [activeTenantId, stock, persistTenantInventory]);
+  }, [activeTenantId, persistTenantInventory]);
 
   // Handle moving items up or down
   const handleMoveStockItem = useCallback(
     (idOrName: string, direction: 'up' | 'down') => {
-      const currentList: StockItem[] = Object.values(stock) as StockItem[];
+      const currentList: StockItem[] = Object.values(stockRef.current) as StockItem[];
       const currentIndex = currentList.findIndex(
         (item) => (item.id && item.id === idOrName) || item.name === idOrName
       );
@@ -202,11 +223,12 @@ export default function StockApp() {
 
       const nextStock: Record<string, StockItem> = {};
       updatedList.forEach((item, idx) => {
-        item.colIndex = idx + 1;
-        nextStock[item.name] = item;
+        nextStock[item.name] = { ...item, colIndex: idx + 1 };
       });
 
+      stockRef.current = nextStock;
       setStock(nextStock);
+
       if (activeTenantId === 'tenant-main-01') {
         moveDbStockItem(idOrName, direction);
       } else {
@@ -214,91 +236,119 @@ export default function StockApp() {
       }
       pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
-    [stock, activeTenantId, persistTenantInventory]
+    [activeTenantId, persistTenantInventory]
   );
 
-  // Handle saving full item
+  // Handle saving full item outside React state updater
   const handleSaveFullItem = useCallback(
     (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => {
-      setStock((prev) => {
-        let list: StockItem[] = Object.values(prev) as StockItem[];
+      const current = stockRef.current;
+      let list: StockItem[] = Object.values(current) as StockItem[];
 
-        if (oldNameOrId) {
-          list = list.filter(
-            (item) => item.id !== oldNameOrId && item.name !== oldNameOrId
-          );
-        } else {
-          list = list.filter(
-            (item) => item.id !== savedItem.id && item.name !== savedItem.name
-          );
-        }
+      if (oldNameOrId) {
+        list = list.filter((item) => item.id !== oldNameOrId && item.name !== oldNameOrId);
+      } else {
+        list = list.filter((item) => item.id !== savedItem.id && item.name !== savedItem.name);
+      }
 
-        if (typeof targetPosition === 'number' && targetPosition >= 1 && targetPosition <= list.length + 1) {
-          list.splice(targetPosition - 1, 0, savedItem);
-        } else {
-          list.unshift(savedItem);
-        }
+      if (typeof targetPosition === 'number' && targetPosition >= 1 && targetPosition <= list.length + 1) {
+        list.splice(targetPosition - 1, 0, savedItem);
+      } else {
+        list.unshift(savedItem);
+      }
 
-        const nextStock: Record<string, StockItem> = {};
-        list.forEach((item, idx) => {
-          item.colIndex = idx + 1;
-          nextStock[item.name] = item;
-        });
-
-        if (activeTenantId === 'tenant-main-01') {
-          if (typeof targetPosition === 'number') {
-            insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
-          } else {
-            saveOrUpdateDbStockItem(savedItem, oldNameOrId);
-          }
-        } else {
-          persistTenantInventory(activeTenantId, nextStock);
-        }
-
-        pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
-        return nextStock;
+      const nextStock: Record<string, StockItem> = {};
+      list.forEach((item, idx) => {
+        nextStock[item.name] = { ...item, colIndex: idx + 1 };
       });
+
+      stockRef.current = nextStock;
+      setStock(nextStock);
+
+      if (activeTenantId === 'tenant-main-01') {
+        if (typeof targetPosition === 'number') {
+          insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
+        } else {
+          saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+        }
+      } else {
+        persistTenantInventory(activeTenantId, nextStock);
+      }
+
+      pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
     [activeTenantId, persistTenantInventory]
   );
 
-  // Handle item deletion
+  // Handle item deletion outside React state updater
   const handleDeleteStockItem = useCallback(
     (idOrName: string) => {
-      setStock((prev) => {
-        const nextStock: Record<string, StockItem> = { ...prev };
-        let foundKey: string | null = null;
+      const current = stockRef.current;
+      const nextStock: Record<string, StockItem> = { ...current };
+      let foundKey: string | null = null;
 
-        for (const [key, item] of Object.entries(nextStock) as [string, StockItem][]) {
-          if ((item.id && item.id === idOrName) || item.name === idOrName || key === idOrName) {
-            foundKey = key;
-            break;
-          }
+      for (const [key, item] of Object.entries(nextStock) as [string, StockItem][]) {
+        if ((item.id && item.id === idOrName) || item.name === idOrName || key === idOrName) {
+          foundKey = key;
+          break;
         }
+      }
 
-        if (foundKey) {
-          delete nextStock[foundKey];
-          if (activeTenantId === 'tenant-main-01') {
-            deleteDbStockItem(idOrName);
-          } else {
-            persistTenantInventory(activeTenantId, nextStock);
-          }
-          pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
-        }
+      if (!foundKey) return;
+      delete nextStock[foundKey];
 
-        return nextStock;
-      });
+      stockRef.current = nextStock;
+      setStock(nextStock);
+
+      if (activeTenantId === 'tenant-main-01') {
+        deleteDbStockItem(idOrName);
+      } else {
+        persistTenantInventory(activeTenantId, nextStock);
+      }
+      pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
     [activeTenantId, persistTenantInventory]
   );
 
-  // Return to main app
   const handleBackToMain = () => {
     if (typeof window !== 'undefined') {
       const tenantParam = activeTenantId ? `?tenant=${encodeURIComponent(activeTenantId)}` : '';
       window.location.href = `./index.html${tenantParam}`;
     }
   };
+
+  if (isWorkspaceLocked) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4" dir="rtl">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-white">ממשק ניהול המלאי נעול</h1>
+            <p className="text-sm text-slate-400 mt-1.5">
+              סניף <strong>{activeTenant?.name || activeTenantId}</strong> הפעיל דרישת הזדהות מנהל בכניסה לעדכוני מלאי.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLoginModalOpen(true)}
+            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+          >
+            <ShieldCheck className="w-5 h-5" />
+            <span>התחברות מנהל סניף</span>
+          </button>
+        </div>
+
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          subtitle={`נדרשת התחברות מנהל עבור ${activeTenant?.name || activeTenantId}`}
+          onSuccess={(session) => setAuthSession(session)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-sky-500 selection:text-white" dir="rtl">

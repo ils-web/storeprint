@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { QrCode, Smartphone, X, Copy, CheckCircle2, ExternalLink, Printer } from 'lucide-react';
+import { buildStockUrl, buildQrImageUrl } from '../../utils/urlUtils';
+import { escapeHtml, sanitizeHttpUrl } from '../../utils/htmlUtils';
 
 interface MobileStockQRModalProps {
   isOpen: boolean;
@@ -13,18 +15,8 @@ export function MobileStockQRModal({ isOpen, onClose, tenantId, tenantName = 'מ
 
   if (!isOpen) return null;
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ils-web.github.io';
-  const cleanPath = typeof window !== 'undefined'
-    ? window.location.pathname
-        .replace(/\/index\.html$/i, '')
-        .replace(/\/landing(\.html)?$/i, '')
-        .replace(/\/order(\.html)?$/i, '')
-        .replace(/\/stock(\.html)?$/i, '')
-        .replace(/\/$/, '')
-    : '';
-  const tenantQuery = tenantId ? `?tenant=${encodeURIComponent(tenantId)}` : '';
-  const mobileStockUrl = `${origin}${cleanPath}/stock.html${tenantQuery}`;
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(mobileStockUrl)}`;
+  const mobileStockUrl = buildStockUrl(tenantId);
+  const qrImageUrl = buildQrImageUrl(mobileStockUrl, 300);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(mobileStockUrl);
@@ -36,6 +28,9 @@ export function MobileStockQRModal({ isOpen, onClose, tenantId, tenantName = 'מ
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const safeQrUrl = sanitizeHttpUrl(qrImageUrl);
+
+    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html dir="rtl" lang="he">
@@ -59,15 +54,15 @@ export function MobileStockQRModal({ isOpen, onClose, tenantId, tenantName = 'מ
         <div class="card">
           <div class="logo">StorePrint 📦</div>
           <div class="title">ספירת ובקרת מלאי במחסן</div>
-          <div class="subtitle">${tenantName} — גישה מהירה מהסמארטפון</div>
-          <img src="${qrImageUrl}" class="qr-img" />
+          <div class="subtitle">${escapeHtml(tenantName)} — גישה מהירה מהסמארטפון</div>
+          <img src="${escapeHtml(safeQrUrl)}" class="qr-img" />
           <div class="box">
             <strong>📋 הנחיות שימוש למחסנאי:</strong><br>
             1. סרקו את ה-QR במצלמת הטלפון.<br>
             2. עברו בין המדפים והקישו כמויות במקשים מהירים (+10, +1, -1, -10).<br>
             3. המלאי מתעדכן בזמן אמת במערכת המרכזית ובענן.
           </div>
-          <div class="footer">${mobileStockUrl}</div>
+          <div class="footer">${escapeHtml(mobileStockUrl)}</div>
         </div>
         <script>
           window.onload = function() { setTimeout(function() { window.print(); }, 400); };
