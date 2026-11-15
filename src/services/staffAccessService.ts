@@ -536,7 +536,7 @@ export function extractRequesterNameFromOrder(order: Pick<MultiTenantOrder, 'req
     return order.requesterName.trim();
   }
   const notes = order.notes || '';
-  const match = notes.match(/שם\s*מזמין(?:\/ה)?\s*[:\-]\s*([^|\n]+)/i);
+  const match = notes.match(/שם\s*מזמין(?:\/ה)?\s*[:\-]\s*([^|\n•]+)/i);
   if (match && match[1]) {
     return match[1].trim();
   }

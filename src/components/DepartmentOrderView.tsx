@@ -492,6 +492,8 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
                     <KeyRound className="w-3.5 h-3.5 absolute right-3 top-3.5 text-indigo-500" />
                     <input
                       type="password"
+                      name="dept_portal_staff_pin"
+                      autoComplete="one-time-code"
                       inputMode="numeric"
                       placeholder="קוד PIN אישי לשליחה"
                       value={staffPin}

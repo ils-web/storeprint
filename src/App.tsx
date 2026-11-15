@@ -549,6 +549,9 @@ export default function App() {
       totalItemsCount: to.totalItemsCount || orderItems.length,
       printed: Boolean(to.printed),
       printedAt: to.printedAt,
+      notes: to.notes,
+      requesterName: to.requesterName,
+      requesterStaffId: to.requesterStaffId,
       rawRow: {},
     };
   }, [activeTenantId]);
@@ -2343,7 +2346,7 @@ export default function App() {
                       orderNumber: o.id.slice(-6),
                       items: [],
                       totalItemsCount: Object.keys(o.items || {}).length,
-                      notes: o.notes,
+                      notes: o.notes || o.patientsCount,
                       requesterName: o.requesterName,
                       requesterStaffId: o.requesterStaffId,
                       status: o.printed ? ('PRINTED' as const) : ('NEW' as const),

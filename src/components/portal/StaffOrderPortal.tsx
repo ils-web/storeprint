@@ -749,14 +749,20 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       return;
     }
 
-    const accessCheck = await checkRequesterOrderAccess({
-      directory: staffDirectory,
-      requesterName,
-      departmentName: selectedDepartmentName,
-      pin: staffPin,
-    });
-    if (!accessCheck.allowed) {
-      setAccessError(accessCheck.message || 'אינך מורשה לשלוח הזמנות בסניף זה.');
+    try {
+      const accessCheck = await checkRequesterOrderAccess({
+        directory: staffDirectory,
+        requesterName,
+        departmentName: selectedDepartmentName,
+        pin: staffPin,
+      });
+      if (!accessCheck.allowed) {
+        setAccessError(accessCheck.message || 'אינך מורשה לשלוח הזמנות בסניף זה.');
+        return;
+      }
+    } catch (err) {
+      console.error('Staff access check error:', err);
+      setAccessError('שגיאה בבדיקת הרשאת העובד. נסה לרענן את האפליקציה ולנסות שוב.');
       return;
     }
 
@@ -1007,7 +1013,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                   <Package className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                   <span className="text-[10px] text-slate-400 shrink-0">יעד אספקה:</span>
                   <span className="font-bold text-slate-700 dark:text-slate-200 truncate">
-                    {activeWarehouse.name}
+                    {activeTenant?.name ? `${activeTenant.name} • ` : ''}{activeWarehouse.name}
                   </span>
                 </div>
               )}
@@ -1798,14 +1804,23 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
 
                 <div>
                   <label
-                    className={`text-xs font-bold block mb-1.5 ${
+                    className={`text-xs font-bold flex items-center justify-between gap-2 mb-1.5 ${
                       isLight ? 'text-slate-800' : 'text-slate-300'
                     }`}
                   >
-                    שם המזמין/ה (איש קשר במחלקה) <span className="text-rose-500">*</span>
+                    <span>
+                      שם המזמין/ה (איש קשר במחלקה) <span className="text-rose-500">*</span>
+                    </span>
+                    {staffDirectory.policy.requireRegisteredStaff && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                        עובדים מורשים בלבד 🔒
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
+                    name="portal_requester_name"
+                    autoComplete="name"
                     required
                     list="portal-active-staff-list"
                     placeholder="שם מלא / תפקיד"
@@ -1831,6 +1846,23 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                       ))}
                     </datalist>
                   )}
+                  {staffDirectory.policy.requireRegisteredStaff &&
+                    requesterName.trim() !== '' &&
+                    !isRequesterBlocked &&
+                    !matchedRequester && (
+                      <div
+                        className={`mt-2 p-2.5 rounded-xl border text-xs flex items-start gap-2 ${
+                          isLight
+                            ? 'bg-amber-50 border-amber-300 text-amber-900'
+                            : 'bg-amber-950/40 border-amber-600/50 text-amber-200'
+                        }`}
+                      >
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <span>
+                          הסניף פועל במצב עובדים מורשים בלבד: השם &quot;{requesterName.trim()}&quot; עדיין לא אושר ב&quot;צוות והרשאות&quot;.
+                        </span>
+                      </div>
+                    )}
                   {isRequesterBlocked && (
                     <div
                       className={`mt-2 p-2.5 rounded-xl border text-xs flex items-start gap-2 ${

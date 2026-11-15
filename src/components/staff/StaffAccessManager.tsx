@@ -30,6 +30,7 @@ import {
   updateStaffSecurityPolicy,
   upsertStaffMember,
 } from '../../services/staffAccessService';
+import { fetchOrdersFromFirestore } from '../../services/firestoreSync';
 
 interface StaffAccessManagerProps {
   tenantId: string;
@@ -49,6 +50,7 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
   onClose,
 }) => {
   const [directory, setDirectory] = useState<StaffDirectory>(() => getLocalStaffDirectory(tenantId));
+  const [cloudOrders, setCloudOrders] = useState<MultiTenantOrder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'blocked' | 'active'>('all');
   const [isSaving, setIsSaving] = useState(false);
@@ -80,6 +82,11 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
     fetchStaffDirectory(tenantId).then((dir) => {
       if (active) setDirectory(dir);
     });
+    fetchOrdersFromFirestore(tenantId)
+      .then((orders) => {
+        if (active && Array.isArray(orders)) setCloudOrders(orders);
+      })
+      .catch(() => {});
     const unsub = subscribeToStaffDirectory(tenantId, (dir) => {
       if (active) setDirectory(dir);
     });
@@ -294,9 +301,27 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
   const blockedCount = directory.members.filter((m) => m.status === 'blocked').length;
   const pinCount = directory.members.filter((m) => Boolean(m.pinHash)).length;
 
+  const mergedRecentOrders = useMemo(() => {
+    const map = new Map<string, MultiTenantOrder>();
+    cloudOrders.forEach((o) => {
+      if (o?.id) map.set(o.id, o);
+    });
+    recentOrders.forEach((o) => {
+      if (!o?.id) return;
+      const prev = map.get(o.id);
+      map.set(o.id, {
+        ...prev,
+        ...o,
+        requesterName: o.requesterName || prev?.requesterName,
+        notes: o.notes || prev?.notes,
+      });
+    });
+    return Array.from(map.values());
+  }, [recentOrders, cloudOrders]);
+
   const knownRequesters = useMemo(
-    () => extractKnownRequestersFromOrders(recentOrders, directory.members),
-    [recentOrders, directory.members]
+    () => extractKnownRequestersFromOrders(mergedRecentOrders, directory.members),
+    [mergedRecentOrders, directory.members]
   );
 
   const filteredMembers = useMemo(() => {
@@ -319,7 +344,7 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
   }, [directory.members, searchQuery, statusFilter]);
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6 text-slate-900" dir="rtl">
       {/* Header */}
       <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -520,10 +545,12 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
+              name="staff_block_reason"
+              autoComplete="off"
               value={blockingTarget.reason}
               onChange={(e) => setBlockingTarget({ ...blockingTarget, reason: e.target.value })}
               placeholder="סיבת החסימה (אופציונלי, למשל: סיום העסקה)"
-              className="flex-1 bg-white border border-rose-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-400"
+              className="flex-1 bg-white text-slate-900 placeholder:text-slate-400 border border-rose-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-400"
             />
             <button
               type="submit"
@@ -606,10 +633,12 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
             <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              name="staff_directory_search"
+              autoComplete="off"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="חפש לפי שם עובד, מחלקה, תפקיד או כינוי..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -754,7 +783,7 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
       {/* Add / Edit Staff Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white text-slate-900 rounded-3xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <div className="font-black text-base flex items-center gap-2">
                 {memberStatus === 'blocked' ? <UserX className="w-5 h-5 text-rose-400" /> : <UserPlus className="w-5 h-5 text-emerald-400" />}
@@ -769,16 +798,18 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveMember} className="p-6 space-y-4">
+            <form onSubmit={handleSaveMember} autoComplete="off" className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">שם מלא של העובד/ת *</label>
                 <input
                   type="text"
+                  name="staff_member_full_name"
+                  autoComplete="off"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="לדוגמה: דוד לוי"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -788,10 +819,12 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                 </label>
                 <input
                   type="text"
+                  name="staff_member_aliases"
+                  autoComplete="off"
                   value={aliasesInput}
                   onChange={(e) => setAliasesInput(e.target.value)}
                   placeholder="למשל: דוד ל., David Levy, ד. לוי"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -799,9 +832,10 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">הגבלה למחלקה (אופציונלי)</label>
                   <select
+                    name="staff_member_department"
                     value={departmentName}
                     onChange={(e) => setDepartmentName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full bg-slate-50 text-slate-900 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="הכל">כל מחלקות הסניף</option>
                     {departments.map((d) => (
@@ -816,10 +850,12 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1">תפקיד / מחלקה</label>
                   <input
                     type="text"
+                    name="staff_member_role_title"
+                    autoComplete="off"
                     value={roleTitle}
                     onChange={(e) => setRoleTitle(e.target.value)}
                     placeholder="למשל: אחות מוסמכת"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
@@ -828,6 +864,7 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">סטטוס גישה לאפליקציה</label>
                   <select
+                    name="staff_member_status"
                     value={memberStatus}
                     onChange={(e) => setMemberStatus(e.target.value as 'active' | 'blocked')}
                     className={`w-full border rounded-xl px-3 py-2.5 text-sm font-bold outline-none ${
@@ -845,7 +882,11 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                   <label className="block text-xs font-bold text-slate-700 mb-1">קוד PIN אישי (אופציונלי)</label>
                   <div className="flex gap-1.5">
                     <input
-                      type="password"
+                      type="text"
+                      name="staff_member_pin_code"
+                      autoComplete="off"
+                      spellCheck={false}
+                      dir="ltr"
                       inputMode="numeric"
                       value={pinInput}
                       onChange={(e) => {
@@ -853,7 +894,7 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                         setClearPin(false);
                       }}
                       placeholder={editingMemberId ? 'השאר ריק לשמירת קיים' : '4-6 ספרות'}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="flex-1 bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <button
                       type="button"
@@ -887,10 +928,12 @@ export const StaffAccessManager: React.FC<StaffAccessManagerProps> = ({
                   <label className="block text-xs font-bold text-rose-700 mb-1">סיבת חסימה</label>
                   <input
                     type="text"
+                    name="staff_member_blocked_reason"
+                    autoComplete="off"
                     value={blockedReason}
                     onChange={(e) => setBlockedReason(e.target.value)}
                     placeholder="למשל: סיום העסקה / אין הרשאת ניפוק"
-                    className="w-full bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rose-400"
+                    className="w-full bg-rose-50 text-rose-950 placeholder:text-rose-400 border border-rose-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-rose-400"
                   />
                 </div>
               )}
