@@ -25,6 +25,8 @@ import {
   ChevronUp,
   ChevronDown,
   ArrowUpDown,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
 import { StockItem } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
@@ -34,7 +36,13 @@ import {
   getCanonicalWarehouseCatalog,
 } from '../utils/stockManager';
 import { getCategorizedSortedStockItems, categorizeItem } from '../utils/stockGrouper';
+import {
+  downloadPurchaseOrderExcel,
+  getSuggestedOrderQty,
+  PurchaseOrderExportLine,
+} from '../utils/excelExport';
 import { ItemModal } from './ItemModal';
+import { PurchaseOrderModal, PurchaseOrderDraftEntry } from './PurchaseOrderModal';
 
 export const PACKAGING_UNITS = [
   { value: "יח'", label: "יח' (יחידות)" },
@@ -536,6 +544,185 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     }
   };
 
+  // Purchase Order Builder Draft (persisted per tenant in localStorage)
+  const purchaseDraftStorageKey = `storeprint_purchase_draft_${tenantId || 'tenant-main-01'}`;
+  const [purchaseDraft, setPurchaseDraft] = useState<Record<string, PurchaseOrderDraftEntry>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = localStorage.getItem(purchaseDraftStorageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(purchaseDraftStorageKey);
+      setPurchaseDraft(raw ? JSON.parse(raw) : {});
+    } catch {
+      setPurchaseDraft({});
+    }
+  }, [purchaseDraftStorageKey]);
+
+  const updatePurchaseDraft = useCallback(
+    (updater: (prev: Record<string, PurchaseOrderDraftEntry>) => Record<string, PurchaseOrderDraftEntry>) => {
+      setPurchaseDraft((prev) => {
+        const next = updater(prev);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(purchaseDraftStorageKey, JSON.stringify(next));
+          } catch {}
+        }
+        return next;
+      });
+    },
+    [purchaseDraftStorageKey]
+  );
+
+  const getPurchaseNormKey = useCallback(
+    (name: string) => normalizeProductName(name) || name.trim().toLowerCase(),
+    []
+  );
+
+  const getCleanUnitForItem = useCallback((item: StockItem) => {
+    const pkgSize = item.packageSize || detectPackageSize(item.name);
+    if (!item.unit || item.unit === 'מטר') {
+      return pkgSize && pkgSize > 1 ? 'מארז' : "יח'";
+    }
+    return item.unit;
+  }, []);
+
+  const togglePurchaseItem = useCallback(
+    (item: StockItem) => {
+      const norm = getPurchaseNormKey(item.name);
+      updatePurchaseDraft((prev) => {
+        const next = { ...prev };
+        if (next[norm]) {
+          delete next[norm];
+        } else {
+          next[norm] = {
+            qty: getSuggestedOrderQty(item, getEffectiveTh(item)),
+            unit: getCleanUnitForItem(item),
+          };
+        }
+        return next;
+      });
+    },
+    [getPurchaseNormKey, updatePurchaseDraft, getEffectiveTh, getCleanUnitForItem]
+  );
+
+  const handleUpdateDraftEntry = useCallback(
+    (itemName: string, entry: PurchaseOrderDraftEntry) => {
+      const norm = getPurchaseNormKey(itemName);
+      updatePurchaseDraft((prev) => ({
+        ...prev,
+        [norm]: {
+          qty: Math.max(1, entry.qty || 1),
+          unit: entry.unit || "יח'",
+          ...(entry.note !== undefined ? { note: entry.note } : {}),
+        },
+      }));
+    },
+    [getPurchaseNormKey, updatePurchaseDraft]
+  );
+
+  const handleRemoveDraftEntry = useCallback(
+    (itemName: string) => {
+      const norm = getPurchaseNormKey(itemName);
+      updatePurchaseDraft((prev) => {
+        const next = { ...prev };
+        delete next[norm];
+        return next;
+      });
+    },
+    [getPurchaseNormKey, updatePurchaseDraft]
+  );
+
+  const handleAutoFillLowStockToPurchase = useCallback(() => {
+    updatePurchaseDraft((prev) => {
+      const next = { ...prev };
+      lowStockItems.forEach((item) => {
+        const norm = getPurchaseNormKey(item.name);
+        if (!next[norm]) {
+          next[norm] = {
+            qty: getSuggestedOrderQty(item, getEffectiveTh(item)),
+            unit: getCleanUnitForItem(item),
+          };
+        }
+      });
+      return next;
+    });
+  }, [lowStockItems, getPurchaseNormKey, getEffectiveTh, getCleanUnitForItem, updatePurchaseDraft]);
+
+  const handleClearPurchaseDraft = useCallback(() => {
+    updatePurchaseDraft(() => ({}));
+  }, [updatePurchaseDraft]);
+
+  const selectedPurchaseItems = useMemo(() => {
+    const lines: PurchaseOrderExportLine[] = [];
+    stockList.forEach((item, idx) => {
+      const norm = getPurchaseNormKey(item.name);
+      const entry = purchaseDraft[norm];
+      if (!entry) return;
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      lines.push({
+        displayNumber: getDisplayNum(item, idx),
+        name: item.name,
+        currentStock: safeQty,
+        minThreshold: getEffectiveTh(item),
+        orderQty: Math.max(1, entry.qty || 1),
+        orderUnit: entry.unit || getCleanUnitForItem(item),
+        packageSize: item.packageSize || detectPackageSize(item.name),
+        note: entry.note,
+      });
+    });
+    return lines;
+  }, [stockList, purchaseDraft, getPurchaseNormKey, getDisplayNum, getEffectiveTh, getCleanUnitForItem]);
+
+  const totalDraftOrderUnits = useMemo(
+    () => selectedPurchaseItems.reduce((sum, l) => sum + l.orderQty, 0),
+    [selectedPurchaseItems]
+  );
+
+  const allVisibleSelected = useMemo(() => {
+    if (filteredItems.length === 0) return false;
+    return filteredItems.every((it) => Boolean(purchaseDraft[getPurchaseNormKey(it.name)]));
+  }, [filteredItems, purchaseDraft, getPurchaseNormKey]);
+
+  const handleToggleSelectAllVisible = useCallback(() => {
+    updatePurchaseDraft((prev) => {
+      const next = { ...prev };
+      if (allVisibleSelected) {
+        filteredItems.forEach((it) => {
+          delete next[getPurchaseNormKey(it.name)];
+        });
+      } else {
+        filteredItems.forEach((it) => {
+          const norm = getPurchaseNormKey(it.name);
+          if (!next[norm]) {
+            next[norm] = {
+              qty: getSuggestedOrderQty(it, getEffectiveTh(it)),
+              unit: getCleanUnitForItem(it),
+            };
+          }
+        });
+      }
+      return next;
+    });
+  }, [allVisibleSelected, filteredItems, getPurchaseNormKey, getEffectiveTh, getCleanUnitForItem, updatePurchaseDraft]);
+
+  const handleQuickExportExcel = useCallback(() => {
+    if (selectedPurchaseItems.length === 0) return;
+    downloadPurchaseOrderExcel(selectedPurchaseItems, {
+      branchName: tenantName,
+      createdAt: new Date(),
+      isEmergencyMode,
+    });
+  }, [selectedPurchaseItems, tenantName, isEmergencyMode]);
+
   return (
     <div className="space-y-4 animate-fadeIn pb-16" dir="rtl">
       
@@ -719,6 +906,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 <QrCode className="w-4 h-4" />
                 <span>כרטיסיות QR למחלקות 🏷️</span>
               </button>
+
+              {/* Purchase Order Excel Builder Button */}
+              <button
+                type="button"
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className={`text-xs sm:text-sm font-black px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-2 transition-all active:scale-95 cursor-pointer ${
+                  selectedPurchaseItems.length > 0
+                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white shadow-teal-600/25'
+                    : 'bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-300'
+                }`}
+                title="יצירת טופס הזמנת רכש לספק מהמחסן וייצוא לקובץ Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>טופס הזמנת רכש (Excel)</span>
+                {selectedPurchaseItems.length > 0 && (
+                  <span className="bg-white text-teal-800 text-[11px] font-black px-2 py-0.5 rounded-full">
+                    {selectedPurchaseItems.length}
+                  </span>
+                )}
+              </button>
             </div>
 
           </div>
@@ -733,26 +940,42 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
           ) : (
             filteredItems.map((item, idx) => {
-              const th = item.minThreshold || globalThreshold;
+              const th = getEffectiveTh(item);
               const isLow = item.currentStock < th;
               const isOut = item.currentStock === 0;
               const currentUnit = item.unit || "יח'";
+              const norm = getPurchaseNormKey(item.name);
+              const draftEntry = purchaseDraft[norm];
+              const isSelectedForOrder = Boolean(draftEntry);
 
               return (
                 <div
                   key={item.name}
                   className={`p-3.5 space-y-3 transition-colors ${
-                    isOut
+                    isSelectedForOrder
+                      ? 'bg-teal-50/70 ring-1 ring-inset ring-teal-300'
+                      : isOut
                       ? 'bg-slate-100/70'
                       : isLow
                       ? 'bg-red-50/50'
                       : 'bg-white'
                   }`}
                 >
-                  {/* Top Row: Index, Title & Status */}
+                  {/* Top Row: Order Checkbox, Index, Title & Status */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-0.5 flex-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <label
+                          className="inline-flex items-center gap-1 cursor-pointer shrink-0 bg-slate-100 hover:bg-teal-100 px-1.5 py-1 rounded-lg border border-slate-200"
+                          title="סמן פריט זה לטופס הזמנת רכש (Excel)"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelectedForOrder}
+                            onChange={() => togglePurchaseItem(item)}
+                            className="w-4 h-4 accent-teal-600 rounded cursor-pointer"
+                          />
+                        </label>
                         <span className="font-mono text-[10px] text-slate-400 font-bold">
                           #{getDisplayNum(item, idx)}
                         </span>
@@ -764,6 +987,64 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <div className="text-[10px] text-indigo-700 font-bold inline-flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 w-fit">
                           <span>📦</span>
                           <span>{item.packageSize || detectPackageSize(item.name)} יח' במארז</span>
+                        </div>
+                      )}
+                      {isSelectedForOrder && draftEntry && (
+                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap bg-white border border-teal-300 rounded-xl px-2 py-1.5">
+                          <span className="text-[11px] font-black text-teal-800">כמות להזמנה:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateDraftEntry(item.name, {
+                                ...draftEntry,
+                                qty: Math.max(1, draftEntry.qty - 1),
+                              })
+                            }
+                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center cursor-pointer"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            value={draftEntry.qty}
+                            onChange={(e) => {
+                              const parsed = parseInt(e.target.value, 10);
+                              handleUpdateDraftEntry(item.name, {
+                                ...draftEntry,
+                                qty: isNaN(parsed) || parsed < 1 ? 1 : parsed,
+                              });
+                            }}
+                            className="w-14 text-center py-1 rounded-lg border border-teal-400 bg-emerald-50 text-slate-900 font-mono font-black text-xs focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateDraftEntry(item.name, {
+                                ...draftEntry,
+                                qty: draftEntry.qty + 1,
+                              })
+                            }
+                            className="w-7 h-7 rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                          <select
+                            value={draftEntry.unit}
+                            onChange={(e) =>
+                              handleUpdateDraftEntry(item.name, {
+                                ...draftEntry,
+                                unit: e.target.value,
+                              })
+                            }
+                            className="px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-xs font-bold"
+                          >
+                            {PACKAGING_UNITS.map((u) => (
+                              <option key={u.value} value={u.value}>
+                                {u.value}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
                     </div>
@@ -820,6 +1101,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <table className="w-full text-right border-collapse">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-600">
+                <th className="py-3 px-2 w-14 text-center">
+                  <label
+                    className="inline-flex flex-col items-center gap-0.5 cursor-pointer"
+                    title="סמן / בטל סימון לכל הפריטים המוצגים לטופס הזמנה"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={handleToggleSelectAllVisible}
+                      className="w-4 h-4 accent-teal-600 rounded cursor-pointer"
+                    />
+                    <span className="text-[10px] text-teal-700 font-black">הזמן</span>
+                  </label>
+                </th>
                 <th className="py-3 px-2 w-12 text-center">מס'</th>
                 <th className="py-3 px-3">שם המוצר / פריט</th>
                 <th className="py-3 px-2 w-52 text-center">יתרת מלאי נוכחית</th>
@@ -831,7 +1126,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-500">
+                  <td colSpan={7} className="py-16 text-center text-slate-500">
                     <div className="max-w-md mx-auto space-y-2">
                       <Package className="w-10 h-10 text-slate-300 mx-auto" />
                       <div className="font-bold text-slate-700 text-sm">לא נמצאו פריטים</div>
@@ -849,12 +1144,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   const isLow = !isInactive && safeQty < th;
                   const isOut = !isInactive && safeQty === 0;
                   const currentUnit = item.unit || "יח'";
+                  const norm = getPurchaseNormKey(item.name);
+                  const draftEntry = purchaseDraft[norm];
+                  const isSelectedForOrder = Boolean(draftEntry);
 
                   return (
                     <tr
                       key={item.name}
                       className={`transition-colors ${
-                        isInactive
+                        isSelectedForOrder
+                          ? 'bg-teal-50/70 hover:bg-teal-50'
+                          : isInactive
                           ? 'bg-slate-100/70 opacity-70'
                           : isOut
                           ? 'bg-slate-50/80'
@@ -863,6 +1163,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           : 'hover:bg-slate-50/60'
                       }`}
                     >
+                      {/* Purchase Order Selection Checkbox */}
+                      <td className="py-2.5 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelectedForOrder}
+                          onChange={() => togglePurchaseItem(item)}
+                          className="w-4 h-4 accent-teal-600 rounded cursor-pointer"
+                          title="סמן פריט זה לטופס הזמנת רכש (Excel)"
+                        />
+                      </td>
+
                       {/* Index & Reorder Buttons */}
                       <td className="py-2.5 px-1 text-center font-mono font-bold text-slate-400">
                         <div className="flex items-center justify-center gap-1">
@@ -940,6 +1251,72 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             👥 {item.limitByPatients ? 'מוגבל למטופלים ✓' : 'הגבל למטופלים'}
                           </button>
                         </div>
+
+                        {isSelectedForOrder && draftEntry && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 flex-wrap bg-white border border-teal-300 rounded-xl px-2.5 py-1 shadow-2xs">
+                            <span className="text-[11px] font-black text-teal-800">כמות להזמנה:</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateDraftEntry(item.name, {
+                                  ...draftEntry,
+                                  qty: Math.max(1, draftEntry.qty - 1),
+                                })
+                              }
+                              className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="number"
+                              min={1}
+                              value={draftEntry.qty}
+                              onChange={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                handleUpdateDraftEntry(item.name, {
+                                  ...draftEntry,
+                                  qty: isNaN(parsed) || parsed < 1 ? 1 : parsed,
+                                });
+                              }}
+                              className="w-14 text-center py-0.5 rounded-md border border-teal-400 bg-emerald-50 text-slate-900 font-mono font-black text-xs focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateDraftEntry(item.name, {
+                                  ...draftEntry,
+                                  qty: draftEntry.qty + 1,
+                                })
+                              }
+                              className="w-6 h-6 rounded-md bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <select
+                              value={draftEntry.unit}
+                              onChange={(e) =>
+                                handleUpdateDraftEntry(item.name, {
+                                  ...draftEntry,
+                                  unit: e.target.value,
+                                })
+                              }
+                              className="px-1.5 py-0.5 rounded-md border border-slate-300 bg-slate-50 text-slate-900 text-[11px] font-bold cursor-pointer"
+                            >
+                              {PACKAGING_UNITS.map((u) => (
+                                <option key={u.value} value={u.value}>
+                                  {u.value}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setIsPurchaseModalOpen(true)}
+                              className="text-[11px] font-bold text-teal-700 hover:underline px-1 cursor-pointer"
+                            >
+                              פתח בטופס
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Interactive Stock Adjuster */}
@@ -1057,6 +1434,71 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         </div>
 
       </div>
+
+      {/* Floating Purchase Order Summary Bar */}
+      {selectedPurchaseItems.length > 0 && !isPurchaseModalOpen && (
+        <div className="fixed bottom-4 left-4 right-4 sm:left-6 sm:right-6 max-w-4xl mx-auto z-40 animate-fadeIn">
+          <div className="bg-slate-900 text-white rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-2xl border border-teal-500/40 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-black text-sm shrink-0">
+                {selectedPurchaseItems.length}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs sm:text-sm font-black text-white">
+                  נבחרו {selectedPurchaseItems.length} פריטים לטופס הזמנת רכש
+                </div>
+                <div className="text-[11px] text-teal-200">
+                  סה"כ כמות להזמנה: <strong className="font-mono">{totalDraftOrderUnits}</strong> יח' / אריזות
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={handleClearPurchaseDraft}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer transition-colors"
+              >
+                נקה בחירה
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-500/40 text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>פתח וערוך טופס</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickExportExcel}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-xs sm:text-sm font-black shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>ייצוא ל-Excel (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Order Builder & Excel Export Modal */}
+      <PurchaseOrderModal
+        isOpen={isPurchaseModalOpen}
+        onClose={() => setIsPurchaseModalOpen(false)}
+        stockList={stockList}
+        displayNumberByNormName={catalog.displayNumberByNormName}
+        draft={purchaseDraft}
+        onUpdateDraftEntry={handleUpdateDraftEntry}
+        onRemoveDraftEntry={handleRemoveDraftEntry}
+        onAutoFillLowStock={handleAutoFillLowStockToPurchase}
+        onClearDraft={handleClearPurchaseDraft}
+        lowStockActiveCount={lowStockItems.length}
+        getEffectiveThreshold={getEffectiveTh}
+        packagingUnits={PACKAGING_UNITS}
+        branchName={tenantName}
+        isEmergencyMode={isEmergencyMode}
+      />
 
       {/* Department QR Cards Print Modal */}
       <DepartmentQRPrintModal
