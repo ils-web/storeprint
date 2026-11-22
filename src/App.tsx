@@ -2235,7 +2235,7 @@ export default function App() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full">
+      <main className="flex-1 max-w-[1520px] mx-auto px-3 sm:px-5 lg:px-6 py-4 w-full">
         <ErrorBoundary fallbackTitle="אירעה שגיאה בטעינת המסך המבוקש">
           {activeTab === 'orders' && (
             <OrderTable
