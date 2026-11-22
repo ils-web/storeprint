@@ -67,6 +67,11 @@ import {
   normalizeProductName,
   findMatchingStockKey,
   extractOrderItemQuantity,
+  getCanonicalWarehouseCatalog,
+  updateStockItemInMap,
+  upsertStockItemInMap,
+  deleteStockItemFromMap,
+  moveStockItemInMap,
 } from './utils/stockManager';
 import { parseSheetDate, coerceDate } from './utils/dateUtils';
 import {
@@ -581,7 +586,7 @@ export default function App() {
     // 2. Stock & Product headers
     const newStock = getInitialStockForTenant(activeTenantId);
     setStock(newStock);
-    setProductHeaders(Object.keys(newStock));
+    setProductHeaders(getCanonicalWarehouseCatalog(newStock).orderedList.map((it) => it.name));
 
     // 3. Orders: immediately switch to active tenant cache or local tenant orders (never keep other tenant's orders!)
     try {
@@ -724,7 +729,7 @@ export default function App() {
 
           const dbStock = getDbStock();
           if (Object.keys(dbStock).length > 0) {
-            setProductHeaders(Object.keys(dbStock));
+            setProductHeaders(getCanonicalWarehouseCatalog(dbStock).orderedList.map((it) => it.name));
           }
         } else {
           const tenantDepts = getTenantDepartments(activeTenantId);
@@ -801,9 +806,9 @@ export default function App() {
           saveStoredStock(liveStock);
         } else {
           const primaryWhId = getWarehouses(activeTenantId)[0]?.id || 'wh-01';
-          saveInventory(activeTenantId, stockMapToInventoryProducts(liveStock, activeTenantId, primaryWhId));
+          saveInventory(activeTenantId, stockMapToInventoryProducts(liveStock, activeTenantId, primaryWhId), false);
         }
-        setProductHeaders(Object.keys(liveStock));
+        setProductHeaders(getCanonicalWarehouseCatalog(liveStock).orderedList.map((it) => it.name));
       }
     }, activeTenantId);
 
@@ -1112,9 +1117,9 @@ export default function App() {
           const whs = getWarehouses(activeTenantId);
           const whId = whs[0]?.id || 'wh-01';
           const items = stockMapToInventoryProducts(targetStock, activeTenantId, whId);
-          saveInventory(activeTenantId, items);
+          saveInventory(activeTenantId, items, false);
         }
-        setProductHeaders(Object.keys(targetStock));
+        setProductHeaders(getCanonicalWarehouseCatalog(targetStock).orderedList.map((it) => it.name));
       } else {
         targetStock = stockRef.current;
       }
@@ -1165,23 +1170,20 @@ export default function App() {
       saveStoredStock(updated);
       syncToMultiTenantDb(productHeaders, departments, updated);
     } else {
-      const next = { ...prev };
-      const target = next[itemIdOrName] || (Object.values(next) as StockItem[]).find((it) => it.id === itemIdOrName || it.name === itemIdOrName);
-      if (target) {
-        next[target.name] = {
-          ...target,
-          currentStock: Math.max(0, newStock),
-          ...(minThreshold !== undefined ? { minThreshold } : {}),
-          ...(unit ? { unit } : {}),
-          ...(isActive !== undefined ? { isActive } : {}),
-          ...(limitByPatients !== undefined ? { limitByPatients } : {}),
-          lastUpdated: new Date().toISOString(),
-        };
-      }
-      updated = next;
+      updated = updateStockItemInMap(
+        prev,
+        itemIdOrName,
+        newStock,
+        minThreshold,
+        unit,
+        isActive,
+        limitByPatients
+      );
       stockRef.current = updated;
       setStock(updated);
-      syncToMultiTenantDb(productHeaders, departments, updated);
+      const nextHeaders = getCanonicalWarehouseCatalog(updated).orderedList.map((it) => it.name);
+      setProductHeaders(nextHeaders);
+      syncToMultiTenantDb(nextHeaders, departments, updated);
       pushStockToFirestore(updated, activeTenantId).catch(console.warn);
     }
   }, [activeTenantId, productHeaders, departments, syncToMultiTenantDb]);
@@ -1196,19 +1198,11 @@ export default function App() {
       }
       saveStoredStock(updated);
     } else {
-      const current = { ...stockRef.current };
-      if (oldNameOrId && current[oldNameOrId] && oldNameOrId !== savedItem.name) {
-        delete current[oldNameOrId];
-      }
-      current[savedItem.name] = {
-        ...savedItem,
-        lastUpdated: new Date().toISOString(),
-      };
-      updated = current;
+      updated = upsertStockItemInMap(stockRef.current, savedItem, oldNameOrId, targetPosition);
     }
     stockRef.current = updated;
     setStock(updated);
-    const newHeaders = Object.keys(updated);
+    const newHeaders = getCanonicalWarehouseCatalog(updated).orderedList.map((it) => it.name);
     setProductHeaders(newHeaders);
     try {
       if (activeTenantId === 'tenant-main-01') {
@@ -1227,18 +1221,11 @@ export default function App() {
       updated = deleteDbStockItem(idOrName);
       saveStoredStock(updated);
     } else {
-      const current = { ...stockRef.current };
-      const norm = normalizeProductName(idOrName);
-      Object.keys(current).forEach((k) => {
-        if (k === idOrName || current[k]?.id === idOrName || normalizeProductName(k) === norm) {
-          delete current[k];
-        }
-      });
-      updated = current;
+      updated = deleteStockItemFromMap(stockRef.current, idOrName);
     }
     stockRef.current = updated;
     setStock(updated);
-    const newHeaders = Object.keys(updated);
+    const newHeaders = getCanonicalWarehouseCatalog(updated).orderedList.map((it) => it.name);
     setProductHeaders(newHeaders);
     try {
       if (activeTenantId === 'tenant-main-01') {
@@ -1257,29 +1244,11 @@ export default function App() {
       updated = moveDbStockItem(idOrName, direction);
       saveStoredStock(updated);
     } else {
-      const items = (Object.values(stock) as StockItem[]).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
-      const idx = items.findIndex((it) => it.id === idOrName || it.name === idOrName);
-      if (idx !== -1) {
-        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-        if (targetIdx >= 0 && targetIdx < items.length) {
-          const temp = items[idx];
-          items[idx] = items[targetIdx];
-          items[targetIdx] = temp;
-          const reordered: Record<string, StockItem> = {};
-          items.forEach((it, i) => {
-            it.colIndex = i + 1;
-            reordered[it.name] = it;
-          });
-          updated = reordered;
-        } else {
-          updated = stock;
-        }
-      } else {
-        updated = stock;
-      }
+      updated = moveStockItemInMap(stockRef.current, idOrName, direction);
     }
+    stockRef.current = updated;
     setStock(updated);
-    const newHeaders = Object.keys(updated);
+    const newHeaders = getCanonicalWarehouseCatalog(updated).orderedList.map((it) => it.name);
     setProductHeaders(newHeaders);
     try {
       if (activeTenantId === 'tenant-main-01') {
@@ -1288,7 +1257,7 @@ export default function App() {
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, updated);
     pushStockToFirestore(updated, activeTenantId).catch(console.warn);
-  }, [activeTenantId, stock, departments, syncToMultiTenantDb]);
+  }, [activeTenantId, departments, syncToMultiTenantDb]);
 
   const handleResetMasterCatalog = useCallback(() => {
     if (activeTenantId === 'tenant-main-01') {
@@ -1314,7 +1283,7 @@ export default function App() {
       saveDbStock(organized, true);
       saveStoredStock(organized);
     }
-    const newHeaders = Object.keys(organized);
+    const newHeaders = getCanonicalWarehouseCatalog(organized).orderedList.map((it) => it.name);
     setProductHeaders(newHeaders);
     try {
       if (activeTenantId === 'tenant-main-01') {
@@ -1322,6 +1291,7 @@ export default function App() {
       }
     } catch {}
     syncToMultiTenantDb(newHeaders, departments, organized);
+    pushStockToFirestore(organized, activeTenantId).catch(console.warn);
     setSuccessMessage('המחסן אורגן וסודר בהצלחה לפי קטגוריות רפואיות! 🩺📦✨');
     setTimeout(() => setSuccessMessage(null), 4000);
   }, [activeTenantId, departments, syncToMultiTenantDb]);
@@ -1345,12 +1315,13 @@ export default function App() {
       setIsLoading(true);
       const backupStock = await restoreCloudStockBackup(activeTenantId);
       if (backupStock) {
+        stockRef.current = backupStock;
         setStock(backupStock);
         if (activeTenantId === 'tenant-main-01') {
           saveDbStock(backupStock, true);
           saveStoredStock(backupStock);
         }
-        const newHeaders = Object.keys(backupStock);
+        const newHeaders = getCanonicalWarehouseCatalog(backupStock).orderedList.map((it) => it.name);
         setProductHeaders(newHeaders);
         try {
           if (activeTenantId === 'tenant-main-01') {
@@ -1358,6 +1329,7 @@ export default function App() {
           }
         } catch {}
         syncToMultiTenantDb(newHeaders, departments, backupStock);
+        pushStockToFirestore(backupStock, activeTenantId).catch(console.warn);
         setSuccessMessage('המלאי שוחזר בהצלחה מגיבוי הענן המאובטח! 🛡️✨');
         setTimeout(() => setSuccessMessage(null), 4000);
       } else {

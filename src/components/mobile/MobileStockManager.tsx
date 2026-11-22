@@ -32,7 +32,11 @@ import { InstallStockModal } from './InstallStockModal';
 import { categorizeItem, groupAndSortStockItems } from '../../utils/stockGrouper';
 import { printReorderListHtml } from '../../utils/pdfGenerator';
 import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator';
-import { detectPackageSize } from '../../utils/stockManager';
+import {
+  detectPackageSize,
+  getCanonicalWarehouseCatalog,
+  normalizeProductName,
+} from '../../utils/stockManager';
 
 interface MobileStockManagerProps {
   stock: Record<string, StockItem>;
@@ -59,6 +63,7 @@ interface MobileStockManagerProps {
 interface MobileStockCardProps {
   item: StockItem;
   idx: number;
+  displayNumber?: number;
   totalFiltered: number;
   isEmergencyMode: boolean;
   effectiveTh: number;
@@ -76,6 +81,7 @@ interface MobileStockCardProps {
 const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
   item,
   idx,
+  displayNumber,
   totalFiltered,
   isEmergencyMode,
   effectiveTh,
@@ -197,7 +203,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
                 </div>
               )}
               <span className="text-[11px] font-mono font-bold text-slate-400">
-                #{item.colIndex ? item.colIndex - 3 : idx + 1}
+                #{displayNumber ?? idx + 1}
               </span>
             </div>
 
@@ -533,7 +539,15 @@ export function MobileStockManager({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const stockList = useMemo(() => Object.values(stock), [stock]);
+  const catalog = useMemo(() => getCanonicalWarehouseCatalog(stock), [stock]);
+  const stockList = catalog.orderedList;
+  const getDisplayNum = React.useCallback(
+    (item: StockItem, fallbackIdx: number) =>
+      catalog.displayNumberByNormName.get(
+        normalizeProductName(item.name) || item.name.trim().toLowerCase()
+      ) ?? fallbackIdx + 1,
+    [catalog]
+  );
 
   // Helper to calculate effective threshold (x3 in emergency mode)
   const getEffectiveTh = (item: StockItem) => {
@@ -636,7 +650,7 @@ export function MobileStockManager({
         const deficit = Math.max(1, th - safeQty);
         const unit = item.unit || "יח'";
         const isZero = safeQty === 0;
-        const posText = item.colIndex ? `[#${item.colIndex - 3}] ` : '';
+        const posText = `[#${getDisplayNum(item, itemCounter - 1)}] `;
         text += `${itemCounter}. ${posText}*${item.name}* ${isZero ? '⚠️(אזל!)' : ''}\n   יתרה: ${safeQty} ${unit} | סף: ${th} | *להזמנה: ${deficit} ${unit}*\n`;
       });
       text += `\n`;
@@ -656,10 +670,13 @@ export function MobileStockManager({
         if (!item || !item.name) return false;
 
         if (searchQuery.trim() !== '') {
-          const q = searchQuery.toLowerCase();
+          const q = searchQuery.toLowerCase().trim();
+          const numQuery = q.replace(/^#/, '');
+          const displayNum = getDisplayNum(item, -1);
           const matchesQuery =
             item.name.toLowerCase().includes(q) ||
-            String(item.colIndex).includes(q) ||
+            (numQuery !== '' && displayNum > 0 && String(displayNum).includes(numQuery)) ||
+            (numQuery !== '' && String(item.colIndex).includes(numQuery)) ||
             (item.unit && item.unit.toLowerCase().includes(q));
           if (!matchesQuery) return false;
         }
@@ -703,9 +720,9 @@ export function MobileStockManager({
           if (catA.group !== catB.group) return catA.group - catB.group;
           return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
         }
-        return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
+        return 0;
       });
-  }, [stockList, filterType, searchQuery, filterSession, isEmergencyMode, globalThreshold]);
+  }, [stockList, filterType, searchQuery, filterSession, isEmergencyMode, globalThreshold, getDisplayNum]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-32 text-sm selection:bg-sky-500 selection:text-white" dir="rtl">
@@ -979,6 +996,7 @@ export function MobileStockManager({
                   <MobileStockCard
                     item={item}
                     idx={idx}
+                    displayNumber={getDisplayNum(item, idx)}
                     totalFiltered={filteredItems.length}
                     isEmergencyMode={isEmergencyMode}
                     effectiveTh={getEffectiveTh(item)}

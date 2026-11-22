@@ -559,7 +559,7 @@ export function stockMapToInventoryProducts(
     tenantId,
     warehouseId,
     name: s.name,
-    colIndex: s.colIndex ?? idx + 1,
+    colIndex: s.colIndex && s.colIndex > 0 ? s.colIndex : idx + 4,
     currentStock: Number(s.currentStock) || 0,
     minThreshold: Number(s.minThreshold) || 10,
     unit: s.unit || "יח'",
@@ -584,7 +584,7 @@ export function inventoryProductsToStockMap(
       ...(item.packagingMode !== undefined ? { packagingMode: item.packagingMode } : {}),
       currentStock: Number(item.currentStock) || 0,
       minThreshold: Number(item.minThreshold) || 10,
-      colIndex: item.colIndex || idx + 1,
+      colIndex: item.colIndex && item.colIndex > 0 ? item.colIndex : idx + 4,
       isActive: item.isActive !== false,
       limitByPatients: Boolean(item.limitByPatients),
       lastUpdated: item.updatedAt,
@@ -803,10 +803,12 @@ export function getInventory(tenantId: string, warehouseId?: string): InventoryP
   return all.filter((item) => item.warehouseId === warehouseId);
 }
 
-export function saveInventory(tenantId: string, items: InventoryProduct[]): void {
+export function saveInventory(tenantId: string, items: InventoryProduct[], syncCloud: boolean = true): void {
   const key = `${INVENTORY_KEY}${tenantId}`;
   setStoredJson(key, items);
-  syncInventoryToFirestore(tenantId, items).catch(console.warn);
+  if (syncCloud) {
+    syncInventoryToFirestore(tenantId, items).catch(console.warn);
+  }
 }
 
 async function syncInventoryToFirestore(tenantId: string, items: InventoryProduct[]): Promise<void> {

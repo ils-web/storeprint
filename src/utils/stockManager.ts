@@ -386,3 +386,292 @@ export function detectPackageSize(name: string, explicitSize?: number): number |
   }
   return undefined;
 }
+
+export interface CanonicalWarehouseCatalog {
+  orderedList: StockItem[];
+  activeList: StockItem[];
+  displayNumberByNormName: Map<string, number>;
+}
+
+/**
+ * Single source of truth for ordering, deduplicating, and numbering warehouse items.
+ * - Active items (`isActive !== false`) come first (#1..#activeCount)
+ * - Inactive/frozen items (`isActive === false`) come last (#activeCount+1..#N)
+ * - Ordered by colIndex ascending, then Hebrew name localeCompare
+ * - Strictly deduplicated by normalizeProductName(name)
+ */
+export function getCanonicalWarehouseCatalog(
+  stock: Record<string, StockItem> | null | undefined
+): CanonicalWarehouseCatalog {
+  if (!stock || typeof stock !== 'object') {
+    return { orderedList: [], activeList: [], displayNumberByNormName: new Map() };
+  }
+
+  const rawList = Object.values(stock)
+    .filter(
+      (it): it is StockItem =>
+        Boolean(it && typeof it === 'object' && typeof it.name === 'string' && it.name.trim() !== '')
+    )
+    .sort((a, b) => {
+      const aInactive = a.isActive === false;
+      const bInactive = b.isActive === false;
+      if (aInactive !== bInactive) return aInactive ? 1 : -1;
+      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
+    });
+
+  const seenNorms = new Set<string>();
+  const orderedList: StockItem[] = [];
+  const activeList: StockItem[] = [];
+  const displayNumberByNormName = new Map<string, number>();
+
+  rawList.forEach((item) => {
+    const cleanName = item.name.trim();
+    const norm = normalizeProductName(cleanName) || cleanName.toLowerCase();
+    if (!seenNorms.has(norm)) {
+      seenNorms.add(norm);
+      const displayNum = orderedList.length + 1;
+      orderedList.push(item);
+      displayNumberByNormName.set(norm, displayNum);
+      if (item.isActive !== false) {
+        activeList.push(item);
+      }
+    }
+  });
+
+  return { orderedList, activeList, displayNumberByNormName };
+}
+
+/**
+ * Normalizes a StockItem map into canonical order (active first, frozen last)
+ * with sequential colIndex values starting at 4.
+ */
+export function resequenceStockMap(stockMap: Record<string, StockItem>): Record<string, StockItem> {
+  const { orderedList } = getCanonicalWarehouseCatalog(stockMap);
+  const reorderedMap: Record<string, StockItem> = {};
+  orderedList.forEach((item, idx) => {
+    reorderedMap[item.name] = {
+      ...item,
+      colIndex: idx + 4,
+    };
+  });
+  return reorderedMap;
+}
+
+/**
+ * Updates fields on a single StockItem inside a branch stock map while preserving
+ * active-first / frozen-last canonical ordering when status changes.
+ */
+export function updateStockItemInMap(
+  stockMap: Record<string, StockItem>,
+  itemIdOrName: string,
+  newStock: number,
+  minThreshold?: number,
+  unit?: string,
+  isActive?: boolean,
+  limitByPatients?: boolean,
+  packageSize?: number
+): Record<string, StockItem> {
+  const next: Record<string, StockItem> = { ...(stockMap || {}) };
+  const normSearch = normalizeProductName(itemIdOrName);
+  const targetKey = next[itemIdOrName]
+    ? itemIdOrName
+    : Object.keys(next).find(
+        (k) =>
+          k === itemIdOrName ||
+          next[k]?.id === itemIdOrName ||
+          next[k]?.name === itemIdOrName ||
+          normalizeProductName(k) === normSearch ||
+          normalizeProductName(next[k]?.name || '') === normSearch
+      );
+
+  if (!targetKey || !next[targetKey]) return next;
+
+  const existing = next[targetKey];
+  const wasActive = existing.isActive !== false;
+  const cleanIsActive = isActive !== undefined ? isActive : wasActive;
+  const cleanPkgSize =
+    typeof packageSize === 'number' && packageSize > 0
+      ? packageSize
+      : existing.packageSize || detectPackageSize(existing.name);
+  let cleanUnit = unit || existing.unit || detectPackagingUnitFromProductName(existing.name);
+  if (cleanUnit === 'מטר') {
+    cleanUnit = cleanPkgSize && cleanPkgSize > 1 ? 'מארז' : "יח'";
+  }
+
+  const updatedItem: StockItem = {
+    ...existing,
+    currentStock: typeof newStock === 'number' && !isNaN(newStock) ? Math.max(0, newStock) : 0,
+    minThreshold: typeof minThreshold === 'number' && !isNaN(minThreshold) ? minThreshold : (existing.minThreshold || DEFAULT_MIN_THRESHOLD),
+    unit: cleanUnit,
+    ...(cleanPkgSize !== undefined ? { packageSize: cleanPkgSize } : {}),
+    isActive: cleanIsActive,
+    limitByPatients: limitByPatients !== undefined ? Boolean(limitByPatients) : Boolean(existing.limitByPatients),
+    lastUpdated: new Date().toISOString(),
+  };
+
+  next[targetKey] = updatedItem;
+
+  if (wasActive === cleanIsActive) {
+    return next;
+  }
+
+  const others = getCanonicalWarehouseCatalog(next).orderedList.filter(
+    (it) => normalizeProductName(it.name) !== normalizeProductName(existing.name)
+  );
+  const activeOthers = others.filter((it) => it.isActive !== false);
+  const frozenOthers = others.filter((it) => it.isActive === false);
+  const combined = cleanIsActive
+    ? [...activeOthers, updatedItem, ...frozenOthers]
+    : [...activeOthers, ...frozenOthers, updatedItem];
+
+  const reorderedMap: Record<string, StockItem> = {};
+  combined.forEach((it, idx) => {
+    reorderedMap[it.name] = { ...it, colIndex: idx + 4 };
+  });
+  return reorderedMap;
+}
+
+/**
+ * Inserts or updates a full StockItem inside a stock map with optional 1-based targetPosition.
+ */
+export function upsertStockItemInMap(
+  stockMap: Record<string, StockItem>,
+  savedItem: StockItem,
+  oldNameOrId?: string,
+  targetPosition?: number
+): Record<string, StockItem> {
+  const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
+  const normNew = normalizeProductName(savedItem.name);
+  const { orderedList } = getCanonicalWarehouseCatalog(stockMap);
+
+  let preservedColIndex = savedItem.colIndex;
+  const remaining = orderedList.filter((item) => {
+    const itemNorm = normalizeProductName(item.name);
+    const isMatch =
+      (oldNameOrId &&
+        (item.id === oldNameOrId ||
+          item.name === oldNameOrId ||
+          (normOld !== '' && itemNorm === normOld))) ||
+      (savedItem.id && item.id === savedItem.id) ||
+      item.name === savedItem.name ||
+      (normNew !== '' && itemNorm === normNew);
+    if (isMatch && item.colIndex && !preservedColIndex) {
+      preservedColIndex = item.colIndex;
+    }
+    return !isMatch;
+  });
+
+  const cleanIsActive = savedItem.isActive !== false;
+  const cleanPkgSize =
+    typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
+      ? savedItem.packageSize
+      : detectPackageSize(savedItem.name);
+  let cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
+  if (cleanUnit === 'מטר') {
+    cleanUnit = cleanPkgSize && cleanPkgSize > 1 ? 'מארז' : "יח'";
+  }
+
+  const finalItem: StockItem = {
+    ...savedItem,
+    id: savedItem.id || `stock-${Date.now()}`,
+    name: savedItem.name.trim(),
+    colIndex: preservedColIndex || remaining.length + 4,
+    currentStock: typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0,
+    minThreshold: typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : DEFAULT_MIN_THRESHOLD,
+    unit: cleanUnit,
+    packageSize: cleanPkgSize,
+    isActive: cleanIsActive,
+    limitByPatients: Boolean(savedItem.limitByPatients),
+    lastUpdated: new Date().toISOString(),
+  };
+
+  const activeItems = remaining.filter((it) => it.isActive !== false);
+  const frozenItems = remaining.filter((it) => it.isActive === false);
+
+  if (typeof targetPosition === 'number' && targetPosition > 0) {
+    if (cleanIsActive) {
+      const insertAt = Math.max(0, Math.min(activeItems.length, targetPosition - 1));
+      activeItems.splice(insertAt, 0, finalItem);
+    } else {
+      const frozenIdx = Math.max(0, Math.min(frozenItems.length, targetPosition - activeItems.length - 1));
+      frozenItems.splice(frozenIdx, 0, finalItem);
+    }
+  } else {
+    const combined = [...remaining, finalItem].sort((a, b) => {
+      const aIn = a.isActive === false;
+      const bIn = b.isActive === false;
+      if (aIn !== bIn) return aIn ? 1 : -1;
+      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
+    });
+    const reorderedMap: Record<string, StockItem> = {};
+    combined.forEach((it, idx) => {
+      reorderedMap[it.name] = { ...it, colIndex: idx + 4 };
+    });
+    return reorderedMap;
+  }
+
+  const combined = [...activeItems, ...frozenItems];
+  const reorderedMap: Record<string, StockItem> = {};
+  combined.forEach((it, idx) => {
+    reorderedMap[it.name] = { ...it, colIndex: idx + 4 };
+  });
+  return reorderedMap;
+}
+
+/**
+ * Deletes an item by id or name and resequences remaining items cleanly.
+ */
+export function deleteStockItemFromMap(
+  stockMap: Record<string, StockItem>,
+  idOrName: string
+): Record<string, StockItem> {
+  const norm = normalizeProductName(idOrName);
+  const current: Record<string, StockItem> = {};
+  Object.entries(stockMap || {}).forEach(([k, item]) => {
+    if (!item) return;
+    const isMatch =
+      k === idOrName ||
+      item.id === idOrName ||
+      item.name === idOrName ||
+      normalizeProductName(k) === norm ||
+      normalizeProductName(item.name) === norm;
+    if (!isMatch) {
+      current[k] = item;
+    }
+  });
+  return resequenceStockMap(current);
+}
+
+/**
+ * Moves an item one row up or down within its active/frozen group and resequences colIndex.
+ */
+export function moveStockItemInMap(
+  stockMap: Record<string, StockItem>,
+  idOrName: string,
+  direction: 'up' | 'down'
+): Record<string, StockItem> {
+  const { orderedList } = getCanonicalWarehouseCatalog(stockMap);
+  const normTarget = normalizeProductName(idOrName);
+  const idx = orderedList.findIndex(
+    (it) => it.id === idOrName || it.name === idOrName || normalizeProductName(it.name) === normTarget
+  );
+  if (idx === -1) return stockMap;
+
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= orderedList.length) return stockMap;
+
+  if ((orderedList[idx].isActive !== false) !== (orderedList[targetIdx].isActive !== false)) {
+    return stockMap;
+  }
+
+  const nextList = [...orderedList];
+  const temp = nextList[idx];
+  nextList[idx] = nextList[targetIdx];
+  nextList[targetIdx] = temp;
+
+  const reorderedMap: Record<string, StockItem> = {};
+  nextList.forEach((it, i) => {
+    reorderedMap[it.name] = { ...it, colIndex: i + 4 };
+  });
+  return reorderedMap;
+}

@@ -25,6 +25,7 @@ import {
   fetchTenantsFromFirestore,
   subscribeToTenantsFirestore,
   fetchWarehousesFromFirestore,
+  fetchInventoryFromFirestore,
   inventoryProductsToStockMap,
   stockMapToInventoryProducts,
 } from '../../services/multiTenantDb';
@@ -34,11 +35,15 @@ import {
   matchStaffMember,
   subscribeToStaffDirectory,
 } from '../../services/staffAccessService';
-import { getDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
-import { pushOrderToFirestore, subscribeToFirestoreStock, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
+import { getDbStock, saveDbStock, getDbDepartments, CANONICAL_DEPARTMENTS } from '../../services/unifiedDb';
+import { pushOrderToFirestore, subscribeToFirestoreStock, fetchStockFromFirestore, deleteOrderFromFirestore, fetchOrdersFromFirestore } from '../../services/firestoreSync';
 import { isFirebaseReady, db } from '../../services/firebase';
 import { StockItem } from '../../types';
-import { detectPackageSize } from '../../utils/stockManager';
+import {
+  detectPackageSize,
+  getCanonicalWarehouseCatalog,
+  normalizeProductName,
+} from '../../utils/stockManager';
 import { InstallAppModal } from './InstallAppModal';
 import {
   ShoppingBag,
@@ -397,9 +402,11 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
   };
 
   const [liveStock, setLiveStock] = useState<Record<string, StockItem>>(() => getInitialStockForTenant(selectedTenantId));
+  const [hasRemoteStock, setHasRemoteStock] = useState<boolean>(false);
 
   // Sync initial stock when tenant changes
   useEffect(() => {
+    setHasRemoteStock(false);
     setLiveStock(getInitialStockForTenant(selectedTenantId));
   }, [selectedTenantId]);
 
@@ -425,19 +432,51 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     }
   }, [patientsCount]);
 
-  // Subscribe to real-time warehouse stock from Firestore strictly for active tenant
+  // Subscribe & hydrate real-time warehouse stock from Firestore strictly for active tenant
   useEffect(() => {
-    const unsub = subscribeToFirestoreStock((newStock) => {
-      setLiveStock(newStock);
-      if (selectedTenantId !== 'tenant-main-01' && newStock && Object.keys(newStock).length > 0) {
-        const whId = warehouses[0]?.id || 'wh-01';
-        saveInventory(selectedTenantId, stockMapToInventoryProducts(newStock, selectedTenantId, whId));
+    let cancelled = false;
+    const applyRemoteStock = (remoteStock: Record<string, StockItem>) => {
+      if (cancelled || !remoteStock || Object.keys(remoteStock).length === 0) return;
+      setHasRemoteStock(true);
+      setLiveStock(remoteStock);
+      if (selectedTenantId === 'tenant-main-01') {
+        saveDbStock(remoteStock, false);
+      } else {
+        const whId = getWarehouses(selectedTenantId)[0]?.id || 'wh-01';
+        saveInventory(
+          selectedTenantId,
+          stockMapToInventoryProducts(remoteStock, selectedTenantId, whId),
+          false
+        );
       }
+    };
+
+    // 1. Initial direct fetch (master_stock first, then inventory_data fallback for branches)
+    fetchStockFromFirestore(selectedTenantId)
+      .then((remoteStock) => {
+        if (remoteStock && Object.keys(remoteStock).length > 0) {
+          applyRemoteStock(remoteStock);
+          return null;
+        }
+        return fetchInventoryFromFirestore(selectedTenantId);
+      })
+      .then((fallbackItems) => {
+        if (fallbackItems && Array.isArray(fallbackItems) && fallbackItems.length > 0) {
+          applyRemoteStock(inventoryProductsToStockMap(fallbackItems));
+        }
+      })
+      .catch(console.warn);
+
+    // 2. Real-time Firestore listener
+    const unsub = subscribeToFirestoreStock((newStock) => {
+      applyRemoteStock(newStock);
     }, selectedTenantId);
+
     return () => {
+      cancelled = true;
       if (unsub) unsub();
     };
-  }, [selectedTenantId, warehouses]);
+  }, [selectedTenantId]);
 
   // Scroll to Top Listener
   useEffect(() => {
@@ -493,75 +532,50 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
     }
   };
 
-  // RULE 1: Catalog strictly matches active warehouse stock and EXCLUDES frozen/inactive items
+  // RULE 1: Catalog strictly matches active warehouse stock (#1..#activeCount) and excludes frozen/inactive items
   const inventoryItems = useMemo(() => {
-    let baseStock: Record<string, StockItem> = {};
-    if (selectedTenantId === 'tenant-main-01') {
-      baseStock = getDbStock();
+    let sourceStock: Record<string, StockItem> = {};
+    if (hasRemoteStock && liveStock && Object.keys(liveStock).length > 0) {
+      sourceStock = liveStock;
+    } else if (liveStock && Object.keys(liveStock).length > 0) {
+      sourceStock = liveStock;
+    } else if (selectedTenantId === 'tenant-main-01') {
+      sourceStock = getDbStock();
     } else {
-      const inv = getInventory(selectedTenantId);
-      inv.forEach((item, idx) => {
-        baseStock[item.name] = {
-          id: item.id,
-          name: item.name,
-          unit: item.unit,
-          packageSize: item.packageSize || detectPackageSize(item.name),
-          packagingMode: item.packagingMode,
-          currentStock: item.currentStock || 0,
-          minThreshold: item.minThreshold || 10,
-          colIndex: item.colIndex || idx + 1,
-          isActive: item.isActive !== false,
-          limitByPatients: Boolean(item.limitByPatients),
-        };
-      });
+      const scopedInv = activeWarehouse ? getInventory(selectedTenantId, activeWarehouse.id) : [];
+      const inv = scopedInv.length > 0 ? scopedInv : getInventory(selectedTenantId);
+      sourceStock = inventoryProductsToStockMap(inv);
     }
 
-    const mergedStock: Record<string, StockItem> = { ...baseStock, ...(liveStock || {}) };
+    const catalog = getCanonicalWarehouseCatalog(sourceStock);
 
-    const stockList = Object.values(mergedStock);
+    return catalog.activeList.map((item, idx) => {
+      const pkgSize = item.packageSize || detectPackageSize(item.name);
+      let cleanUnit = item.unit || "יח'";
+      if (cleanUnit === 'ליטר' || cleanUnit === 'מטר') {
+        cleanUnit = pkgSize && pkgSize > 1 ? 'מארז' : "יח'";
+      }
+      const defaultMode = item.packagingMode || (pkgSize && pkgSize > 1 ? 'both' : (cleanUnit === "יח'" ? 'pieces_only' : 'package_only'));
+      const norm = normalizeProductName(item.name) || item.name.trim().toLowerCase();
+      const displayNumber = catalog.displayNumberByNormName.get(norm) ?? idx + 1;
 
-    if (stockList.length > 0) {
-      return stockList
-        .filter((item) => item && item.isActive !== false && item.name && !item.name.startsWith('פריט '))
-        .sort((a, b) => {
-          const colA = typeof a.colIndex === 'number' ? a.colIndex : 999;
-          const colB = typeof b.colIndex === 'number' ? b.colIndex : 999;
-          return colA - colB;
-        })
-        .map((item, idx) => {
-          const pkgSize = item.packageSize || detectPackageSize(item.name);
-          let cleanUnit = item.unit || "יח'";
-          if (cleanUnit === 'ליטר' || cleanUnit === 'מטר') {
-            cleanUnit = pkgSize && pkgSize > 1 ? 'מארז' : "יח'";
-          }
-          const defaultMode = item.packagingMode || (pkgSize && pkgSize > 1 ? 'both' : (cleanUnit === "יח'" ? 'pieces_only' : 'package_only'));
-          return {
-            id: item.id || item.name,
-            warehouseId: activeWarehouse?.id || 'wh-default',
-            name: item.name,
-            unit: cleanUnit as PackagingUnit,
-            packageSize: pkgSize,
-            packagingMode: defaultMode,
-            currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
-            minThreshold: item.minThreshold || 10,
-            colIndex: item.colIndex || idx + 1,
-            isActive: true,
-            limitByPatients: Boolean(item.limitByPatients),
-            category: detectItemCategory(item.name),
-          };
-        });
-    }
-
-    if (!activeTenant || !activeWarehouse) return [];
-    return getInventory(activeTenant.id, activeWarehouse.id)
-      .filter((p) => p.isActive !== false)
-      .map((p) => ({
-        ...p,
-        packageSize: p.packageSize || detectPackageSize(p.name),
-        packagingMode: p.packagingMode,
-        category: detectItemCategory(p.name),
-      }));
-  }, [liveStock, selectedTenantId, activeTenant, activeWarehouse]);
+      return {
+        id: item.id || item.name,
+        warehouseId: activeWarehouse?.id || 'wh-default',
+        name: item.name,
+        unit: cleanUnit as PackagingUnit,
+        packageSize: pkgSize,
+        packagingMode: defaultMode,
+        currentStock: typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0,
+        minThreshold: item.minThreshold || 10,
+        colIndex: item.colIndex || idx + 4,
+        displayNumber,
+        isActive: true,
+        limitByPatients: Boolean(item.limitByPatients),
+        category: detectItemCategory(item.name),
+      };
+    });
+  }, [hasRemoteStock, liveStock, selectedTenantId, activeWarehouse]);
 
   // Filtered Products by Category & Search Query
   const filteredProducts = useMemo(() => {
@@ -579,9 +593,12 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
       // Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
+        const numQuery = q.replace(/^#/, '');
         const matchesName = p.name.toLowerCase().includes(q);
         const matchesUnit = p.unit && p.unit.toLowerCase().includes(q);
-        const matchesIndex = String(p.colIndex).includes(q);
+        const matchesIndex =
+          numQuery !== '' &&
+          (String(p.displayNumber).includes(numQuery) || String(p.colIndex).includes(numQuery));
         if (!matchesName && !matchesUnit && !matchesIndex) return false;
       }
 
@@ -1273,7 +1290,7 @@ export function StaffOrderPortal({ initialTenantId, initialDepartment, initialWa
                               : 'bg-slate-800 text-slate-400 border border-slate-700'
                           }`}
                         >
-                          #{product.colIndex}
+                          #{product.displayNumber}
                         </span>
 
                         <span

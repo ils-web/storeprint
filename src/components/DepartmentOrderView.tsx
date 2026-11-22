@@ -23,6 +23,10 @@ import {
 } from 'lucide-react';
 import { StockItem, CloudSyncConfig } from '../types';
 import { PACKAGING_UNITS } from './WarehouseView';
+import {
+  getCanonicalWarehouseCatalog,
+  normalizeProductName,
+} from '../utils/stockManager';
 import { submitDepartmentOrderToCloud, DepartmentOrderPayload } from '../utils/cloudSync';
 import { pushOrderToFirestore } from '../services/firestoreSync';
 import { createTenantOrder, getWarehouses } from '../services/multiTenantDb';
@@ -144,27 +148,55 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
     return cartItemsList.reduce((sum, item) => sum + item.qty, 0);
   }, [cartItemsList]);
 
-  // Filtered Catalog (strictly excluding inactive/paused items)
-  const filteredProducts = useMemo(() => {
-    let list = productHeaders.filter((h) => {
+  // Filtered Catalog (strictly matching active warehouse stock, sorted and numbered identically #1..#N)
+  const catalogProducts = useMemo(() => {
+    const catalog = getCanonicalWarehouseCatalog(stock);
+    if (catalog.orderedList.length > 0) {
+      return catalog.activeList.map((item, idx) => {
+        const norm = normalizeProductName(item.name) || item.name.trim().toLowerCase();
+        return {
+          name: item.name,
+          displayNumber: catalog.displayNumberByNormName.get(norm) ?? idx + 1,
+          colIndex: item.colIndex || idx + 4,
+        };
+      });
+    }
+
+    // Fallback only if stock map is completely empty
+    const seen = new Set<string>();
+    const list: { name: string; displayNumber: number; colIndex: number }[] = [];
+    productHeaders.forEach((h) => {
       const clean = h.trim();
-      if (!clean) return false;
-      const stockEntry = stock[clean] || (Object.values(stock || {}) as StockItem[]).find((s) => s?.name === clean);
-      if (stockEntry && stockEntry.isActive === false) return false;
-      return true;
+      if (!clean) return;
+      const norm = normalizeProductName(clean) || clean.toLowerCase();
+      if (seen.has(norm)) return;
+      seen.add(norm);
+      const num = list.length + 1;
+      list.push({ name: clean, displayNumber: num, colIndex: num + 3 });
     });
+    return list;
+  }, [productHeaders, stock]);
+
+  const filteredProducts = useMemo(() => {
+    let list = catalogProducts;
 
     if (showOnlyInCart) {
-      list = list.filter((name) => (cart[name]?.qty || 0) > 0);
+      list = list.filter((item) => (cart[item.name]?.qty || 0) > 0);
     }
 
     if (searchTerm.trim() !== '') {
-      const q = searchTerm.toLowerCase();
-      list = list.filter((name) => name.toLowerCase().includes(q));
+      const q = searchTerm.toLowerCase().trim();
+      const numQuery = q.replace(/^#/, '');
+      list = list.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          (numQuery !== '' &&
+            (String(item.displayNumber).includes(numQuery) || String(item.colIndex).includes(numQuery)))
+      );
     }
 
     return list;
-  }, [productHeaders, stock, searchTerm, showOnlyInCart, cart]);
+  }, [catalogProducts, showOnlyInCart, searchTerm, cart]);
 
   // Add / Update item in cart
   const setItemQty = (name: string, newQty: number, unit?: string) => {
@@ -579,7 +611,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
                 <div className="text-xs">נסה לחפש במילים אחרות או נקה את שורת החיפוש</div>
               </div>
             ) : (
-              filteredProducts.map((name, index) => {
+              filteredProducts.map(({ name, displayNumber }) => {
                 const stockItem = stock[name];
                 const cartEntry = cart[name];
                 const inCartQty = cartEntry?.qty || 0;
@@ -598,7 +630,7 @@ export const DepartmentOrderView: React.FC<DepartmentOrderViewProps> = ({
                     {/* Item Info */}
                     <div className="flex items-start gap-2.5 flex-1">
                       <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 rounded-md px-1.5 py-0.5 mt-0.5 shrink-0">
-                        #{index + 1}
+                        #{displayNumber}
                       </span>
                       <div className="space-y-1">
                         <h3 className="font-black text-xs sm:text-sm text-slate-900 leading-tight">

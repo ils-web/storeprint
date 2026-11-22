@@ -9,6 +9,8 @@ import {
   parseNumericQty,
   stripPackagingInfo,
   cleanBidiAndQuotes,
+  resequenceStockMap,
+  upsertStockItemInMap,
 } from '../utils/stockManager';
 import { loadCloudConfig, debouncedPushStockToCloud } from '../utils/cloudSync';
 import { parseSheetDate, coerceDate } from '../utils/dateUtils';
@@ -343,8 +345,9 @@ export function deleteDbStockItem(idOrName: string): Record<string, StockItem> {
     }
   });
 
-  saveDbStock(next, true);
-  return next;
+  const resequenced = resequenceStockMap(next);
+  saveDbStock(resequenced, true);
+  return resequenced;
 }
 
 /**
@@ -386,8 +389,9 @@ export function moveDbStockItem(idOrName: string, direction: 'up' | 'down'): Rec
     next[item.name] = item;
   });
 
-  saveDbStock(next, true);
-  return next;
+  const resequenced = resequenceStockMap(next);
+  saveDbStock(resequenced, true);
+  return resequenced;
 }
 
 /**
@@ -399,54 +403,23 @@ export function insertDbStockItemAtPosition(
   oldNameOrId?: string
 ): Record<string, StockItem> {
   const current = getDbStock();
-  let items = Object.values(current).sort((a, b) => (a.colIndex || 0) - (b.colIndex || 0));
-  const normOld = oldNameOrId ? normalizeProductName(oldNameOrId) : '';
-  const normNew = normalizeProductName(savedItem.name);
+  const cleanPackageSize =
+    typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
+      ? savedItem.packageSize
+      : detectPackageSize(savedItem.name);
+  const cleanPackagingMode =
+    savedItem.packagingMode || (cleanPackageSize && cleanPackageSize > 1 ? 'both' : undefined);
 
-  items = items.filter((item) => {
-    if (savedItem.id && item.id === savedItem.id) return false;
-    if (oldNameOrId && (item.name === oldNameOrId || normalizeProductName(item.name) === normOld)) return false;
-    if (item.name === savedItem.name || normalizeProductName(item.name) === normNew) return false;
-    return true;
-  });
-
-  const insertIndex = Math.max(0, Math.min(items.length, targetPosition - 1));
-
-  const cleanStock = typeof savedItem.currentStock === 'number' && !isNaN(savedItem.currentStock) ? Math.max(0, savedItem.currentStock) : 0;
-  const cleanMin = typeof savedItem.minThreshold === 'number' && !isNaN(savedItem.minThreshold) ? savedItem.minThreshold : 10;
-  let cleanUnit = savedItem.unit || detectPackagingUnitFromProductName(savedItem.name);
-  const cleanPackageSize = typeof savedItem.packageSize === 'number' && savedItem.packageSize > 0
-    ? savedItem.packageSize
-    : detectPackageSize(savedItem.name);
-  if (cleanUnit === 'מטר') {
-    cleanUnit = (cleanPackageSize && cleanPackageSize > 1) ? 'מארז' : "יח'";
-  }
-  const cleanPackagingMode = savedItem.packagingMode || (cleanPackageSize && cleanPackageSize > 1 ? 'both' : undefined);
-  const cleanIsActive = savedItem.isActive !== false;
-  const cleanLimitByPatients = Boolean(savedItem.limitByPatients);
-  const nowIso = new Date().toISOString();
-
-  const itemToInsert: StockItem = {
-    id: savedItem.id || `stock-${Date.now()}`,
-    name: savedItem.name.trim(),
-    colIndex: targetPosition + 3,
-    currentStock: cleanStock,
-    minThreshold: cleanMin,
-    unit: cleanUnit,
-    packageSize: cleanPackageSize,
-    packagingMode: cleanPackagingMode,
-    isActive: cleanIsActive,
-    limitByPatients: cleanLimitByPatients,
-    lastUpdated: nowIso,
-  };
-
-  items.splice(insertIndex, 0, itemToInsert);
-
-  const next: Record<string, StockItem> = {};
-  items.forEach((item, i) => {
-    item.colIndex = i + 4;
-    next[item.name] = item;
-  });
+  const next = upsertStockItemInMap(
+    current,
+    {
+      ...savedItem,
+      packageSize: cleanPackageSize,
+      packagingMode: cleanPackagingMode,
+    },
+    oldNameOrId,
+    targetPosition
+  );
 
   saveDbStock(next, true);
   return next;

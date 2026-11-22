@@ -8,11 +8,18 @@ import { StockItem } from './types';
 import {
   getDbStock,
   saveDbStock,
+  updateDbStockItem,
   saveOrUpdateDbStockItem,
   deleteDbStockItem,
   moveDbStockItem,
   insertDbStockItemAtPosition,
 } from './services/unifiedDb';
+import {
+  updateStockItemInMap,
+  upsertStockItemInMap,
+  deleteStockItemFromMap,
+  moveStockItemInMap,
+} from './utils/stockManager';
 import {
   subscribeToFirestoreStock,
   fetchStockFromFirestore,
@@ -94,11 +101,11 @@ export default function StockApp() {
   const isWorkspaceLocked =
     Boolean(staffDirectory?.policy?.requireAdminLoginForWorkspace) && !isAuthorizedForTenant;
 
-  const persistTenantInventory = useCallback((tId: string, stockMap: Record<string, StockItem>) => {
+  const persistTenantInventory = useCallback((tId: string, stockMap: Record<string, StockItem>, syncCloud: boolean = true) => {
     if (tId === 'tenant-main-01') return;
     const whId = getWarehouses(tId)[0]?.id || 'wh-01';
     const items = stockMapToInventoryProducts(stockMap, tId, whId);
-    saveInventory(tId, items);
+    saveInventory(tId, items, syncCloud);
   }, []);
 
   const [stock, setStock] = useState<Record<string, StockItem>>(() => {
@@ -126,9 +133,9 @@ export default function StockApp() {
       stockRef.current = remoteStock;
       setStock(remoteStock);
       if (activeTenantId === 'tenant-main-01') {
-        saveDbStock(remoteStock);
+        saveDbStock(remoteStock, false);
       } else {
-        persistTenantInventory(activeTenantId, remoteStock);
+        persistTenantInventory(activeTenantId, remoteStock, false);
       }
     }, activeTenantId);
 
@@ -150,33 +157,17 @@ export default function StockApp() {
       limitByPatients?: boolean
     ) => {
       const current = stockRef.current;
-      const existing = current[name];
-      if (!existing) return;
-
-      const updatedItem: StockItem = {
-        ...existing,
-        currentStock: Math.max(0, newQty),
-        minThreshold: minThreshold !== undefined ? minThreshold : existing.minThreshold,
-        unit: unit !== undefined ? unit : existing.unit,
-        isActive: isActive !== undefined ? isActive : existing.isActive,
-        limitByPatients: limitByPatients !== undefined ? limitByPatients : existing.limitByPatients,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const nextStock: Record<string, StockItem> = {
-        ...current,
-        [name]: updatedItem,
-      };
-
-      stockRef.current = nextStock;
-      setStock(nextStock);
+      let nextStock: Record<string, StockItem>;
 
       if (activeTenantId === 'tenant-main-01') {
-        saveOrUpdateDbStockItem(updatedItem);
+        nextStock = updateDbStockItem(name, newQty, minThreshold, unit, isActive, limitByPatients, current);
       } else {
+        nextStock = updateStockItemInMap(current, name, newQty, minThreshold, unit, isActive, limitByPatients);
         persistTenantInventory(activeTenantId, nextStock);
       }
 
+      stockRef.current = nextStock;
+      setStock(nextStock);
       pushStockToFirestore(nextStock, activeTenantId).catch((err) => {
         console.error('[StockApp] Error syncing stock update to Firestore:', err);
       });
@@ -193,9 +184,9 @@ export default function StockApp() {
         stockRef.current = freshStock;
         setStock(freshStock);
         if (activeTenantId === 'tenant-main-01') {
-          saveDbStock(freshStock);
+          saveDbStock(freshStock, false);
         } else {
-          persistTenantInventory(activeTenantId, freshStock);
+          persistTenantInventory(activeTenantId, freshStock, false);
         }
         return { count: Object.keys(freshStock).length };
       }
@@ -208,32 +199,16 @@ export default function StockApp() {
   // Handle moving items up or down
   const handleMoveStockItem = useCallback(
     (idOrName: string, direction: 'up' | 'down') => {
-      const currentList: StockItem[] = Object.values(stockRef.current) as StockItem[];
-      const currentIndex = currentList.findIndex(
-        (item) => (item.id && item.id === idOrName) || item.name === idOrName
-      );
-      if (currentIndex === -1) return;
-
-      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      if (targetIndex < 0 || targetIndex >= currentList.length) return;
-
-      const updatedList = [...currentList];
-      const [movedItem] = updatedList.splice(currentIndex, 1);
-      updatedList.splice(targetIndex, 0, movedItem);
-
-      const nextStock: Record<string, StockItem> = {};
-      updatedList.forEach((item, idx) => {
-        nextStock[item.name] = { ...item, colIndex: idx + 1 };
-      });
+      let nextStock: Record<string, StockItem>;
+      if (activeTenantId === 'tenant-main-01') {
+        nextStock = moveDbStockItem(idOrName, direction);
+      } else {
+        nextStock = moveStockItemInMap(stockRef.current, idOrName, direction);
+        persistTenantInventory(activeTenantId, nextStock);
+      }
 
       stockRef.current = nextStock;
       setStock(nextStock);
-
-      if (activeTenantId === 'tenant-main-01') {
-        moveDbStockItem(idOrName, direction);
-      } else {
-        persistTenantInventory(activeTenantId, nextStock);
-      }
       pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
     [activeTenantId, persistTenantInventory]
@@ -242,39 +217,20 @@ export default function StockApp() {
   // Handle saving full item outside React state updater
   const handleSaveFullItem = useCallback(
     (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => {
-      const current = stockRef.current;
-      let list: StockItem[] = Object.values(current) as StockItem[];
-
-      if (oldNameOrId) {
-        list = list.filter((item) => item.id !== oldNameOrId && item.name !== oldNameOrId);
-      } else {
-        list = list.filter((item) => item.id !== savedItem.id && item.name !== savedItem.name);
-      }
-
-      if (typeof targetPosition === 'number' && targetPosition >= 1 && targetPosition <= list.length + 1) {
-        list.splice(targetPosition - 1, 0, savedItem);
-      } else {
-        list.unshift(savedItem);
-      }
-
-      const nextStock: Record<string, StockItem> = {};
-      list.forEach((item, idx) => {
-        nextStock[item.name] = { ...item, colIndex: idx + 1 };
-      });
-
-      stockRef.current = nextStock;
-      setStock(nextStock);
-
+      let nextStock: Record<string, StockItem>;
       if (activeTenantId === 'tenant-main-01') {
-        if (typeof targetPosition === 'number') {
-          insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
+        if (typeof targetPosition === 'number' && targetPosition > 0) {
+          nextStock = insertDbStockItemAtPosition(savedItem, targetPosition, oldNameOrId);
         } else {
-          saveOrUpdateDbStockItem(savedItem, oldNameOrId);
+          nextStock = saveOrUpdateDbStockItem(savedItem, oldNameOrId);
         }
       } else {
+        nextStock = upsertStockItemInMap(stockRef.current, savedItem, oldNameOrId, targetPosition);
         persistTenantInventory(activeTenantId, nextStock);
       }
 
+      stockRef.current = nextStock;
+      setStock(nextStock);
       pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
     [activeTenantId, persistTenantInventory]
@@ -283,28 +239,16 @@ export default function StockApp() {
   // Handle item deletion outside React state updater
   const handleDeleteStockItem = useCallback(
     (idOrName: string) => {
-      const current = stockRef.current;
-      const nextStock: Record<string, StockItem> = { ...current };
-      let foundKey: string | null = null;
-
-      for (const [key, item] of Object.entries(nextStock) as [string, StockItem][]) {
-        if ((item.id && item.id === idOrName) || item.name === idOrName || key === idOrName) {
-          foundKey = key;
-          break;
-        }
+      let nextStock: Record<string, StockItem>;
+      if (activeTenantId === 'tenant-main-01') {
+        nextStock = deleteDbStockItem(idOrName);
+      } else {
+        nextStock = deleteStockItemFromMap(stockRef.current, idOrName);
+        persistTenantInventory(activeTenantId, nextStock);
       }
-
-      if (!foundKey) return;
-      delete nextStock[foundKey];
 
       stockRef.current = nextStock;
       setStock(nextStock);
-
-      if (activeTenantId === 'tenant-main-01') {
-        deleteDbStockItem(idOrName);
-      } else {
-        persistTenantInventory(activeTenantId, nextStock);
-      }
       pushStockToFirestore(nextStock, activeTenantId).catch(console.error);
     },
     [activeTenantId, persistTenantInventory]

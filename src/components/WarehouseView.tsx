@@ -28,7 +28,11 @@ import {
 } from 'lucide-react';
 import { StockItem } from '../types';
 import { printReorderListHtml } from '../utils/pdfGenerator';
-import { normalizeProductName, detectPackageSize } from '../utils/stockManager';
+import {
+  normalizeProductName,
+  detectPackageSize,
+  getCanonicalWarehouseCatalog,
+} from '../utils/stockManager';
 import { getCategorizedSortedStockItems, categorizeItem } from '../utils/stockGrouper';
 import { ItemModal } from './ItemModal';
 
@@ -371,31 +375,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setFilterSession((s) => s + 1);
   };
 
-  // Strictly deduplicated stock list: guarantees no duplicate product names in UI
-  const stockList = useMemo(() => {
-    if (!stock || typeof stock !== 'object') return [];
-    const seenNorms = new Set<string>();
-    const list: StockItem[] = [];
-
-    const rawList = Object.values(stock).filter(
-      (it): it is StockItem => Boolean(it && typeof it === 'object' && 'name' in it && typeof (it as StockItem).name === 'string' && (it as StockItem).name.trim() !== '')
-    ).sort((a, b) => {
-      const aInactive = a.isActive === false;
-      const bInactive = b.isActive === false;
-      if (aInactive !== bInactive) return aInactive ? 1 : -1;
-      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
-    });
-
-    rawList.forEach((item) => {
-      const norm = normalizeProductName(item.name);
-      if (!seenNorms.has(norm)) {
-        seenNorms.add(norm);
-        list.push(item);
-      }
-    });
-
-    return list;
-  }, [stock]);
+  // Strictly deduplicated canonical warehouse catalog (1..activeCount for active items, frozen at bottom)
+  const catalog = useMemo(() => getCanonicalWarehouseCatalog(stock), [stock]);
+  const stockList = catalog.orderedList;
+  const getDisplayNum = useCallback(
+    (item: StockItem, fallbackIdx: number) =>
+      catalog.displayNumberByNormName.get(
+        normalizeProductName(item.name) || item.name.trim().toLowerCase()
+      ) ?? fallbackIdx + 1,
+    [catalog]
+  );
 
   // Helper to calculate effective threshold (x3 in emergency mode)
   const getEffectiveTh = useCallback((item: StockItem) => {
@@ -449,10 +438,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       if (!item || !item.name) return false;
 
       if (searchTerm.trim() !== '') {
-        const q = searchTerm.toLowerCase();
+        const q = searchTerm.toLowerCase().trim();
+        const numQuery = q.replace(/^#/, '');
         const nameMatch = item.name ? item.name.toLowerCase().includes(q) : false;
-        const colMatch = item.colIndex ? String(item.colIndex).includes(q) : false;
-        if (!nameMatch && !colMatch) return false;
+        const displayNum = getDisplayNum(item, -1);
+        const displayMatch = numQuery !== '' && displayNum > 0 && String(displayNum).includes(numQuery);
+        const colMatch = numQuery !== '' && item.colIndex ? String(item.colIndex).includes(numQuery) : false;
+        if (!nameMatch && !displayMatch && !colMatch) return false;
       }
 
       const isItemInactive = item.isActive === false;
@@ -496,12 +488,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         if (catA.group !== catB.group) return catA.group - catB.group;
         return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
       }
-      const aInactive = a.isActive === false;
-      const bInactive = b.isActive === false;
-      if (aInactive !== bInactive) return aInactive ? 1 : -1;
-      return ((a.colIndex || 0) - (b.colIndex || 0)) || a.name.localeCompare(b.name, 'he');
+      return 0;
     });
-  }, [stockList, filterType, searchTerm, filterSession, getEffectiveTh]);
+  }, [stockList, filterType, searchTerm, filterSession, getEffectiveTh, getDisplayNum]);
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<StockItem | null>(null);
@@ -765,7 +754,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-[10px] text-slate-400 font-bold">
-                          #{idx + 1}
+                          #{getDisplayNum(item, idx)}
                         </span>
                         <h4 className="font-black text-slate-900 text-sm leading-snug">
                           {item.name}
@@ -899,7 +888,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               </button>
                             </div>
                           )}
-                          <span className="min-w-[20px] text-xs font-bold text-slate-600">{idx + 1}</span>
+                          <span className="min-w-[20px] text-xs font-bold text-slate-600">{getDisplayNum(item, idx)}</span>
                         </div>
                       </td>
 
@@ -1060,6 +1049,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="p-3.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
           <div>
             מוצגים פריטים: <strong>{filteredItems.length}</strong> מתוך <strong>{stockList.length}</strong>
+            {' '}• פעילים באפליקציה: <strong className="text-emerald-700">{catalog.activeList.length}</strong>
           </div>
           <div className="text-slate-400">
             * בכל הדפסה רגילה מבוצע קיזוז מהמלאי. בלחיצה על «העתק» לא מבוצע שום קיזוז
