@@ -1,5 +1,5 @@
 // StorePrint Service Worker for PWA installability and caching
-const CACHE_NAME = 'storeprint-pwa-v17';
+const CACHE_NAME = 'storeprint-pwa-v18';
 const STATIC_ASSETS = [
   './',
   './index.html',

@@ -270,7 +270,7 @@ export function buildPurchaseOrderXlsxBytes(
     .filter(Boolean)
     .join('  |  ') || `סה"כ פריטים בטופס: ${lines.length}`;
   rowXmls.push(
-    `<row r="2" ht="22" customHeight="1">${stringCell(0, 2, metaLeft, 2)}${stringCell(1, 2, '', 2)}${stringCell(2, 2, metaRight, 2)}${stringCell(3, 2, '', 2)}${stringCell(4, 2, '', 2)}${stringCell(5, 2, '', 2)}${stringCell(6, 2, '', 2)}${stringCell(7, 2, '', 2)}</row>`
+    `<row r="2" ht="24" customHeight="1">${stringCell(0, 2, metaLeft, 2)}${stringCell(1, 2, '', 2)}${stringCell(2, 2, '', 2)}${stringCell(3, 2, metaRight, 2)}${stringCell(4, 2, '', 2)}${stringCell(5, 2, '', 2)}</row>`
   );
 
   // Row 3: Optional Notes / Summary
@@ -278,19 +278,17 @@ export function buildPurchaseOrderXlsxBytes(
     ? `הערות להזמנה: ${meta.notes.trim()}`
     : `סה"כ שורות להזמנה: ${lines.length}  |  סה"כ כמות כוללת: ${totalOrderQty}`;
   rowXmls.push(
-    `<row r="3" ht="22" customHeight="1">${stringCell(0, 3, notesText, 2)}${stringCell(1, 3, '', 2)}${stringCell(2, 3, '', 2)}${stringCell(3, 3, '', 2)}${stringCell(4, 3, '', 2)}${stringCell(5, 3, '', 2)}${stringCell(6, 3, '', 2)}${stringCell(7, 3, '', 2)}</row>`
+    `<row r="3" ht="22" customHeight="1">${stringCell(0, 3, notesText, 2)}${stringCell(1, 3, '', 2)}${stringCell(2, 3, '', 2)}${stringCell(3, 3, '', 2)}${stringCell(4, 3, '', 2)}${stringCell(5, 3, '', 2)}</row>`
   );
 
   // Row 4: Spacer
   rowXmls.push(`<row r="4" ht="10" customHeight="1"/>`);
 
-  // Row 5: Table Headers
+  // Row 5: Table Headers (6 compact printable columns)
   const headers = [
     "מס' במחסן",
     'קטגוריה',
     'שם הפריט / מוצר',
-    'מלאי נוכחי',
-    'סף מינימום',
     'כמות להזמנה',
     'יחידת הזמנה',
     'פירוט אריזה והערות',
@@ -314,11 +312,9 @@ export function buildPurchaseOrderXlsxBytes(
       numberCell(0, r, line.displayNumber, 5),
       stringCell(1, r, cat, 4),
       stringCell(2, r, line.name, 4),
-      numberCell(3, r, line.currentStock, 5),
-      numberCell(4, r, line.minThreshold, 5),
-      numberCell(5, r, line.orderQty, 6),
-      stringCell(6, r, line.orderUnit || "יח'", 5),
-      stringCell(7, r, detailsParts.join(' • '), 4),
+      numberCell(3, r, line.orderQty, 6),
+      stringCell(4, r, line.orderUnit || "יח'", 5),
+      stringCell(5, r, detailsParts.join(' • '), 4),
     ].join('');
 
     rowXmls.push(`<row r="${r}" ht="22" customHeight="1">${cells}</row>`);
@@ -327,13 +323,18 @@ export function buildPurchaseOrderXlsxBytes(
   // Totals Summary Row
   const lastDataRow = firstDataRow + Math.max(0, lines.length - 1);
   const summaryRow = firstDataRow + lines.length;
-  const sumFormula = lines.length > 0 ? `SUM(F${firstDataRow}:F${lastDataRow})` : '0';
+  const sumFormula = lines.length > 0 ? `SUM(D${firstDataRow}:D${lastDataRow})` : '0';
   rowXmls.push(
-    `<row r="${summaryRow}" ht="24" customHeight="1">${stringCell(0, summaryRow, 'סה"כ', 7)}${stringCell(1, summaryRow, '', 7)}${stringCell(2, summaryRow, `${lines.length} פריטים להזמנה`, 7)}${stringCell(3, summaryRow, '', 7)}${stringCell(4, summaryRow, '', 7)}${formulaCell(5, summaryRow, sumFormula, totalOrderQty, 7)}${stringCell(6, summaryRow, "יח'/אריזות", 7)}${stringCell(7, summaryRow, '', 7)}</row>`
+    `<row r="${summaryRow}" ht="24" customHeight="1">${stringCell(0, summaryRow, 'סה"כ', 7)}${stringCell(1, summaryRow, '', 7)}${stringCell(2, summaryRow, `${lines.length} פריטים להזמנה`, 7)}${formulaCell(3, summaryRow, sumFormula, totalOrderQty, 7)}${stringCell(4, summaryRow, "יח'/אריזות", 7)}${stringCell(5, summaryRow, '', 7)}</row>`
   );
+
+  const fitToHeightVal = lines.length <= 45 ? 1 : 0;
 
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetPr>
+    <pageSetUpPr fitToPage="1"/>
+  </sheetPr>
   <sheetViews>
     <sheetView workbookViewId="0" rightToLeft="1">
       <pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/>
@@ -341,26 +342,25 @@ export function buildPurchaseOrderXlsxBytes(
   </sheetViews>
   <sheetFormatPr defaultRowHeight="20"/>
   <cols>
-    <col min="1" max="1" width="12" customWidth="1"/>
-    <col min="2" max="2" width="24" customWidth="1"/>
-    <col min="3" max="3" width="44" customWidth="1"/>
-    <col min="4" max="4" width="14" customWidth="1"/>
-    <col min="5" max="5" width="14" customWidth="1"/>
-    <col min="6" max="6" width="16" customWidth="1"/>
-    <col min="7" max="7" width="16" customWidth="1"/>
-    <col min="8" max="8" width="28" customWidth="1"/>
+    <col min="1" max="1" width="13.5" customWidth="1"/>
+    <col min="2" max="2" width="22" customWidth="1"/>
+    <col min="3" max="3" width="42" customWidth="1"/>
+    <col min="4" max="4" width="16" customWidth="1"/>
+    <col min="5" max="5" width="15" customWidth="1"/>
+    <col min="6" max="6" width="26" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowXmls.join('\n    ')}
   </sheetData>
-  <autoFilter ref="A5:H${Math.max(5, lastDataRow)}"/>
+  <autoFilter ref="A5:F${Math.max(5, lastDataRow)}"/>
   <mergeCells count="4">
-    <mergeCell ref="A1:H1"/>
-    <mergeCell ref="A2:B2"/>
-    <mergeCell ref="C2:H2"/>
-    <mergeCell ref="A3:H3"/>
+    <mergeCell ref="A1:F1"/>
+    <mergeCell ref="A2:C2"/>
+    <mergeCell ref="D2:F2"/>
+    <mergeCell ref="A3:F3"/>
   </mergeCells>
-  <pageSetup paperSize="9" orientation="landscape"/>
+  <pageMargins left="0.35" right="0.35" top="0.45" bottom="0.45" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="${fitToHeightVal}"/>
 </worksheet>`;
 
   const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
