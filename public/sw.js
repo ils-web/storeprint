@@ -1,5 +1,5 @@
 // StorePrint Service Worker for PWA installability and caching
-const CACHE_NAME = 'storeprint-pwa-v19';
+const CACHE_NAME = 'storeprint-pwa-v20';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -15,10 +15,19 @@ const STATIC_ASSETS = [
   './favicon.svg',
   './order-icon.svg',
   './order-favicon.svg',
+  './order-icon-192.png',
+  './order-icon-512.png',
+  './order-icon-maskable-512.png',
+  './order-apple-touch-icon.png',
   './stock-icon.svg',
   './stock-favicon.svg',
+  './stock-icon-192.png',
+  './stock-icon-512.png',
+  './stock-icon-maskable-512.png',
+  './stock-apple-touch-icon.png',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-512.png',
   './apple-touch-icon.png'
 ];
 
@@ -26,9 +35,13 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('SW pre-cache warning:', err);
-      });
+      return Promise.allSettled(
+        STATIC_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn('SW pre-cache warning:', asset, err);
+          })
+        )
+      );
     })
   );
 });
@@ -75,24 +88,25 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          if (event.request.mode === 'navigate') {
-            if (event.request.url.includes('/order')) {
-              return caches.match('./order.html') || caches.match('./order/index.html');
-            }
-            if (event.request.url.includes('/stock')) {
-              return caches.match('./stock.html') || caches.match('./stock/index.html');
-            }
-            if (event.request.url.includes('/landing')) {
-              return caches.match('./landing.html') || caches.match('./landing/index.html');
-            }
-            return caches.match('./index.html');
+      .catch(async () => {
+        const cachedResponse =
+          (await caches.match(event.request)) ||
+          (await caches.match(event.request, { ignoreSearch: true }));
+        if (cachedResponse) return cachedResponse;
+
+        if (event.request.mode === 'navigate') {
+          if (url.pathname.includes('/order')) {
+            return (await caches.match('./order.html')) || (await caches.match('./order/index.html'));
           }
-          return new Response('Offline', { status: 503, statusText: 'Offline' });
-        });
+          if (url.pathname.includes('/stock')) {
+            return (await caches.match('./stock.html')) || (await caches.match('./stock/index.html'));
+          }
+          if (url.pathname.includes('/landing')) {
+            return (await caches.match('./landing.html')) || (await caches.match('./landing/index.html'));
+          }
+          return (await caches.match('./index.html')) || (await caches.match('./'));
+        }
+        return new Response('Offline', { status: 503, statusText: 'Offline' });
       })
   );
 });
-
