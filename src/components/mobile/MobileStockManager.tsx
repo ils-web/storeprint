@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { StockItem } from '../../types';
 import { PACKAGING_UNITS } from '../WarehouseView';
 import {
@@ -15,23 +15,32 @@ import {
   Cloud,
   Check,
   X,
-  SlidersHorizontal,
   Users,
   AlertTriangle,
   RotateCcw,
   Sparkles,
   Smartphone,
-  Download,
   ArrowUp,
   ChevronUp,
   ChevronDown,
   Printer,
   Copy,
+  Edit,
+  PlusCircle,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
 import { InstallStockModal } from './InstallStockModal';
+import { ItemModal } from '../ItemModal';
+import { PurchaseOrderModal, PurchaseOrderDraftEntry } from '../PurchaseOrderModal';
 import { categorizeItem, groupAndSortStockItems } from '../../utils/stockGrouper';
 import { printReorderListHtml } from '../../utils/pdfGenerator';
 import { printEmergencyReorderListHtml } from '../../utils/emergencyPdfGenerator';
+import {
+  downloadPurchaseOrderExcel,
+  getSuggestedOrderQty,
+  PurchaseOrderExportLine,
+} from '../../utils/excelExport';
 import {
   detectPackageSize,
   getCanonicalWarehouseCatalog,
@@ -51,8 +60,8 @@ interface MobileStockManagerProps {
     unit?: string,
     isActive?: boolean,
     limitByPatients?: boolean
-  ) => void;
-  onSyncWithCloud?: () => void;
+  ) => void | Promise<boolean | void>;
+  onSyncWithCloud?: () => Promise<any> | any;
   isSyncingCloud?: boolean;
   onMoveItem?: (idOrName: string, direction: 'up' | 'down') => void;
   onSaveFullItem?: (savedItem: StockItem, oldNameOrId?: string, targetPosition?: number) => void;
@@ -67,6 +76,14 @@ interface MobileStockCardProps {
   totalFiltered: number;
   isEmergencyMode: boolean;
   effectiveTh: number;
+  canReorder: boolean;
+  canEditFull: boolean;
+  isPurchaseSelectionMode: boolean;
+  draftEntry?: PurchaseOrderDraftEntry;
+  onTogglePurchaseItem: (item: StockItem) => void;
+  onUpdatePurchaseEntry: (itemName: string, entry: PurchaseOrderDraftEntry) => void;
+  onOpenEditItem: (item: StockItem) => void;
+  onInputFocusChange: (focused: boolean) => void;
   onItemChange: (
     name: string,
     newQty: number,
@@ -85,24 +102,42 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
   totalFiltered,
   isEmergencyMode,
   effectiveTh,
+  canReorder,
+  canEditFull,
+  isPurchaseSelectionMode,
+  draftEntry,
+  onTogglePurchaseItem,
+  onUpdatePurchaseEntry,
+  onOpenEditItem,
+  onInputFocusChange,
   onItemChange,
   onMoveItem,
 }) => {
   const isInactive = item.isActive === false;
   const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
   const routineTh = typeof item.minThreshold === 'number' && !isNaN(item.minThreshold) ? item.minThreshold : 10;
-  const currentUnit = item.unit || "יח'";
+  const rawPkgSize = item.packageSize || detectPackageSize(item.name);
+  const currentUnit =
+    item.unit && item.unit !== 'מטר'
+      ? item.unit
+      : rawPkgSize && rawPkgSize > 1
+      ? 'מארז'
+      : "יח'";
   const isLow = !isInactive && safeQty < effectiveTh;
   const isOut = !isInactive && safeQty === 0;
   const isLimitedByPatients = Boolean(item.limitByPatients);
+  const isSelectedForOrder = Boolean(draftEntry);
 
-  // Local state for quantity input to allow free typing without premature resets or wheel mutations
   const [qtyVal, setQtyVal] = useState<string>(String(safeQty));
+  const [qtyDirty, setQtyDirty] = useState(false);
   const isQtyFocusedRef = useRef(false);
+  const latestQtyRef = useRef<number>(safeQty);
 
   useEffect(() => {
+    latestQtyRef.current = safeQty;
     if (!isQtyFocusedRef.current) {
       setQtyVal(String(safeQty));
+      setQtyDirty(false);
     }
   }, [safeQty]);
 
@@ -110,11 +145,14 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
     const trimmed = (rawVal || '').trim();
     if (trimmed === '') {
       setQtyVal(String(safeQty));
+      setQtyDirty(false);
       return;
     }
     const parsed = parseInt(trimmed, 10);
     const finalQty = isNaN(parsed) ? safeQty : Math.max(0, parsed);
+    latestQtyRef.current = finalQty;
     setQtyVal(String(finalQty));
+    setQtyDirty(false);
     if (finalQty !== safeQty) {
       onItemChange(item.name, finalQty, routineTh, currentUnit, !isInactive, isLimitedByPatients);
     }
@@ -122,13 +160,14 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
 
   const adjustQty = (delta: number) => {
     const parsed = parseInt((qtyVal || '').trim(), 10);
-    const baseQty = isQtyFocusedRef.current && !isNaN(parsed) ? parsed : safeQty;
+    const baseQty = isQtyFocusedRef.current && !isNaN(parsed) ? parsed : latestQtyRef.current;
     const nextQty = Math.max(0, baseQty + delta);
+    latestQtyRef.current = nextQty;
     setQtyVal(String(nextQty));
+    setQtyDirty(false);
     onItemChange(item.name, nextQty, routineTh, currentUnit, !isInactive, isLimitedByPatients);
   };
 
-  // Local state for minimum threshold input
   const [thVal, setThVal] = useState<string>(String(routineTh));
   const isThFocusedRef = useRef(false);
 
@@ -148,7 +187,7 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
     const finalTh = isNaN(parsed) ? routineTh : Math.max(1, parsed);
     setThVal(String(finalTh));
     if (finalTh !== routineTh) {
-      onItemChange(item.name, safeQty, finalTh, currentUnit, !isInactive, isLimitedByPatients);
+      onItemChange(item.name, latestQtyRef.current, finalTh, currentUnit, !isInactive, isLimitedByPatients);
     }
   };
 
@@ -157,48 +196,73 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
     const baseTh = isThFocusedRef.current && !isNaN(parsed) ? parsed : routineTh;
     const nextTh = Math.max(1, baseTh + delta);
     setThVal(String(nextTh));
-    onItemChange(item.name, safeQty, nextTh, currentUnit, !isInactive, isLimitedByPatients);
+    onItemChange(item.name, latestQtyRef.current, nextTh, currentUnit, !isInactive, isLimitedByPatients);
+  };
+
+  const selectAllOnFocus = (el: HTMLInputElement) => {
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(() => {
+        try {
+          el.setSelectionRange(0, el.value.length);
+        } catch {}
+      });
+    }
   };
 
   return (
     <div
-      className={`p-3.5 sm:p-4 rounded-2xl border transition-all shadow-md ${
-        isInactive
+      className={`p-3 rounded-2xl border transition-colors shadow-sm [overflow-anchor:none] ${
+        isPurchaseSelectionMode && isSelectedForOrder
+          ? 'bg-teal-950/35 border-teal-500/70 ring-1 ring-teal-500/40'
+          : isInactive
           ? 'bg-slate-900/60 border-slate-800 opacity-75'
           : isOut
-          ? 'bg-slate-900 border-red-500/60 ring-1 ring-red-500/30'
+          ? 'bg-slate-900 border-red-500/60'
           : isLow
           ? isEmergencyMode
-            ? 'bg-red-950/40 border-red-500 ring-1 ring-red-500/60'
-            : 'bg-amber-950/30 border-amber-500/50'
+            ? 'bg-red-950/40 border-red-500'
+            : 'bg-amber-950/25 border-amber-500/50'
           : 'bg-slate-900 border-slate-800'
       }`}
     >
-      {/* Title & Status Row */}
-      <div className="flex items-start justify-between gap-2 mb-2.5">
+      {/* Row 1: Checkbox (in order mode), #Index, Name, Badges & Actions */}
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Index & Reorder on Mobile */}
-            <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
-              {onMoveItem && (
-                <div className="flex items-center gap-0.5">
+            {isPurchaseSelectionMode && (
+              <label
+                className="inline-flex items-center justify-center p-1 rounded-lg bg-slate-950 border border-teal-500/50 cursor-pointer shrink-0"
+                title="סמן פריט זה לטופס הזמנת רכש (Excel)"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelectedForOrder}
+                  onChange={() => onTogglePurchaseItem(item)}
+                  className="w-4 h-4 accent-teal-500 rounded cursor-pointer"
+                />
+              </label>
+            )}
+
+            <div className="inline-flex items-center gap-0.5 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800 shrink-0">
+              {canReorder && onMoveItem && (
+                <div className="flex items-center">
                   <button
                     type="button"
                     disabled={idx === 0}
                     onClick={() => onMoveItem(item.name || item.id, 'up')}
-                    className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-sky-400 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer"
+                    className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-sky-400 disabled:opacity-20 cursor-pointer"
                     title="הזז למעלה"
                   >
-                    <ChevronUp className="w-3 h-3" />
+                    <ChevronUp className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     disabled={idx === totalFiltered - 1}
                     onClick={() => onMoveItem(item.name || item.id, 'down')}
-                    className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-sky-400 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer"
+                    className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-sky-400 disabled:opacity-20 cursor-pointer"
                     title="הזז למטה"
                   >
-                    <ChevronDown className="w-3 h-3" />
+                    <ChevronDown className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
@@ -207,107 +271,182 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
               </span>
             </div>
 
-            <h4 className="font-bold text-sm text-white leading-snug">
+            <h4 className="font-bold text-sm text-white leading-snug break-words">
               {item.name}
             </h4>
-            {(item.packageSize || detectPackageSize(item.name)) && (
-              <span className="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-700/60 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
-                📦 {item.packageSize || detectPackageSize(item.name)} יח' במארז
+
+            {rawPkgSize && rawPkgSize > 1 && (
+              <span className="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-700/60 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
+                📦 {rawPkgSize} יח'
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+            className={`px-2 py-0.5 rounded-full text-[10px] font-black border whitespace-nowrap ${
               isInactive
                 ? 'bg-slate-800 text-slate-400 border-slate-700'
                 : isOut
                 ? 'bg-red-600 text-white border-red-500'
                 : isLow
                 ? isEmergencyMode
-                  ? 'bg-red-600 text-white border-red-500 animate-pulse'
-                  : 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                  ? 'bg-red-600 text-white border-red-500'
+                  : 'bg-amber-500 text-slate-950 border-amber-400'
                 : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
             }`}
           >
-            {isInactive
-              ? '⏸️ מושהה'
-              : isOut
-              ? '⚪ אזל'
-              : isLow
-              ? `⚠️ חוסר`
-              : '🟢 תקין'}
+            {isInactive ? '⏸️ מושהה' : isOut ? '⚪ אזל' : isLow ? '⚠️ חוסר' : '🟢 תקין'}
           </span>
 
-          {/* Quick Pause/Play Toggle Button */}
+          {canEditFull && (
+            <button
+              type="button"
+              onClick={() => onOpenEditItem(item)}
+              className="p-1.5 rounded-xl bg-slate-800 text-sky-400 border border-slate-700 hover:bg-slate-700 transition-colors cursor-pointer"
+              title="עריכה מלאה / הגדרת אריזה / מחיקה"
+            >
+              <Edit className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={() =>
               onItemChange(
                 item.name,
-                safeQty,
+                latestQtyRef.current,
                 routineTh,
                 currentUnit,
-                isInactive, // toggle
+                isInactive,
                 isLimitedByPatients
               )
             }
-            className={`p-1.5 rounded-xl border text-xs transition-colors cursor-pointer ${
+            className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
               isInactive
-                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700/70 hover:bg-emerald-900'
+                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700/70'
                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
             }`}
             title={isInactive ? 'החזר לשימוש פעיל' : 'הקפא פריט (מושהה)'}
           >
             {isInactive ? (
-              <PlayCircle className="w-4 h-4 text-emerald-400" />
+              <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
-              <PauseCircle className="w-4 h-4" />
+              <PauseCircle className="w-3.5 h-3.5" />
             )}
           </button>
         </div>
       </div>
 
-      {/* Main Adjuster Controls (Large Touch Buttons for Mobile) */}
-      <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 flex items-center justify-between gap-1.5 mb-2.5">
-        {/* -10 */}
+      {/* Purchase Order Inline Qty/Unit Strip (only when checked in Order Mode) */}
+      {isPurchaseSelectionMode && isSelectedForOrder && draftEntry && (
+        <div className="mb-2 bg-teal-950/60 border border-teal-500/50 rounded-xl p-2 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px] font-black text-teal-300">כמות להזמנת רכש:</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                onUpdatePurchaseEntry(item.name, {
+                  ...draftEntry,
+                  qty: Math.max(1, draftEntry.qty - 1),
+                })
+              }
+              className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center border border-slate-700 cursor-pointer"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={draftEntry.qty}
+              onFocus={() => onInputFocusChange(true)}
+              onBlur={() => onInputFocusChange(false)}
+              onChange={(e) => {
+                const parsed = parseInt(e.target.value, 10);
+                onUpdatePurchaseEntry(item.name, {
+                  ...draftEntry,
+                  qty: isNaN(parsed) || parsed < 1 ? 1 : parsed,
+                });
+              }}
+              className="w-16 h-8 text-center rounded-lg border border-teal-400 bg-white text-slate-950 font-mono font-black text-base focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() =>
+                onUpdatePurchaseEntry(item.name, {
+                  ...draftEntry,
+                  qty: draftEntry.qty + 1,
+                })
+              }
+              className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <select
+              value={draftEntry.unit}
+              onChange={(e) =>
+                onUpdatePurchaseEntry(item.name, {
+                  ...draftEntry,
+                  unit: e.target.value,
+                })
+              }
+              className="h-8 px-2 rounded-lg bg-slate-900 border border-teal-500/50 text-teal-200 text-base sm:text-xs font-bold"
+            >
+              {PACKAGING_UNITS.map((u) => (
+                <option key={u.value} value={u.value}>
+                  {u.value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Row 2: Main Quantity Touch Stepper (16px font stops iOS auto-zoom!) */}
+      <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center justify-between gap-1 mb-2">
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(-10)}
-          className="w-12 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer border border-slate-700"
+          className="w-10 sm:w-11 h-10 rounded-lg bg-slate-800 active:bg-slate-700 text-slate-200 font-black text-xs flex items-center justify-center transition-transform active:scale-95 cursor-pointer border border-slate-700 shrink-0"
           title="הורד 10"
         >
           -10
         </button>
 
-        {/* -1 */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(-1)}
-          className="w-12 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer border border-slate-700"
+          className="w-10 sm:w-11 h-10 rounded-lg bg-slate-800 active:bg-slate-700 text-slate-200 font-bold flex items-center justify-center transition-transform active:scale-95 cursor-pointer border border-slate-700 shrink-0"
           title="הורד 1"
         >
           <Minus className="w-4 h-4" />
         </button>
 
-        {/* Actual Stock Direct Input - fully editable, auto-selects, commits on blur/enter */}
-        <div className="flex-1 max-w-[110px] relative">
+        <div className="flex-1 min-w-[68px] max-w-[120px] flex items-center gap-1">
           <input
             type="text"
             inputMode="numeric"
+            enterKeyHint="done"
             pattern="[0-9]*"
             value={qtyVal}
             onFocus={(e) => {
               isQtyFocusedRef.current = true;
-              e.target.select();
+              onInputFocusChange(true);
+              selectAllOnFocus(e.currentTarget);
             }}
-            onChange={(e) => setQtyVal(e.target.value.replace(/[^\d]/g, ''))}
+            onChange={(e) => {
+              const cleaned = e.target.value.replace(/[^\d]/g, '');
+              setQtyVal(cleaned);
+              setQtyDirty(cleaned !== String(safeQty));
+            }}
             onWheel={(e) => (e.target as HTMLElement).blur()}
             onBlur={() => {
               isQtyFocusedRef.current = false;
+              onInputFocusChange(false);
               commitQty(qtyVal);
             }}
             onKeyDown={(e) => {
@@ -315,65 +454,78 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
                 (e.target as HTMLInputElement).blur();
               } else if (e.key === 'Escape') {
                 isQtyFocusedRef.current = false;
+                onInputFocusChange(false);
                 setQtyVal(String(safeQty));
+                setQtyDirty(false);
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            className="w-full h-11 text-center font-mono font-black text-lg bg-white text-slate-950 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            title="הקלד כמות מלאי ידנית (טפיחה בוחרת את כל המספר)"
+            className="w-full h-10 text-center font-mono font-black text-base bg-white text-slate-950 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            title="הקלד כמות מלאי ידנית"
           />
+          {qtyDirty && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commitQty(qtyVal)}
+              className="w-9 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shrink-0 cursor-pointer shadow"
+              title="אשר שמירת כמות"
+            >
+              <Check className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* +1 */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(1)}
-          className="w-12 h-11 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center justify-center transition-transform active:scale-90 cursor-pointer shadow-md shadow-sky-600/30"
+          className="w-10 sm:w-11 h-10 rounded-lg bg-sky-600 active:bg-sky-500 text-white font-bold flex items-center justify-center transition-transform active:scale-95 cursor-pointer shadow shadow-sky-600/30 shrink-0"
           title="הוסף 1"
         >
           <Plus className="w-4 h-4" />
         </button>
 
-        {/* +10 */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => adjustQty(10)}
-          className="w-12 h-11 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center justify-center transition-transform active:scale-90 cursor-pointer shadow-md shadow-indigo-600/30"
+          className="w-10 sm:w-11 h-10 rounded-lg bg-indigo-600 active:bg-indigo-500 text-white font-black text-xs flex items-center justify-center transition-transform active:scale-95 cursor-pointer shadow shadow-indigo-600/30 shrink-0"
           title="הוסף 10"
         >
           +10
         </button>
       </div>
 
-      {/* Threshold, Unit & Options Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800 text-xs">
-        {/* Minimum Threshold Input with - and + mini buttons and auto-select typing */}
-        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-xl border border-slate-800">
-          <span className="text-[11px] font-bold text-slate-400 shrink-0">סף מינימום:</span>
+      {/* Row 3: Compact Threshold, Unit Selector (16px avoids iOS zoom), Patient Limit */}
+      <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-slate-800/80 text-xs flex-wrap">
+        <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-1 rounded-xl border border-slate-800">
+          <span className="text-[11px] font-bold text-slate-400">סף:</span>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => adjustTh(-1)}
-            className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 active:scale-90 text-slate-300 font-bold flex items-center justify-center cursor-pointer text-xs border border-slate-700"
-            title="הורד סף מינימום ב-1"
+            className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 flex items-center justify-center cursor-pointer border border-slate-700"
+            title="הורד סף ב-1"
           >
             <Minus className="w-3 h-3" />
           </button>
           <input
             type="text"
             inputMode="numeric"
+            enterKeyHint="done"
             pattern="[0-9]*"
             value={thVal}
             onFocus={(e) => {
               isThFocusedRef.current = true;
-              e.target.select();
+              onInputFocusChange(true);
+              selectAllOnFocus(e.currentTarget);
             }}
             onChange={(e) => setThVal(e.target.value.replace(/[^\d]/g, ''))}
             onWheel={(e) => (e.target as HTMLElement).blur()}
             onBlur={() => {
               isThFocusedRef.current = false;
+              onInputFocusChange(false);
               commitTh(thVal);
             }}
             onKeyDown={(e) => {
@@ -381,72 +533,71 @@ const MobileStockCard: React.FC<MobileStockCardProps> = React.memo(({
                 (e.target as HTMLInputElement).blur();
               } else if (e.key === 'Escape') {
                 isThFocusedRef.current = false;
+                onInputFocusChange(false);
                 setThVal(String(routineTh));
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            className="w-12 h-6 text-center font-mono font-black text-xs bg-slate-800 text-amber-300 border border-slate-600 rounded-md py-0.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            title="שנה את כמות סף המינימום לפריט זה (הקלד ישירות או השתמש ב-+/-)"
+            className="w-12 h-7 text-center font-mono font-black text-base bg-slate-800 text-amber-300 border border-slate-600 rounded-md focus:outline-none focus:border-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            title="סף מינימום"
           />
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => adjustTh(1)}
-            className="w-6 h-6 rounded-md bg-slate-800 hover:bg-slate-700 active:scale-90 text-slate-300 font-bold flex items-center justify-center cursor-pointer text-xs border border-slate-700"
-            title="העלה סף מינימום ב-1"
+            className="w-6 h-6 rounded-md bg-slate-800 text-slate-300 flex items-center justify-center cursor-pointer border border-slate-700"
+            title="העלה סף ב-1"
           >
             <Plus className="w-3 h-3" />
           </button>
           {isEmergencyMode && (
-            <span className="text-[10px] text-red-400 font-bold mr-0.5">(חירום: {effectiveTh})</span>
+            <span className="text-[10px] text-red-400 font-bold">×3: {effectiveTh}</span>
           )}
         </div>
 
-        {/* Unit Selector */}
-        <div className="flex items-center gap-1">
-          <span className="text-[11px] text-slate-400">אריזה:</span>
-          <select
-            value={currentUnit}
-            onChange={(e) =>
-              onItemChange(
-                item.name,
-                safeQty,
-                routineTh,
-                e.target.value,
-                !isInactive,
-                isLimitedByPatients
-              )
-            }
-            className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-sky-300 focus:outline-none focus:border-sky-500 cursor-pointer"
-          >
-            {PACKAGING_UNITS.map((u) => (
-              <option key={u.value} value={u.value}>
-                {u.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={currentUnit}
+          onChange={(e) =>
+            onItemChange(
+              item.name,
+              latestQtyRef.current,
+              routineTh,
+              e.target.value,
+              !isInactive,
+              isLimitedByPatients
+            )
+          }
+          className="h-8 bg-slate-950 border border-slate-700 rounded-xl px-2 text-base sm:text-xs font-bold text-sky-300 focus:outline-none focus:border-sky-500 cursor-pointer"
+          title="יחידת מידה"
+        >
+          {PACKAGING_UNITS.map((u) => (
+            <option key={u.value} value={u.value} title={u.label}>
+              {u.value}
+            </option>
+          ))}
+        </select>
 
-        {/* Patient Limit Toggle */}
         <button
+          type="button"
           onClick={() =>
             onItemChange(
               item.name,
-              safeQty,
+              latestQtyRef.current,
               routineTh,
               currentUnit,
               !isInactive,
               !isLimitedByPatients
             )
           }
-          className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+          className={`h-8 px-2 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
             isLimitedByPatients
-              ? 'bg-purple-950 text-purple-300 border border-purple-600/60 shadow-xs'
+              ? 'bg-purple-950 text-purple-300 border border-purple-600/60'
               : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
           }`}
+          title="הגבל הזמנות למספר מטופלים"
         >
-          <Users className="w-3 h-3" />
-          <span>{isLimitedByPatients ? '👥 מוגבל למטופלים ✓' : '👥 הגבל'}</span>
+          <Users className="w-3.5 h-3.5" />
+          <span>{isLimitedByPatients ? 'מוגבל ✓' : 'הגבל'}</span>
         </button>
       </div>
     </div>
@@ -473,7 +624,14 @@ export function MobileStockManager({
   const [globalThreshold] = useState<number>(10);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [lastSavedInfo, setLastSavedInfo] = useState<{ name: string; qty: number; time: string } | null>(null);
+  const [isAnyInputFocused, setIsAnyInputFocused] = useState(false);
+
+  const [lastSavedInfo, setLastSavedInfo] = useState<{
+    name: string;
+    qty: number;
+    time: string;
+    offline?: boolean;
+  } | null>(null);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; isError?: boolean } | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>(() => {
     const now = new Date();
@@ -482,7 +640,34 @@ export function MobileStockManager({
   const [isLocalSyncing, setIsLocalSyncing] = useState(false);
   const toastTimeoutRef = useRef<any>(null);
 
-  // Pin displayed items during a filtered tab session so rows never disappear/jump mid-edit
+  // Item Create / Full Edit Modal state
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [itemToEdit, setItemToEdit] = useState<StockItem | null>(null);
+
+  // Purchase Order Draft & Excel Export
+  const purchaseDraftStorageKey = `storeprint_purchase_draft_${tenantId || 'tenant-main-01'}`;
+  const [purchaseDraft, setPurchaseDraft] = useState<Record<string, PurchaseOrderDraftEntry>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = localStorage.getItem(purchaseDraftStorageKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [isPurchaseSelectionMode, setIsPurchaseSelectionMode] = useState(false);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(purchaseDraftStorageKey);
+      setPurchaseDraft(raw ? JSON.parse(raw) : {});
+    } catch {
+      setPurchaseDraft({});
+    }
+  }, [purchaseDraftStorageKey]);
+
   const pinnedItemNamesRef = useRef<Set<string>>(new Set());
   const lastFilterContextRef = useRef({ filterType, searchQuery, filterSession });
   if (
@@ -502,6 +687,22 @@ export function MobileStockManager({
 
   const isSyncing = isSyncingCloud || isLocalSyncing;
 
+  const handleForceUpdate = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((reg) => reg.unregister()));
+      }
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } finally {
+      window.location.reload();
+    }
+  };
+
   const handleSyncClick = async () => {
     if (!onSyncWithCloud) return;
     setIsLocalSyncing(true);
@@ -512,21 +713,20 @@ export function MobileStockManager({
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
       setLastSyncTime(timeStr);
       setSyncStatusMsg({
-        text: `מסד הנתונים בענן (Cloud Firestore) סונכרן בהצלחה! (${res?.count ?? stockList.length} פריטים, ${timeStr})`,
+        text: `סונכרן מול הענן (${res?.count ?? stockList.length} פריטים • ${timeStr})`,
       });
-      setTimeout(() => setSyncStatusMsg(null), 4500);
+      setTimeout(() => setSyncStatusMsg(null), 3500);
     } catch (e: any) {
       setSyncStatusMsg({
-        text: `שגיאה בסנכרון מסד הנתונים: ${e?.message || 'אנא ודאו שיש חיבור לרשת'}`,
+        text: `שגיאת סנכרון: ${e?.message || 'בדקו חיבור אינטרנט'}`,
         isError: true,
       });
-      setTimeout(() => setSyncStatusMsg(null), 5000);
+      setTimeout(() => setSyncStatusMsg(null), 4000);
     } finally {
       setIsLocalSyncing(false);
     }
   };
 
-  // Scroll to Top Listener
   useEffect(() => {
     const handleScroll = () => {
       setShowScrollTop(window.scrollY > 250);
@@ -541,7 +741,7 @@ export function MobileStockManager({
 
   const catalog = useMemo(() => getCanonicalWarehouseCatalog(stock), [stock]);
   const stockList = catalog.orderedList;
-  const getDisplayNum = React.useCallback(
+  const getDisplayNum = useCallback(
     (item: StockItem, fallbackIdx: number) =>
       catalog.displayNumberByNormName.get(
         normalizeProductName(item.name) || item.name.trim().toLowerCase()
@@ -549,35 +749,68 @@ export function MobileStockManager({
     [catalog]
   );
 
-  // Helper to calculate effective threshold (x3 in emergency mode)
-  const getEffectiveTh = (item: StockItem) => {
-    const baseTh = item.minThreshold || globalThreshold;
-    return isEmergencyMode ? baseTh * 3 : baseTh;
-  };
+  const getEffectiveTh = useCallback(
+    (item: StockItem) => {
+      const baseTh = item.minThreshold || globalThreshold;
+      return isEmergencyMode ? baseTh * 3 : baseTh;
+    },
+    [globalThreshold, isEmergencyMode]
+  );
 
-  // Trigger update with visual confirmation
-  const handleItemChange = (
-    name: string,
-    newQty: number,
-    minThreshold?: number,
-    unit?: string,
-    isActive?: boolean,
-    limitByPatients?: boolean
-  ) => {
-    const safeQty = Math.max(0, newQty);
-    onUpdateStockItem(name, safeQty, minThreshold, unit, isActive, limitByPatients);
-
-    // Show instant cloud save confirmation toast
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
+  const handleInputFocusChange = useCallback((focused: boolean) => {
+    if (focused) {
+      setIsAnyInputFocused(true);
+    } else {
+      setTimeout(() => {
+        if (typeof document !== 'undefined') {
+          const active = document.activeElement?.tagName;
+          if (active !== 'INPUT' && active !== 'TEXTAREA' && active !== 'SELECT') {
+            setIsAnyInputFocused(false);
+          }
+        } else {
+          setIsAnyInputFocused(false);
+        }
+      }, 80);
     }
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    setLastSavedInfo({ name, qty: safeQty, time: timeStr });
-    toastTimeoutRef.current = setTimeout(() => {
-      setLastSavedInfo(null);
-    }, 2500);
-  };
+  }, []);
+
+  const handleItemChange = useCallback(
+    async (
+      name: string,
+      newQty: number,
+      minThreshold?: number,
+      unit?: string,
+      isActive?: boolean,
+      limitByPatients?: boolean
+    ) => {
+      const safeQty = Math.max(0, newQty);
+      const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
+      let savedRemote: boolean | void = true;
+      try {
+        savedRemote = await Promise.resolve(
+          onUpdateStockItem(name, safeQty, minThreshold, unit, isActive, limitByPatients)
+        );
+      } catch {
+        savedRemote = false;
+      }
+
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      setLastSavedInfo({
+        name,
+        qty: safeQty,
+        time: timeStr,
+        offline: !isOnline || savedRemote === false,
+      });
+      toastTimeoutRef.current = setTimeout(() => {
+        setLastSavedInfo(null);
+      }, 2200);
+    },
+    [onUpdateStockItem]
+  );
 
   // Statistics
   const stats = useMemo(() => {
@@ -604,11 +837,154 @@ export function MobileStockManager({
     });
 
     return { total: stockList.length, ok, low, out, inactive };
-  }, [stockList, isEmergencyMode, globalThreshold]);
+  }, [stockList, getEffectiveTh]);
+
+  const lowStockItems = useMemo(() => {
+    const raw = stockList.filter((item) => {
+      if (!item || !item.name || item.isActive === false) return false;
+      const th = getEffectiveTh(item);
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      return safeQty < th;
+    });
+    return groupAndSortStockItems(raw);
+  }, [stockList, getEffectiveTh]);
+
+  // Purchase Order Draft Helpers
+  const updatePurchaseDraft = useCallback(
+    (updater: (prev: Record<string, PurchaseOrderDraftEntry>) => Record<string, PurchaseOrderDraftEntry>) => {
+      setPurchaseDraft((prev) => {
+        const next = updater(prev);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(purchaseDraftStorageKey, JSON.stringify(next));
+          } catch {}
+        }
+        return next;
+      });
+    },
+    [purchaseDraftStorageKey]
+  );
+
+  const getPurchaseNormKey = useCallback(
+    (name: string) => normalizeProductName(name) || name.trim().toLowerCase(),
+    []
+  );
+
+  const getCleanUnitForItem = useCallback((item: StockItem) => {
+    const pkgSize = item.packageSize || detectPackageSize(item.name);
+    if (!item.unit || item.unit === 'מטר') {
+      return pkgSize && pkgSize > 1 ? 'מארז' : "יח'";
+    }
+    return item.unit;
+  }, []);
+
+  const togglePurchaseItem = useCallback(
+    (item: StockItem) => {
+      const norm = getPurchaseNormKey(item.name);
+      updatePurchaseDraft((prev) => {
+        const next = { ...prev };
+        if (next[norm]) {
+          delete next[norm];
+        } else {
+          next[norm] = {
+            qty: getSuggestedOrderQty(item, getEffectiveTh(item)),
+            unit: getCleanUnitForItem(item),
+          };
+        }
+        return next;
+      });
+    },
+    [getPurchaseNormKey, updatePurchaseDraft, getEffectiveTh, getCleanUnitForItem]
+  );
+
+  const handleUpdateDraftEntry = useCallback(
+    (itemName: string, entry: PurchaseOrderDraftEntry) => {
+      const norm = getPurchaseNormKey(itemName);
+      updatePurchaseDraft((prev) => ({
+        ...prev,
+        [norm]: {
+          qty: Math.max(1, entry.qty || 1),
+          unit: entry.unit || "יח'",
+          ...(entry.note !== undefined ? { note: entry.note } : {}),
+        },
+      }));
+    },
+    [getPurchaseNormKey, updatePurchaseDraft]
+  );
+
+  const handleRemoveDraftEntry = useCallback(
+    (itemName: string) => {
+      const norm = getPurchaseNormKey(itemName);
+      updatePurchaseDraft((prev) => {
+        const next = { ...prev };
+        delete next[norm];
+        return next;
+      });
+    },
+    [getPurchaseNormKey, updatePurchaseDraft]
+  );
+
+  const handleAutoFillLowStockToPurchase = useCallback(() => {
+    updatePurchaseDraft((prev) => {
+      const next = { ...prev };
+      stockList.forEach((item) => {
+        if (!item || item.isActive === false) return;
+        const th = getEffectiveTh(item);
+        const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+        if (safeQty >= th) return;
+        const norm = getPurchaseNormKey(item.name);
+        if (!next[norm]) {
+          next[norm] = {
+            qty: getSuggestedOrderQty(item, th),
+            unit: getCleanUnitForItem(item),
+          };
+        }
+      });
+      return next;
+    });
+  }, [stockList, getEffectiveTh, getPurchaseNormKey, getCleanUnitForItem, updatePurchaseDraft]);
+
+  const handleClearPurchaseDraft = useCallback(() => {
+    updatePurchaseDraft(() => ({}));
+  }, [updatePurchaseDraft]);
+
+  const selectedPurchaseItems = useMemo(() => {
+    const lines: PurchaseOrderExportLine[] = [];
+    stockList.forEach((item, idx) => {
+      const norm = getPurchaseNormKey(item.name);
+      const entry = purchaseDraft[norm];
+      if (!entry) return;
+      const safeQty = typeof item.currentStock === 'number' && !isNaN(item.currentStock) ? item.currentStock : 0;
+      lines.push({
+        displayNumber: getDisplayNum(item, idx),
+        name: item.name,
+        currentStock: safeQty,
+        minThreshold: getEffectiveTh(item),
+        orderQty: Math.max(1, entry.qty || 1),
+        orderUnit: entry.unit || getCleanUnitForItem(item),
+        packageSize: item.packageSize || detectPackageSize(item.name),
+        note: entry.note,
+      });
+    });
+    return lines;
+  }, [stockList, purchaseDraft, getPurchaseNormKey, getDisplayNum, getEffectiveTh, getCleanUnitForItem]);
+
+  const totalDraftOrderUnits = useMemo(
+    () => selectedPurchaseItems.reduce((sum, l) => sum + l.orderQty, 0),
+    [selectedPurchaseItems]
+  );
+
+  const handleQuickExportExcel = useCallback(() => {
+    if (selectedPurchaseItems.length === 0) return;
+    downloadPurchaseOrderExcel(selectedPurchaseItems, {
+      branchName: tenantName,
+      createdAt: new Date(),
+      isEmergencyMode,
+    });
+  }, [selectedPurchaseItems, tenantName, isEmergencyMode]);
 
   const [isWhatsAppCopied, setIsWhatsAppCopied] = useState(false);
 
-  // Generate and print the A4 Reorder Shortage sheet directly from mobile
   const handlePrintShortageReport = () => {
     const rawDeficit = stockList.filter((item) => {
       if (!item || !item.name || item.isActive === false) return false;
@@ -624,7 +1000,6 @@ export function MobileStockManager({
     }
   };
 
-  // Copy WhatsApp formatted order list grouped by item type
   const handleCopyWhatsAppShortage = () => {
     const rawDeficit = stockList.filter((item) => {
       if (!item || !item.name || item.isActive === false) return false;
@@ -633,7 +1008,7 @@ export function MobileStockManager({
       return safeQty < th;
     });
 
-    const categoryGroups = groupAndSortStockItems(rawDeficit);
+    const categoryGroups = lowStockItems;
 
     let text = `🚨 *דוח חוסרי מלאי ורכש - ספירת מחסן*\n`;
     text += `📅 תאריך: ${new Date().toLocaleDateString('he-IL')} ${new Date().toLocaleTimeString('he-IL')}\n`;
@@ -663,7 +1038,6 @@ export function MobileStockManager({
     setTimeout(() => setIsWhatsAppCopied(false), 3000);
   };
 
-  // Filtered Items strictly synced with PC sorting & row-pinning protection
   const filteredItems = useMemo(() => {
     return stockList
       .filter((item) => {
@@ -722,93 +1096,204 @@ export function MobileStockManager({
         }
         return 0;
       });
-  }, [stockList, filterType, searchQuery, filterSession, isEmergencyMode, globalThreshold, getDisplayNum]);
+  }, [stockList, filterType, searchQuery, filterSession, getEffectiveTh, getDisplayNum]);
+
+  const canReorder = filterType === 'all' && searchQuery.trim() === '' && !isPurchaseSelectionMode;
+
+  const handleOpenCreateItem = () => {
+    setItemToEdit(null);
+    setIsItemModalOpen(true);
+  };
+
+  const handleOpenEditItem = useCallback((item: StockItem) => {
+    setItemToEdit(item);
+    setIsItemModalOpen(true);
+  }, []);
+
+  const handleSaveItemFromModal = (savedItem: StockItem, targetPosition?: number) => {
+    if (onSaveFullItem) {
+      onSaveFullItem(savedItem, itemToEdit?.name || itemToEdit?.id, targetPosition);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-32 text-sm selection:bg-sky-500 selection:text-white" dir="rtl">
-      {/* Clean Fixed Header */}
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-md">
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+    <div
+      className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-28 text-sm selection:bg-sky-500 selection:text-white"
+      dir="rtl"
+    >
+      {/* Single Compact Sticky Header (~48px) — zero double-sticky keyboard squeeze */}
+      <header className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-2.5 sm:px-4 py-2 shadow-md">
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             {onBackToMain && (
               <button
+                type="button"
                 onClick={onBackToMain}
-                className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 border border-slate-700 transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer shrink-0"
                 title="חזרה למסך הראשי"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
             <div className="min-w-0">
-              <h2 className="font-black text-sm sm:text-base text-white truncate flex items-center gap-1.5">
-                <span>ספירת מלאי 📦</span>
+              <div className="flex items-center gap-1.5">
+                <h2 className="font-black text-sm text-white truncate">ספירת מלאי 📦</h2>
                 {tenantName && (
-                  <span className="text-[10px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded-md font-bold truncate max-w-[120px]">
+                  <span className="text-[10px] bg-sky-500/20 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded-md font-bold truncate max-w-[115px]">
                     {tenantName}
                   </span>
                 )}
-                <span className="text-[11px] text-slate-400 font-mono font-normal">({stats.total})</span>
-              </h2>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
+            {onSaveFullItem && (
+              <button
+                type="button"
+                onClick={handleOpenCreateItem}
+                className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow cursor-pointer"
+                title="הוסף פריט חדש למחסן"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">הוסף</span>
+              </button>
+            )}
+
             <button
-              onClick={() => setIsInstallModalOpen(true)}
-              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md transition-all cursor-pointer"
-              title="התקנת האפליקציה למסך הבית"
+              type="button"
+              onClick={() => setIsPurchaseSelectionMode((prev) => !prev)}
+              className={`px-2 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer transition-colors ${
+                isPurchaseSelectionMode || selectedPurchaseItems.length > 0
+                  ? 'bg-teal-600 text-white shadow'
+                  : 'bg-slate-800 text-teal-300 border border-teal-500/40'
+              }`}
+              title="טופס הזמנת רכש (Excel)"
             >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">התקן</span>
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Excel</span>
+              {selectedPurchaseItems.length > 0 && (
+                <span className="bg-white text-teal-900 text-[10px] font-black px-1.5 rounded-full">
+                  {selectedPurchaseItems.length}
+                </span>
+              )}
             </button>
 
             {onOpenEmergencyConfirm && (
               <button
+                type="button"
                 onClick={onOpenEmergencyConfirm}
-                className={`px-2.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shadow transition-all cursor-pointer ${
+                className={`p-1.5 px-2 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${
                   isEmergencyMode
-                    ? 'bg-red-600 text-white animate-pulse'
-                    : 'bg-red-950 text-red-300 border border-red-800'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-red-950/90 text-red-300 border border-red-800/80'
                 }`}
-                title={isEmergencyMode ? 'חזרה לשגרה (1X)' : 'מעבר לשעת חירום (3X)'}
+                title={isEmergencyMode ? 'מצב חירום X3 פעיל (לחץ לשינוי)' : 'מעבר למצב חירום (X3)'}
               >
-                <Siren className="w-3.5 h-3.5 text-white" />
-                <span>{isEmergencyMode ? 'חירום X3' : 'חירום'}</span>
+                <Siren className="w-3.5 h-3.5" />
+                {isEmergencyMode && <span>X3</span>}
               </button>
             )}
 
             {onSyncWithCloud && (
               <button
+                type="button"
                 onClick={handleSyncClick}
                 disabled={isSyncing}
-                className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow transition-all cursor-pointer active:scale-95"
-                title="סנכרן מלאי עכשיו מול מסד הנתונים בענן (Firestore)"
+                className="w-8 h-8 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white flex items-center justify-center cursor-pointer shrink-0"
+                title="סנכרן עכשיו מול הענן"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'מסנכרן...' : 'סנכרן'}</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleForceUpdate}
+              className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 flex items-center justify-center cursor-pointer shrink-0"
+              title="רענן ומשוך גרסה עדכנית מהענן"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsInstallModalOpen(true)}
+              className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sky-400 flex items-center justify-center cursor-pointer shrink-0"
+              title="התקנת האפליקציה למסך הבית"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Sticky Search Bar & Category Filters */}
-      <div className="sticky top-[51px] z-20 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-3 sm:px-4 py-2 space-y-2 shadow-sm">
-        <div className="max-w-2xl mx-auto space-y-2">
-          {/* Direct Search Box */}
+      {/* Non-shifting Floating Overlay Toasts (NEVER pushes list down/up under finger!) */}
+      {(lastSavedInfo || syncStatusMsg) && (
+        <div className="fixed top-14 left-3 right-3 max-w-md mx-auto z-50 pointer-events-none space-y-1.5">
+          {lastSavedInfo && (
+            <div
+              className={`px-3 py-2 rounded-2xl shadow-2xl border flex items-center justify-between gap-2 text-xs font-bold ${
+                lastSavedInfo.offline
+                  ? 'bg-amber-600 text-white border-amber-400'
+                  : 'bg-emerald-600 text-white border-emerald-400'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {lastSavedInfo.offline ? (
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  <strong>{lastSavedInfo.name}</strong> ←{' '}
+                  <span className="font-mono underline font-black">{lastSavedInfo.qty}</span>{' '}
+                  {lastSavedInfo.offline ? '(נשמר מקומית — אין חיבור לענן)' : '(נשמר בענן ✓)'}
+                </span>
+              </div>
+              <span className="text-[10px] opacity-90 font-mono shrink-0">{lastSavedInfo.time}</span>
+            </div>
+          )}
+
+          {syncStatusMsg && (
+            <div
+              className={`px-3 py-2 rounded-2xl shadow-2xl border flex items-center gap-2 text-xs font-bold ${
+                syncStatusMsg.isError
+                  ? 'bg-red-600 text-white border-red-400'
+                  : 'bg-sky-600 text-white border-sky-400'
+              }`}
+            >
+              {syncStatusMsg.isError ? (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              ) : (
+                <Cloud className="w-4 h-4 shrink-0" />
+              )}
+              <span className="truncate">{syncStatusMsg.text}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 space-y-2.5">
+        {/* Search & Filter Card inside flow (scrolls naturally so keyboard never gets squeezed by sticky filter bar!) */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2.5 space-y-2 shadow-sm">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="חיפוש מהיר לפי שם פריט, יחידה או מספר..."
               value={searchQuery}
+              onFocus={() => handleInputFocusChange(true)}
+              onBlur={() => handleInputFocusChange(false)}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pr-10 pl-9 py-2 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
+              placeholder="חיפוש לפי שם, יחידה או #מספר..."
+              className="w-full pr-9 pl-9 py-2 bg-slate-800 border border-slate-700 rounded-xl text-base sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white cursor-pointer"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white cursor-pointer"
                 title="נקה חיפוש"
               >
                 <X className="w-4 h-4" />
@@ -816,146 +1301,143 @@ export function MobileStockManager({
             )}
           </div>
 
-          {/* Quick Filter Tabs */}
           <div className="grid grid-cols-5 gap-1 text-[11px] font-black">
             <button
+              type="button"
               onClick={() => selectFilterType('all')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                filterType === 'all'
-                  ? 'bg-sky-600 text-white shadow font-black'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              className={`py-1.5 rounded-lg transition-colors cursor-pointer text-center ${
+                filterType === 'all' ? 'bg-sky-600 text-white shadow' : 'bg-slate-800 text-slate-400'
               }`}
             >
               הכל ({stats.total})
             </button>
             <button
+              type="button"
               onClick={() => selectFilterType('low')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+              className={`py-1.5 rounded-lg transition-colors cursor-pointer text-center ${
                 filterType === 'low'
                   ? isEmergencyMode
-                    ? 'bg-red-600 text-white shadow font-black'
-                    : 'bg-amber-600 text-white shadow font-black'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                    ? 'bg-red-600 text-white shadow'
+                    : 'bg-amber-600 text-white shadow'
+                  : 'bg-slate-800 text-slate-400'
               }`}
             >
-              {isEmergencyMode ? 'חירום' : 'חוסרים'} ({stats.low})
+              {isEmergencyMode ? 'חירום' : 'חוסר'} ({stats.low})
             </button>
             <button
+              type="button"
               onClick={() => selectFilterType('out')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                filterType === 'out'
-                  ? 'bg-red-700 text-white shadow font-black'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              className={`py-1.5 rounded-lg transition-colors cursor-pointer text-center ${
+                filterType === 'out' ? 'bg-red-700 text-white shadow' : 'bg-slate-800 text-slate-400'
               }`}
             >
               אזל ({stats.out})
             </button>
             <button
+              type="button"
               onClick={() => selectFilterType('ok')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                filterType === 'ok'
-                  ? 'bg-emerald-600 text-white shadow font-black'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              className={`py-1.5 rounded-lg transition-colors cursor-pointer text-center ${
+                filterType === 'ok' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-800 text-slate-400'
               }`}
             >
               תקין ({stats.ok})
             </button>
             <button
+              type="button"
               onClick={() => selectFilterType('inactive')}
-              className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
-                filterType === 'inactive'
-                  ? 'bg-slate-700 text-white shadow font-black'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              className={`py-1.5 rounded-lg transition-colors cursor-pointer text-center ${
+                filterType === 'inactive' ? 'bg-slate-700 text-white shadow' : 'bg-slate-800 text-slate-400'
               }`}
-              title="פריטים מושהים"
             >
               מושהה ({stats.inactive})
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Main Container */}
-      <main className="max-w-2xl mx-auto px-3 sm:px-4 py-3 space-y-3">
-        {/* Floating Database Sync Status Toast */}
-        {syncStatusMsg && (
-          <div
-            className={`p-2.5 px-3 rounded-2xl shadow-xl flex items-center justify-between gap-2 text-xs font-bold animate-in slide-in-from-top duration-200 border ${
-              syncStatusMsg.isError
-                ? 'bg-red-600 text-white border-red-400'
-                : 'bg-sky-600 text-white border-sky-400'
-            }`}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              {syncStatusMsg.isError ? (
-                <AlertTriangle className="w-4 h-4 text-red-100 shrink-0" />
-              ) : (
-                <Cloud className="w-4 h-4 text-sky-100 shrink-0" />
+        {/* Purchase Order Selection Banner when active */}
+        {isPurchaseSelectionMode && (
+          <div className="bg-teal-950/70 border border-teal-500/60 rounded-2xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="font-bold text-teal-100">
+              📋 הזמנת רכש (Excel): נבחרו <strong className="font-mono">{selectedPurchaseItems.length}</strong> ({totalDraftOrderUnits} יח')
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleAutoFillLowStockToPurchase}
+                disabled={stats.low === 0}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-black flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>סמן חוסרים ({stats.low})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-teal-200 border border-teal-500/40 font-black cursor-pointer"
+              >
+                פתח טופס
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickExportExcel}
+                disabled={selectedPurchaseItems.length === 0}
+                className="px-2.5 py-1 rounded-lg bg-teal-600 text-white font-black flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Excel</span>
+              </button>
+              {selectedPurchaseItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearPurchaseDraft}
+                  className="px-2 py-1 rounded-lg bg-slate-800 text-rose-300 font-bold cursor-pointer"
+                >
+                  נקה
+                </button>
               )}
-              <span className="truncate">{syncStatusMsg.text}</span>
+              <button
+                type="button"
+                onClick={() => setIsPurchaseSelectionMode(false)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-300 cursor-pointer"
+                title="סגור מצב סימון"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              onClick={() => setSyncStatusMsg(null)}
-              className="p-0.5 hover:bg-white/20 rounded cursor-pointer shrink-0"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Floating Toast Notification on Save */}
-        {lastSavedInfo && (
-          <div className="bg-emerald-600 text-white p-2.5 px-3 rounded-2xl shadow-xl flex items-center justify-between gap-2 text-xs font-bold animate-in slide-in-from-top duration-200 border border-emerald-400">
-            <div className="flex items-center gap-2 min-w-0">
-              <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />
-              <span className="truncate">
-                <strong>{lastSavedInfo.name}</strong> עודכן ל-
-                <span className="font-mono underline font-black text-sm px-1">{lastSavedInfo.qty}</span>
-                ונשמר במסד הנתונים בענן (Firestore)!
-              </span>
-            </div>
-            <span className="text-[10px] text-emerald-100 font-mono shrink-0">{lastSavedInfo.time}</span>
           </div>
         )}
 
         {/* Emergency Alert Banner inside mobile */}
         {isEmergencyMode && (
           <div className="bg-red-600/90 border border-red-500 text-white p-2.5 rounded-2xl flex items-center gap-2 shadow text-xs font-bold">
-            <Siren className="w-4 h-4 shrink-0 animate-pulse" />
-            <div>
-              <span className="block font-black text-xs">נוהל שעת חירום פעיל (מלאי משולש X3)</span>
-              <span className="text-red-100 text-[10px]">
-                ספי המינימום חושבו פי 3.
-              </span>
-            </div>
+            <Siren className="w-4 h-4 shrink-0" />
+            <span>נוהל שעת חירום פעיל (מלאי משולש X3 — ספי המינימום הוכפלו פי 3)</span>
           </div>
         )}
 
-        {/* Shortage Reorder Report Quick Actions Banner (Visible when viewing shortages) */}
+        {/* Shortage Reorder Report Quick Actions Banner */}
         {filterType === 'low' && filteredItems.length > 0 && (
-          <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/60 border border-amber-600/50 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-lg animate-fadeIn">
+          <div className="bg-gradient-to-r from-amber-950/80 via-slate-900 to-amber-950/60 border border-amber-600/50 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-lg">
             <div className="min-w-0">
               <div className="text-xs font-black text-amber-300 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>דוח חוסרים והזמנת רכש ({stats.low} פריטים)</span>
+                <span>דוח חוסרים ורכש ({stats.low} פריטים)</span>
               </div>
-              <div className="text-[10px] text-slate-300 mt-0.5">
-                מקובץ לפי קטגוריות ומסודר לפי סדר המחסן שלך
-              </div>
+              <div className="text-[10px] text-slate-300 mt-0.5">מקובץ לפי קטגוריות</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
+                type="button"
                 onClick={handlePrintShortageReport}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-md cursor-pointer active:scale-95 transition-all"
-                title="הדפס דוח חוסרים מסודר"
+                className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>הדפס דוח 🖨️</span>
+                <span>הדפס</span>
               </button>
               <button
+                type="button"
                 onClick={handleCopyWhatsAppShortage}
-                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
-                title="העתק רשימת חוסרים ל-WhatsApp"
+                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
                 {isWhatsAppCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{isWhatsAppCopied ? 'הועתק!' : 'WhatsApp'}</span>
@@ -964,13 +1446,13 @@ export function MobileStockManager({
           </div>
         )}
 
-        {/* Product Stock Cards List */}
-        <div className="space-y-3">
+        {/* Product Stock Cards List (overflow-anchor: none stops browser jump-anchoring on dynamic content!) */}
+        <div className="space-y-2.5 [overflow-anchor:none]">
           {filteredItems.length === 0 ? (
             <div className="text-center py-12 text-slate-400 bg-slate-900/60 rounded-2xl border border-slate-800">
               <Package className="w-10 h-10 mx-auto mb-2 text-slate-500" />
               <p className="font-bold text-sm">לא נמצאו פריטים</p>
-              <p className="text-xs text-slate-500 mt-1">נסו לשנות את מונח החיפוש או לבחור בלשונית אחרת</p>
+              <p className="text-xs text-slate-500 mt-1">נסו לשנות את מילת החיפוש או לבחור לשונית אחרת</p>
             </div>
           ) : (
             filteredItems.map((item, idx) => {
@@ -981,12 +1463,13 @@ export function MobileStockManager({
                   ? categorizeItem(filteredItems[idx - 1].name).groupName
                   : null;
               const showCategoryDivider = currentCat && currentCat !== prevCat;
+              const norm = getPurchaseNormKey(item.name);
 
               return (
                 <React.Fragment key={item.name}>
                   {showCategoryDivider && (
                     <div className="pt-2 pb-0.5 flex items-center gap-2">
-                      <div className="bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-xl text-xs font-black text-sky-400 flex items-center gap-1.5 shadow-xs">
+                      <div className="bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-xl text-xs font-black text-sky-400 flex items-center gap-1.5">
                         <span>📁</span>
                         <span>{currentCat}</span>
                       </div>
@@ -1000,6 +1483,14 @@ export function MobileStockManager({
                     totalFiltered={filteredItems.length}
                     isEmergencyMode={isEmergencyMode}
                     effectiveTh={getEffectiveTh(item)}
+                    canReorder={canReorder}
+                    canEditFull={Boolean(onSaveFullItem)}
+                    isPurchaseSelectionMode={isPurchaseSelectionMode}
+                    draftEntry={purchaseDraft[norm]}
+                    onTogglePurchaseItem={togglePurchaseItem}
+                    onUpdatePurchaseEntry={handleUpdateDraftEntry}
+                    onOpenEditItem={handleOpenEditItem}
+                    onInputFocusChange={handleInputFocusChange}
                     onItemChange={handleItemChange}
                     onMoveItem={onMoveItem}
                   />
@@ -1010,56 +1501,119 @@ export function MobileStockManager({
         </div>
       </main>
 
-      {/* Floating Scroll to Top Button */}
-      {showScrollTop && (
+      {/* Floating Scroll to Top Button (hidden while typing so keyboard space stays clear) */}
+      {showScrollTop && !isAnyInputFocused && (
         <button
           type="button"
           onClick={scrollToTop}
           className="fixed bottom-20 left-4 z-40 p-3 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white rounded-full shadow-2xl border border-sky-400 flex items-center justify-center transition-all cursor-pointer"
-          title="חזרה לראש העמוד"
+          title="חזרה לראש העמוד וחיפוש"
         >
           <ArrowUp className="w-5 h-5" />
         </button>
       )}
 
-      {/* Floating Bottom Bar with Live Sync Button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-4 py-2.5 z-40 shadow-2xl">
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
-          <div className="text-xs">
-            <div className="font-black text-white flex items-center gap-1.5">
-              <span>סה"כ: {stats.total}</span>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => selectFilterType('low')}
-                className={`transition-colors cursor-pointer ${
-                  stats.low > 0
-                    ? 'text-amber-400 font-bold hover:underline'
-                    : 'text-emerald-400'
-                }`}
-                title="הצג פריטים בחוסר"
-              >
-                חוסרים: {stats.low}
-              </button>
+      {/* Floating Bottom Bar (automatically hides while keyboard is open to avoid colliding with inputs!) */}
+      {!isAnyInputFocused && (
+        <div className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-3.5 py-2.5 z-40 shadow-2xl">
+          {isPurchaseSelectionMode && selectedPurchaseItems.length > 0 ? (
+            <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+              <div className="text-xs min-w-0">
+                <div className="font-black text-white truncate">
+                  {selectedPurchaseItems.length} פריטים בטופס ההזמנה ({totalDraftOrderUnits} יח')
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsPurchaseModalOpen(true)}
+                  className="px-3 py-2 bg-slate-800 text-teal-300 border border-teal-500/40 rounded-xl text-xs font-black cursor-pointer"
+                >
+                  ערוך טופס
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickExportExcel}
+                  className="px-3.5 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Excel (.xlsx)</span>
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>מחובר ישירות למסד הנתונים בענן (Cloud Firestore)</span>
-              {lastSyncTime && <span className="text-slate-400 font-normal mr-1">({lastSyncTime})</span>}
-            </div>
-          </div>
+          ) : (
+            <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+              <div className="text-xs min-w-0">
+                <div className="font-black text-white flex items-center gap-1.5">
+                  <span>סה"כ: {stats.total}</span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => selectFilterType('low')}
+                    className={`transition-colors cursor-pointer ${
+                      stats.low > 0 ? 'text-amber-400 font-bold hover:underline' : 'text-emerald-400'
+                    }`}
+                  >
+                    חוסרים: {stats.low}
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold mt-0.5 truncate">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                  <span className="truncate">Firestore פעיל</span>
+                  {lastSyncTime && <span className="text-slate-400 font-normal">({lastSyncTime})</span>}
+                </div>
+              </div>
 
-          <button
-            onClick={handleSyncClick}
-            disabled={isSyncing}
-            className="px-4 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95"
-            title="סנכרן ישירות מול מסד הנתונים בענן"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'מסנכרן כעת...' : 'סנכרן עכשיו 🔄'}</span>
-          </button>
+              {onSyncWithCloud && (
+                <button
+                  type="button"
+                  onClick={handleSyncClick}
+                  disabled={isSyncing}
+                  className="px-3.5 py-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg cursor-pointer active:scale-95 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'מסנכרן...' : 'סנכרן 🔄'}</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* Full Item Create / Edit / Delete Modal */}
+      {onSaveFullItem && (
+        <ItemModal
+          isOpen={isItemModalOpen}
+          onClose={() => setIsItemModalOpen(false)}
+          itemToEdit={itemToEdit}
+          totalItemsCount={stockList.length}
+          itemIndex={
+            itemToEdit
+              ? stockList.findIndex((i) => i.name === itemToEdit.name || i.id === itemToEdit.id) + 1
+              : undefined
+          }
+          onSave={handleSaveItemFromModal}
+          onDelete={onDeleteItem}
+        />
+      )}
+
+      {/* Purchase Order Builder & Excel Export Modal */}
+      <PurchaseOrderModal
+        isOpen={isPurchaseModalOpen}
+        onClose={() => setIsPurchaseModalOpen(false)}
+        stockList={stockList}
+        displayNumberByNormName={catalog.displayNumberByNormName}
+        draft={purchaseDraft}
+        onUpdateDraftEntry={handleUpdateDraftEntry}
+        onRemoveDraftEntry={handleRemoveDraftEntry}
+        onAutoFillLowStock={handleAutoFillLowStockToPurchase}
+        onClearDraft={handleClearPurchaseDraft}
+        lowStockActiveCount={stats.low}
+        getEffectiveThreshold={getEffectiveTh}
+        packagingUnits={PACKAGING_UNITS}
+        branchName={tenantName}
+        isEmergencyMode={isEmergencyMode}
+      />
 
       {/* Install Stock App Modal */}
       <InstallStockModal

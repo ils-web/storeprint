@@ -109,11 +109,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-2xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fadeIn" dir="rtl">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden text-slate-900">
+    <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-2xs z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto animate-fadeIn" dir="rtl">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden text-slate-900 relative">
         
         {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-sky-600 to-indigo-700 text-white flex items-center justify-between">
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-sky-600 to-indigo-700 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-reverse space-x-3">
             <div className="p-2.5 bg-white/20 text-white rounded-2xl backdrop-blur-xs">
               {isEdit ? <Edit className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
@@ -136,7 +136,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-2xl font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -155,7 +155,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               placeholder="לדוגמה: כפפות ניטריל מידה M"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
           </div>
 
@@ -168,10 +168,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               </label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="0"
                 value={currentStock}
                 onChange={(e) => setCurrentStock(parseInt(e.target.value, 10) || 0)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
               />
             </div>
 
@@ -182,10 +183,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
               </label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 value={minThreshold}
                 onChange={(e) => setMinThreshold(parseInt(e.target.value, 10) || 1)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-mono font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
               />
             </div>
           </div>
@@ -268,7 +270,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                   <select
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                   >
                     {PACKAGING_UNITS.filter((u) => u.value !== 'מטר').map((u) => (
                       <option key={u.value} value={u.value}>
@@ -285,6 +287,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                   </label>
                   <input
                     type="number"
+                    inputMode="numeric"
                     min="1"
                     placeholder="למשל: 12, 50, 100..."
                     value={packageSize !== undefined ? packageSize : ''}
@@ -292,7 +295,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                       const v = parseInt(e.target.value, 10);
                       setPackageSize(isNaN(v) || v <= 0 ? undefined : v);
                     }}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center"
                   />
                 </div>
               </div>
@@ -318,11 +321,12 @@ export const ItemModal: React.FC<ItemModalProps> = ({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min="1"
               max={totalItemsCount ? totalItemsCount + 1 : 500}
               value={targetPosition}
               onChange={(e) => setTargetPosition(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
             <p className="text-[11px] text-slate-500">
               קובע את מספר השורה שבה יוצג הפריט במחסן ובטופס ההזמנות (1 = שורה ראשונה)

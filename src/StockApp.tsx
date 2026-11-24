@@ -32,6 +32,8 @@ import {
   saveInventory,
   fetchTenantsFromFirestore,
   subscribeToTenantsFirestore,
+  fetchInventoryFromFirestore,
+  inventoryProductsToStockMap,
   stockMapToInventoryProducts,
   getActiveAuthSession,
 } from './services/multiTenantDb';
@@ -123,13 +125,26 @@ export default function StockApp() {
   const stockRef = useRef<Record<string, StockItem>>(stock);
   stockRef.current = stock;
 
-  const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(false);
+  const emergencyKey =
+    !activeTenantId || activeTenantId === 'tenant-main-01'
+      ? 'storeprint_emergency_mode_v1'
+      : `storeprint_emergency_mode_v1_${activeTenantId}`;
+
+  const [isEmergencyMode, setIsEmergencyMode] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem(emergencyKey) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isEmergencyConfirmOpen, setIsEmergencyConfirmOpen] = useState<boolean>(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
-  // Subscribe to real-time Firestore updates for active tenant
+  // Hydrate & subscribe to real-time Firestore updates for active tenant
   useEffect(() => {
-    const unsubscribe = subscribeToFirestoreStock((remoteStock) => {
+    let cancelled = false;
+    const applyRemoteStock = (remoteStock: Record<string, StockItem>) => {
+      if (cancelled || !remoteStock || Object.keys(remoteStock).length === 0) return;
       stockRef.current = remoteStock;
       setStock(remoteStock);
       if (activeTenantId === 'tenant-main-01') {
@@ -137,9 +152,32 @@ export default function StockApp() {
       } else {
         persistTenantInventory(activeTenantId, remoteStock, false);
       }
+    };
+
+    fetchStockFromFirestore(activeTenantId)
+      .then((remoteStock) => {
+        if (remoteStock && Object.keys(remoteStock).length > 0) {
+          applyRemoteStock(remoteStock);
+          return null;
+        }
+        if (activeTenantId !== 'tenant-main-01') {
+          return fetchInventoryFromFirestore(activeTenantId);
+        }
+        return null;
+      })
+      .then((fallbackItems) => {
+        if (fallbackItems && Array.isArray(fallbackItems) && fallbackItems.length > 0) {
+          applyRemoteStock(inventoryProductsToStockMap(fallbackItems));
+        }
+      })
+      .catch(console.warn);
+
+    const unsubscribe = subscribeToFirestoreStock((remoteStock) => {
+      applyRemoteStock(remoteStock);
     }, activeTenantId);
 
     return () => {
+      cancelled = true;
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
@@ -148,14 +186,14 @@ export default function StockApp() {
 
   // Handle item stock updates cleanly outside React state updaters (StrictMode safe)
   const handleUpdateStockItem = useCallback(
-    (
+    async (
       name: string,
       newQty: number,
       minThreshold?: number,
       unit?: string,
       isActive?: boolean,
       limitByPatients?: boolean
-    ) => {
+    ): Promise<boolean> => {
       const current = stockRef.current;
       let nextStock: Record<string, StockItem>;
 
@@ -168,9 +206,12 @@ export default function StockApp() {
 
       stockRef.current = nextStock;
       setStock(nextStock);
-      pushStockToFirestore(nextStock, activeTenantId).catch((err) => {
+      try {
+        return await pushStockToFirestore(nextStock, activeTenantId);
+      } catch (err) {
         console.error('[StockApp] Error syncing stock update to Firestore:', err);
-      });
+        return false;
+      }
     },
     [activeTenantId, persistTenantInventory]
   );
@@ -189,6 +230,16 @@ export default function StockApp() {
           persistTenantInventory(activeTenantId, freshStock, false);
         }
         return { count: Object.keys(freshStock).length };
+      }
+      if (activeTenantId !== 'tenant-main-01') {
+        const fallbackItems = await fetchInventoryFromFirestore(activeTenantId);
+        if (fallbackItems && fallbackItems.length > 0) {
+          const mapped = inventoryProductsToStockMap(fallbackItems);
+          stockRef.current = mapped;
+          setStock(mapped);
+          persistTenantInventory(activeTenantId, mapped, false);
+          return { count: Object.keys(mapped).length };
+        }
       }
       return { count: Object.keys(stockRef.current).length };
     } finally {
@@ -318,6 +369,9 @@ export default function StockApp() {
         isCurrentlyEmergency={isEmergencyMode}
         onConfirm={(targetState) => {
           setIsEmergencyMode(targetState);
+          try {
+            localStorage.setItem(emergencyKey, String(targetState));
+          } catch {}
           setIsEmergencyConfirmOpen(false);
         }}
       />
